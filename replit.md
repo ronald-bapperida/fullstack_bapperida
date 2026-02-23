@@ -1,5 +1,9 @@
 # Portal Admin BAPPERIDA Kalimantan Tengah
 
+## Go Backend (Port 8080)
+Backend Golang dengan arsitektur Clean Architecture berjalan paralel di port 8080.
+Lihat `backend/README.md` untuk dokumentasi lengkap dan contoh curl.
+
 ## Overview
 Admin panel untuk BAPPERIDA (Badan Perencanaan, Penelitian dan Pengembangan Daerah) Kalimantan Tengah. Sistem dual-domain: BAPPEDA dan RIDA.
 
