@@ -6,6 +6,8 @@ import { TooltipProvider } from "@/components/ui/tooltip";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { AuthProvider, useAuth } from "@/contexts/auth";
+import { LanguageProvider, useLang } from "@/contexts/language";
+import { Button } from "@/components/ui/button";
 
 import LoginPage from "@/pages/login";
 import Dashboard from "@/pages/dashboard";
@@ -15,6 +17,7 @@ import CategoriesPage from "@/pages/news/categories";
 import BannersPage from "@/pages/banners/index";
 import MenusPage from "@/pages/menus/index";
 import DocumentsPage from "@/pages/documents/index";
+import { DocKindsPage, DocCategoriesPage, DocTypesPage } from "@/pages/documents/masters";
 import PermitsPage from "@/pages/permits/index";
 import PermitDetailPage from "@/pages/permits/detail";
 import SurveysPage from "@/pages/surveys/index";
@@ -29,7 +32,34 @@ const sidebarStyle = {
   "--sidebar-width-icon": "3.5rem",
 } as React.CSSProperties;
 
+function LangSwitcher() {
+  const { lang, setLang } = useLang();
+  return (
+    <div className="flex items-center gap-1 ml-2">
+      <Button
+        size="sm"
+        variant={lang === "id" ? "default" : "ghost"}
+        className="h-7 px-2 text-xs gap-1"
+        onClick={() => setLang("id")}
+        data-testid="button-lang-id"
+      >
+        🇮🇩 ID
+      </Button>
+      <Button
+        size="sm"
+        variant={lang === "en" ? "default" : "ghost"}
+        className="h-7 px-2 text-xs gap-1"
+        onClick={() => setLang("en")}
+        data-testid="button-lang-en"
+      >
+        🇬🇧 EN
+      </Button>
+    </div>
+  );
+}
+
 function AdminLayout({ children }: { children: React.ReactNode }) {
+  const { t } = useLang();
   return (
     <SidebarProvider style={sidebarStyle}>
       <div className="flex h-screen w-full overflow-hidden">
@@ -38,7 +68,8 @@ function AdminLayout({ children }: { children: React.ReactNode }) {
           <header className="flex items-center h-12 px-4 border-b bg-background shrink-0 z-10 sticky top-0">
             <SidebarTrigger data-testid="button-sidebar-toggle" />
             <div className="flex-1" />
-            <span className="text-xs text-muted-foreground">Portal Admin BAPPERIDA Kalteng</span>
+            <span className="text-xs text-muted-foreground hidden sm:block">{t("portal")}</span>
+            <LangSwitcher />
           </header>
           <main className="flex-1 overflow-y-auto bg-background">
             {children}
@@ -51,7 +82,6 @@ function AdminLayout({ children }: { children: React.ReactNode }) {
 
 function ProtectedRoute({ component: Component, roles }: { component: React.ComponentType; roles?: string[] }) {
   const { user, isLoading } = useAuth();
-  const [loc] = useLocation();
 
   if (isLoading) return (
     <div className="flex items-center justify-center h-screen">
@@ -100,6 +130,9 @@ function Router() {
       <Route path="/categories" component={() => <ProtectedRoute component={CategoriesPage} roles={["super_admin", "admin_bpp"]} />} />
       <Route path="/banners" component={() => <ProtectedRoute component={BannersPage} roles={["super_admin", "admin_bpp"]} />} />
       <Route path="/menus" component={() => <ProtectedRoute component={MenusPage} roles={["super_admin", "admin_bpp"]} />} />
+      <Route path="/documents/kinds" component={() => <ProtectedRoute component={DocKindsPage} roles={["super_admin", "admin_bpp"]} />} />
+      <Route path="/documents/categories" component={() => <ProtectedRoute component={DocCategoriesPage} roles={["super_admin", "admin_bpp"]} />} />
+      <Route path="/documents/types" component={() => <ProtectedRoute component={DocTypesPage} roles={["super_admin", "admin_bpp"]} />} />
       <Route path="/documents" component={() => <ProtectedRoute component={DocumentsPage} roles={["super_admin", "admin_bpp"]} />} />
       <Route path="/permits" component={() => <ProtectedRoute component={PermitsPage} roles={["super_admin", "admin_rida"]} />} />
       <Route path="/permits/:id" component={() => <ProtectedRoute component={PermitDetailPage} roles={["super_admin", "admin_rida"]} />} />
@@ -117,10 +150,12 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <AuthProvider>
-          <Router />
-          <Toaster />
-        </AuthProvider>
+        <LanguageProvider>
+          <AuthProvider>
+            <Router />
+            <Toaster />
+          </AuthProvider>
+        </LanguageProvider>
       </TooltipProvider>
     </QueryClientProvider>
   );

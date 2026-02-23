@@ -97,8 +97,17 @@ export interface IStorage {
 
   // Document Masters
   listDocumentKinds(): Promise<any[]>;
+  createDocumentKind(data: { name: string }): Promise<any>;
+  updateDocumentKind(id: string, data: { name: string }): Promise<any>;
+  deleteDocumentKind(id: string): Promise<void>;
   listDocumentCategories(): Promise<any[]>;
+  createDocumentCategory(data: { name: string }): Promise<any>;
+  updateDocumentCategory(id: string, data: { name: string }): Promise<any>;
+  deleteDocumentCategory(id: string): Promise<void>;
   listDocumentTypes(): Promise<any[]>;
+  createDocumentType(data: { name: string; extension?: string }): Promise<any>;
+  updateDocumentType(id: string, data: { name: string; extension?: string }): Promise<any>;
+  deleteDocumentType(id: string): Promise<void>;
 
   // Documents
   listDocuments(opts?: { page?: number; limit?: number; search?: string; trash?: boolean; kindId?: string; categoryId?: string; typeId?: string }): Promise<{ items: Document[]; total: number }>;
@@ -328,11 +337,44 @@ export class DatabaseStorage implements IStorage {
   async listDocumentKinds() {
     return db.select().from(schema.documentKinds).where(isNull(schema.documentKinds.deletedAt)).orderBy(schema.documentKinds.name);
   }
+  async createDocumentKind(data: { name: string }) {
+    const [r] = await db.insert(schema.documentKinds).values({ name: data.name }).returning();
+    return r;
+  }
+  async updateDocumentKind(id: string, data: { name: string }) {
+    const [r] = await db.update(schema.documentKinds).set({ name: data.name }).where(eq(schema.documentKinds.id, id)).returning();
+    return r;
+  }
+  async deleteDocumentKind(id: string) {
+    await db.update(schema.documentKinds).set({ deletedAt: new Date() }).where(eq(schema.documentKinds.id, id));
+  }
   async listDocumentCategories() {
     return db.select().from(schema.documentCategories).where(isNull(schema.documentCategories.deletedAt)).orderBy(schema.documentCategories.name);
   }
+  async createDocumentCategory(data: { name: string }) {
+    const [r] = await db.insert(schema.documentCategories).values({ name: data.name }).returning();
+    return r;
+  }
+  async updateDocumentCategory(id: string, data: { name: string }) {
+    const [r] = await db.update(schema.documentCategories).set({ name: data.name }).where(eq(schema.documentCategories.id, id)).returning();
+    return r;
+  }
+  async deleteDocumentCategory(id: string) {
+    await db.update(schema.documentCategories).set({ deletedAt: new Date() }).where(eq(schema.documentCategories.id, id));
+  }
   async listDocumentTypes() {
     return db.select().from(schema.documentTypes).where(isNull(schema.documentTypes.deletedAt)).orderBy(schema.documentTypes.name);
+  }
+  async createDocumentType(data: { name: string; extension?: string }) {
+    const [r] = await db.insert(schema.documentTypes).values({ name: data.name, extension: data.extension }).returning();
+    return r;
+  }
+  async updateDocumentType(id: string, data: { name: string; extension?: string }) {
+    const [r] = await db.update(schema.documentTypes).set({ name: data.name, extension: data.extension }).where(eq(schema.documentTypes.id, id)).returning();
+    return r;
+  }
+  async deleteDocumentType(id: string) {
+    await db.update(schema.documentTypes).set({ deletedAt: new Date() }).where(eq(schema.documentTypes.id, id));
   }
 
   // ── Documents ───────────────────────────────────────────────────────────────

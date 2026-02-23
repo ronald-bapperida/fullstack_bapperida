@@ -1,0 +1,225 @@
+import { useState } from "react";
+import { useQuery, useMutation } from "@tanstack/react-query";
+import { queryClient, apiRequest } from "@/lib/queryClient";
+import { Card } from "@/components/ui/card";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
+import { Skeleton } from "@/components/ui/skeleton";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { Plus, Edit, Trash2, Layers, Tag, FileType2 } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
+import { useForm } from "react-hook-form";
+import { format } from "date-fns";
+import { id } from "date-fns/locale";
+
+interface Master { id: string; name: string; extension?: string; createdAt: string; }
+
+function MasterForm({
+  item, apiBase, hasExtension, onDone
+}: { item?: Master; apiBase: string; hasExtension?: boolean; onDone: () => void }) {
+  const { toast } = useToast();
+  const { register, handleSubmit, formState: { errors } } = useForm({
+    defaultValues: { name: item?.name || "", extension: item?.extension || "" },
+  });
+
+  const mutation = useMutation({
+    mutationFn: async (data: any) => {
+      const payload: any = { name: data.name };
+      if (hasExtension) payload.extension = data.extension;
+      const res = item
+        ? await apiRequest("PATCH", `${apiBase}/${item.id}`, payload)
+        : await apiRequest("POST", apiBase, payload);
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [apiBase.replace("/admin", "")] });
+      queryClient.invalidateQueries({ queryKey: [apiBase] });
+      toast({ title: item ? "Data diupdate" : "Data ditambahkan" });
+      onDone();
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  return (
+    <form onSubmit={handleSubmit(d => mutation.mutate(d))} className="flex flex-col gap-4 pt-2">
+      <div className="flex flex-col gap-2">
+        <Label>Nama *</Label>
+        <Input {...register("name", { required: "Nama wajib diisi" })} placeholder="Nama..." data-testid="input-master-name" />
+        {errors.name && <p className="text-xs text-destructive">{errors.name.message as string}</p>}
+      </div>
+      {hasExtension && (
+        <div className="flex flex-col gap-2">
+          <Label>Ekstensi File</Label>
+          <Input {...register("extension")} placeholder="pdf, docx, xlsx (pisahkan koma)" />
+          <p className="text-xs text-muted-foreground">Contoh: pdf atau jpg,jpeg</p>
+        </div>
+      )}
+      <Button type="submit" disabled={mutation.isPending} data-testid="button-save-master">
+        {mutation.isPending ? "Menyimpan..." : "Simpan"}
+      </Button>
+    </form>
+  );
+}
+
+function MasterPage({
+  title, description, icon: Icon, apiBase, queryKey, hasExtension
+}: {
+  title: string;
+  description: string;
+  icon: React.ComponentType<any>;
+  apiBase: string;
+  queryKey: string;
+  hasExtension?: boolean;
+}) {
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  const [editItem, setEditItem] = useState<Master | undefined>();
+
+  const { data: items = [], isLoading } = useQuery<Master[]>({ queryKey: [queryKey] });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (id: string) => {
+      const res = await apiRequest("DELETE", `${apiBase}/${id}`);
+      if (!res.ok) throw new Error(await res.text());
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [queryKey] });
+      toast({ title: "Data dihapus" });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  return (
+    <div className="flex flex-col gap-6 p-6">
+      <div className="flex items-center justify-between gap-4 flex-wrap">
+        <div>
+          <h1 className="text-2xl font-bold flex items-center gap-2">
+            <Icon className="w-6 h-6" /> {title}
+          </h1>
+          <p className="text-muted-foreground text-sm mt-1">{description}</p>
+        </div>
+        <Button size="sm" className="gap-2" onClick={() => { setEditItem(undefined); setOpen(true); }} data-testid="button-add-master">
+          <Plus className="w-4 h-4" /> Tambah
+        </Button>
+      </div>
+
+      <Dialog open={open} onOpenChange={o => { setOpen(o); if (!o) setEditItem(undefined); }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>{editItem ? `Edit ${title}` : `Tambah ${title}`}</DialogTitle>
+            <DialogDescription>{description}</DialogDescription>
+          </DialogHeader>
+          <MasterForm
+            item={editItem}
+            apiBase={apiBase}
+            hasExtension={hasExtension}
+            onDone={() => { setOpen(false); setEditItem(undefined); }}
+          />
+        </DialogContent>
+      </Dialog>
+
+      <Card>
+        <Table>
+          <TableHeader>
+            <TableRow>
+              <TableHead>Nama</TableHead>
+              {hasExtension && <TableHead className="w-40">Ekstensi</TableHead>}
+              <TableHead className="w-36">Ditambahkan</TableHead>
+              <TableHead className="w-20 text-right">Aksi</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {isLoading ? Array.from({ length: 4 }).map((_, i) => (
+              <TableRow key={i}>{Array.from({ length: hasExtension ? 4 : 3 }).map((_, j) => <TableCell key={j}><Skeleton className="h-5 w-full" /></TableCell>)}</TableRow>
+            )) : items.length === 0 ? (
+              <TableRow>
+                <TableCell colSpan={hasExtension ? 4 : 3} className="text-center py-12 text-muted-foreground">
+                  Belum ada data {title}
+                </TableCell>
+              </TableRow>
+            ) : items.map(item => (
+              <TableRow key={item.id} data-testid={`row-master-${item.id}`}>
+                <TableCell className="font-medium">{item.name}</TableCell>
+                {hasExtension && (
+                  <TableCell>
+                    <code className="text-xs bg-muted px-1.5 py-0.5 rounded">{item.extension || "-"}</code>
+                  </TableCell>
+                )}
+                <TableCell className="text-sm text-muted-foreground">
+                  {format(new Date(item.createdAt), "d MMM yyyy", { locale: id })}
+                </TableCell>
+                <TableCell>
+                  <div className="flex items-center justify-end gap-1">
+                    <Button size="icon" variant="ghost" onClick={() => { setEditItem(item); setOpen(true); }} data-testid={`button-edit-${item.id}`}>
+                      <Edit className="w-4 h-4" />
+                    </Button>
+                    <AlertDialog>
+                      <AlertDialogTrigger asChild>
+                        <Button size="icon" variant="ghost" data-testid={`button-delete-${item.id}`}>
+                          <Trash2 className="w-4 h-4 text-destructive" />
+                        </Button>
+                      </AlertDialogTrigger>
+                      <AlertDialogContent>
+                        <AlertDialogHeader>
+                          <AlertDialogTitle>Hapus {title}?</AlertDialogTitle>
+                          <AlertDialogDescription>
+                            "{item.name}" akan dihapus. Dokumen yang menggunakan data ini mungkin terpengaruh.
+                          </AlertDialogDescription>
+                        </AlertDialogHeader>
+                        <AlertDialogFooter>
+                          <AlertDialogCancel>Batal</AlertDialogCancel>
+                          <AlertDialogAction onClick={() => deleteMutation.mutate(item.id)}>Hapus</AlertDialogAction>
+                        </AlertDialogFooter>
+                      </AlertDialogContent>
+                    </AlertDialog>
+                  </div>
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </Card>
+    </div>
+  );
+}
+
+export function DocKindsPage() {
+  return (
+    <MasterPage
+      title="Jenis Dokumen"
+      description="Kelola jenis-jenis dokumen PPID"
+      icon={Layers}
+      apiBase="/api/admin/document-kinds"
+      queryKey="/api/document-kinds"
+    />
+  );
+}
+
+export function DocCategoriesPage() {
+  return (
+    <MasterPage
+      title="Kategori Dokumen"
+      description="Kelola kategori dokumen PPID"
+      icon={Tag}
+      apiBase="/api/admin/document-categories"
+      queryKey="/api/document-categories"
+    />
+  );
+}
+
+export function DocTypesPage() {
+  return (
+    <MasterPage
+      title="Tipe File"
+      description="Kelola tipe/format file dokumen"
+      icon={FileType2}
+      apiBase="/api/admin/document-types"
+      queryKey="/api/document-types"
+      hasExtension
+    />
+  );
+}

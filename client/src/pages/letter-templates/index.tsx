@@ -10,7 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Edit, FileEdit, Copy, CheckCircle2 } from "lucide-react";
+import { Plus, Edit, FileEdit, Copy, CheckCircle2, Eye } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useForm, Controller } from "react-hook-form";
 import { format } from "date-fns";
@@ -26,16 +26,24 @@ interface Template {
 }
 
 const PLACEHOLDERS = [
-  { key: "{{full_name}}", label: "Nama Lengkap" },
-  { key: "{{request_number}}", label: "Nomor Permohonan" },
-  { key: "{{nim_nik}}", label: "NIM/NIK" },
-  { key: "{{institution}}", label: "Asal Lembaga" },
-  { key: "{{research_title}}", label: "Judul Penelitian" },
-  { key: "{{research_location}}", label: "Lokasi Penelitian" },
-  { key: "{{research_duration}}", label: "Durasi Penelitian" },
-  { key: "{{date}}", label: "Tanggal Surat" },
-  { key: "{{signer_name}}", label: "Nama Penanda Tangan" },
+  { key: "{{full_name}}", label: "Nama Lengkap", sample: "Budi Santoso" },
+  { key: "{{request_number}}", label: "Nomor Permohonan", sample: "BAPPERIDA-RID-2025-000001" },
+  { key: "{{nim_nik}}", label: "NIM/NIK", sample: "12345678" },
+  { key: "{{institution}}", label: "Asal Lembaga", sample: "Universitas Palangka Raya" },
+  { key: "{{research_title}}", label: "Judul Penelitian", sample: "Analisis Pembangunan Daerah Kalimantan Tengah" },
+  { key: "{{research_location}}", label: "Lokasi Penelitian", sample: "Kota Palangka Raya" },
+  { key: "{{research_duration}}", label: "Durasi Penelitian", sample: "3 Bulan (Januari - Maret 2025)" },
+  { key: "{{date}}", label: "Tanggal Surat", sample: "23 Februari 2025" },
+  { key: "{{signer_name}}", label: "Nama Penanda Tangan", sample: "Kepala BAPPERIDA Prov. Kalteng" },
 ];
+
+function fillTemplate(content: string, sampleData: boolean = false): string {
+  let result = content;
+  if (sampleData) {
+    PLACEHOLDERS.forEach(ph => { result = result.replaceAll(ph.key, ph.sample); });
+  }
+  return result;
+}
 
 function TemplateForm({ template, onDone }: { template?: Template; onDone: () => void }) {
   const { toast } = useToast();
@@ -105,7 +113,7 @@ function TemplateForm({ template, onDone }: { template?: Template; onDone: () =>
 
       <div className="flex flex-col gap-2">
         <Label>Placeholder Tersedia</Label>
-        <p className="text-xs text-muted-foreground">Klik placeholder untuk menyisipkan di posisi kursor dalam konten template:</p>
+        <p className="text-xs text-muted-foreground">Klik untuk menyisipkan di posisi kursor:</p>
         <div className="flex flex-wrap gap-1.5">
           {PLACEHOLDERS.map(ph => (
             <button
@@ -114,7 +122,6 @@ function TemplateForm({ template, onDone }: { template?: Template; onDone: () =>
               onClick={() => insertPlaceholder(ph.key)}
               className="inline-flex items-center gap-1 px-2 py-1 rounded text-xs border border-dashed border-primary/50 bg-primary/5 hover:bg-primary/10 transition-colors font-mono"
               title={ph.label}
-              data-testid={`ph-${ph.key}`}
             >
               {copied === ph.key ? <CheckCircle2 className="w-3 h-3 text-green-500" /> : <Copy className="w-3 h-3" />}
               {ph.key}
@@ -124,16 +131,16 @@ function TemplateForm({ template, onDone }: { template?: Template; onDone: () =>
       </div>
 
       <div className="flex flex-col gap-2">
-        <Label>Konten Template</Label>
+        <Label>Konten Template (teks biasa + placeholder)</Label>
         <p className="text-xs text-muted-foreground">
-          Tulis konten surat sebagai teks biasa. Placeholder akan diganti otomatis saat generate surat.
-          Untuk format DOCX, konten akan dirender sebagai paragraf terstruktur.
+          Tulis konten sebagai teks biasa. Placeholder akan diganti otomatis saat generate surat.
+          Jangan gunakan tag HTML — konten akan diformat sebagai dokumen Word.
         </p>
         <Textarea
           id="template-content"
           {...register("content", { required: true })}
-          rows={14}
-          placeholder="Yang bertanda tangan di bawah ini, Kepala BAPPERIDA...&#10;&#10;Nama     : {{full_name}}&#10;NIM/NIK  : {{nim_nik}}&#10;..."
+          rows={16}
+          placeholder={`PEMERINTAH PROVINSI KALIMANTAN TENGAH\nBADAN PERENCANAAN, PENELITIAN DAN PENGEMBANGAN DAERAH (BAPPERIDA)\n\nSURAT IZIN PENELITIAN\nNomor: {{request_number}}\n\nYang bertanda tangan di bawah ini, Kepala BAPPERIDA...\n\nNama           : {{full_name}}\nNIM/NIK        : {{nim_nik}}\nAsal Lembaga   : {{institution}}\nJudul          : {{research_title}}\nLokasi         : {{research_location}}\nDurasi         : {{research_duration}}\n\nDemikian surat ini diterbitkan.\n\nPalangka Raya, {{date}}\n{{signer_name}}`}
           className="font-mono text-sm resize-y"
           data-testid="input-template-content"
         />
@@ -146,9 +153,49 @@ function TemplateForm({ template, onDone }: { template?: Template; onDone: () =>
   );
 }
 
+function PreviewDialog({ template, onClose }: { template: Template; onClose: () => void }) {
+  const [withSample, setWithSample] = useState(true);
+  const rendered = fillTemplate(template.content, withSample);
+
+  return (
+    <Dialog open onOpenChange={o => { if (!o) onClose(); }}>
+      <DialogContent className="max-w-3xl max-h-[90vh] overflow-y-auto">
+        <DialogHeader>
+          <DialogTitle>Preview: {template.name}</DialogTitle>
+          <DialogDescription>
+            Tampilan konten template surat.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="flex items-center gap-3 mb-4">
+          <Button
+            size="sm"
+            variant={withSample ? "default" : "outline"}
+            onClick={() => setWithSample(true)}
+          >
+            Dengan Data Contoh
+          </Button>
+          <Button
+            size="sm"
+            variant={!withSample ? "default" : "outline"}
+            onClick={() => setWithSample(false)}
+          >
+            Tampilkan Placeholder
+          </Button>
+        </div>
+        <div className="bg-white border rounded-lg p-8 shadow-inner">
+          <pre className="whitespace-pre-wrap font-serif text-sm text-gray-800 leading-relaxed">
+            {rendered}
+          </pre>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export default function LetterTemplatesPage() {
   const [open, setOpen] = useState(false);
   const [editTemplate, setEditTemplate] = useState<Template | undefined>();
+  const [previewTemplate, setPreviewTemplate] = useState<Template | undefined>();
   const { data: templates = [], isLoading } = useQuery<Template[]>({ queryKey: ["/api/admin/letter-templates"] });
 
   const typeLabel: Record<string, string> = {
@@ -162,7 +209,7 @@ export default function LetterTemplatesPage() {
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2"><FileEdit className="w-6 h-6" /> Template Surat</h1>
           <p className="text-muted-foreground text-sm mt-1">
-            Kelola template surat izin penelitian &mdash; generate sebagai HTML atau DOCX
+            Template teks biasa dengan placeholder — generate ke DOCX Word document
           </p>
         </div>
         <Button size="sm" className="gap-2" onClick={() => { setEditTemplate(undefined); setOpen(true); }} data-testid="button-add-template">
@@ -175,12 +222,16 @@ export default function LetterTemplatesPage() {
           <DialogHeader>
             <DialogTitle>{editTemplate ? "Edit Template" : "Tambah Template"}</DialogTitle>
             <DialogDescription>
-              Template digunakan untuk generate surat izin penelitian. Gunakan placeholder yang tersedia.
+              Gunakan placeholder untuk data yang akan diisi otomatis. Konten dalam format teks biasa.
             </DialogDescription>
           </DialogHeader>
           <TemplateForm template={editTemplate} onDone={() => { setOpen(false); setEditTemplate(undefined); }} />
         </DialogContent>
       </Dialog>
+
+      {previewTemplate && (
+        <PreviewDialog template={previewTemplate} onClose={() => setPreviewTemplate(undefined)} />
+      )}
 
       {isLoading ? (
         <div className="flex flex-col gap-4">
@@ -191,7 +242,7 @@ export default function LetterTemplatesPage() {
           <CardContent className="pt-6 text-center text-muted-foreground py-16">
             <FileEdit className="w-10 h-10 mx-auto mb-3 opacity-30" />
             <p>Belum ada template surat</p>
-            <p className="text-xs mt-1">Tambah template untuk mulai generate surat izin penelitian</p>
+            <p className="text-xs mt-1">Tambah template untuk generate surat izin penelitian</p>
           </CardContent>
         </Card>
       ) : (
@@ -211,24 +262,35 @@ export default function LetterTemplatesPage() {
                       {t.isActive ? "Aktif" : "Nonaktif"}
                     </Badge>
                   </div>
-                  <Button
-                    size="icon"
-                    variant="ghost"
-                    onClick={() => { setEditTemplate(t); setOpen(true); }}
-                    data-testid={`button-edit-template-${t.id}`}
-                  >
-                    <Edit className="w-4 h-4" />
-                  </Button>
+                  <div className="flex items-center gap-1 shrink-0">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setPreviewTemplate(t)}
+                      data-testid={`button-preview-template-${t.id}`}
+                    >
+                      <Eye className="w-3.5 h-3.5 mr-1" />
+                      Preview
+                    </Button>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      onClick={() => { setEditTemplate(t); setOpen(true); }}
+                      data-testid={`button-edit-template-${t.id}`}
+                    >
+                      <Edit className="w-4 h-4" />
+                    </Button>
+                  </div>
                 </div>
               </CardHeader>
               <CardContent>
                 <p className="text-xs text-muted-foreground mb-3">
                   Diperbarui: {format(new Date(t.createdAt), "d MMMM yyyy", { locale: id })}
                 </p>
-                <div className="p-3 bg-muted rounded-md">
-                  <p className="text-xs font-mono text-muted-foreground whitespace-pre-wrap line-clamp-4">
-                    {t.content.replace(/<[^>]*>/g, " ").trim()}
-                  </p>
+                <div className="p-3 bg-muted rounded-md font-mono">
+                  <pre className="text-xs text-muted-foreground whitespace-pre-wrap line-clamp-4 overflow-hidden">
+                    {t.content.substring(0, 300)}{t.content.length > 300 ? "..." : ""}
+                  </pre>
                 </div>
                 <div className="mt-3 flex flex-wrap gap-1">
                   {PLACEHOLDERS.filter(ph => t.content.includes(ph.key)).map(ph => (

@@ -489,17 +489,55 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     catch (e: any) { return res.status(500).json({ error: e.message }); }
   });
 
-  // ─── Document Masters (public) ─────────────────────────────────────────────
+  // ─── Document Masters ────────────────────────────────────────────────────────
   app.get("/api/document-kinds", async (_req, res) => {
     try { return res.json(await db.listDocumentKinds()); }
     catch (e: any) { return res.status(500).json({ error: e.message }); }
   });
+  app.post("/api/admin/document-kinds", authMiddleware, requireRole("super_admin", "admin_bpp"), async (req, res) => {
+    try { return res.json(await db.createDocumentKind(req.body)); }
+    catch (e: any) { return res.status(500).json({ error: e.message }); }
+  });
+  app.patch("/api/admin/document-kinds/:id", authMiddleware, requireRole("super_admin", "admin_bpp"), async (req, res) => {
+    try { return res.json(await db.updateDocumentKind(req.params.id, req.body)); }
+    catch (e: any) { return res.status(500).json({ error: e.message }); }
+  });
+  app.delete("/api/admin/document-kinds/:id", authMiddleware, requireRole("super_admin", "admin_bpp"), async (req, res) => {
+    try { await db.deleteDocumentKind(req.params.id); return res.json({ ok: true }); }
+    catch (e: any) { return res.status(500).json({ error: e.message }); }
+  });
+
   app.get("/api/document-categories", async (_req, res) => {
     try { return res.json(await db.listDocumentCategories()); }
     catch (e: any) { return res.status(500).json({ error: e.message }); }
   });
+  app.post("/api/admin/document-categories", authMiddleware, requireRole("super_admin", "admin_bpp"), async (req, res) => {
+    try { return res.json(await db.createDocumentCategory(req.body)); }
+    catch (e: any) { return res.status(500).json({ error: e.message }); }
+  });
+  app.patch("/api/admin/document-categories/:id", authMiddleware, requireRole("super_admin", "admin_bpp"), async (req, res) => {
+    try { return res.json(await db.updateDocumentCategory(req.params.id, req.body)); }
+    catch (e: any) { return res.status(500).json({ error: e.message }); }
+  });
+  app.delete("/api/admin/document-categories/:id", authMiddleware, requireRole("super_admin", "admin_bpp"), async (req, res) => {
+    try { await db.deleteDocumentCategory(req.params.id); return res.json({ ok: true }); }
+    catch (e: any) { return res.status(500).json({ error: e.message }); }
+  });
+
   app.get("/api/document-types", async (_req, res) => {
     try { return res.json(await db.listDocumentTypes()); }
+    catch (e: any) { return res.status(500).json({ error: e.message }); }
+  });
+  app.post("/api/admin/document-types", authMiddleware, requireRole("super_admin", "admin_bpp"), async (req, res) => {
+    try { return res.json(await db.createDocumentType(req.body)); }
+    catch (e: any) { return res.status(500).json({ error: e.message }); }
+  });
+  app.patch("/api/admin/document-types/:id", authMiddleware, requireRole("super_admin", "admin_bpp"), async (req, res) => {
+    try { return res.json(await db.updateDocumentType(req.params.id, req.body)); }
+    catch (e: any) { return res.status(500).json({ error: e.message }); }
+  });
+  app.delete("/api/admin/document-types/:id", authMiddleware, requireRole("super_admin", "admin_bpp"), async (req, res) => {
+    try { await db.deleteDocumentType(req.params.id); return res.json({ ok: true }); }
     catch (e: any) { return res.status(500).json({ error: e.message }); }
   });
 

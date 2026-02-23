@@ -27,27 +27,30 @@ Admin panel untuk BAPPERIDA (Badan Perencanaan, Penelitian dan Pengembangan Daer
 
 ## RBAC Roles
 - **super_admin**: Full access to all modules
-- **admin_bpp**: BAPPEDA modules (News, Categories, Banners, Menus, Documents)
+- **admin_bpp**: BAPPEDA modules (News, Categories, Banners, Menus, Documents, Document Masters)
 - **admin_rida**: RIDA modules (Research Permits, Surveys, Final Reports, Letter Templates, Suggestions)
 
 ## Modules
 
 ### BAPPEDA Domain
-- **Berita (CMS)**: News management with categories, featured images, status (draft/published), soft delete & trash
+- **Berita (CMS)**: News management with categories, featured images, status (draft/published), soft delete & trash. Draft-first workflow, inline publish toggle.
 - **Kategori Berita**: News category management
-- **Banner**: Banner management with view/click tracking, schedule (start_at/end_at)
+- **Banner**: Banner management with view/click tracking, desktop/mobile image, schedule
 - **Menus**: Dynamic menu management with nested items (location: header/footer/mobile)
 - **Dokumen PPID**: Document management with access levels (terbuka/terbatas/rahasia), soft delete
+  - **Jenis Dokumen** (`/documents/kinds`): CRUD untuk jenis dokumen
+  - **Kategori Dokumen** (`/documents/categories`): CRUD kategori PPID
+  - **Tipe File** (`/documents/types`): CRUD tipe file dengan extension field
 
 ### RIDA Domain
 - **Izin Penelitian**: Research permit workflow (submitted → in_review → revision_requested → approved → generated_letter → sent/rejected)
   - Auto-generates request number: BAPPERIDA-RID-YYYY-000001 (race-condition safe using DB transaction)
   - Status history tracking
-  - HTML letter generation from templates
-- **Survei IKM**: Satisfaction survey with 9 questions, IKM score calculation
+  - DOCX letter generation from plaintext templates
+- **Survei IKM**: Satisfaction survey with 9 questions
 - **Laporan Akhir**: Final research report uploads
 - **Kotak Saran**: Suggestion/feedback box
-- **Template Surat**: HTML letter templates with placeholders
+- **Template Surat**: Plaintext letter templates with placeholders + preview dialog + DOCX generation
 
 ## Key Features
 - JWT-based authentication (stored in localStorage)
@@ -57,42 +60,57 @@ Admin panel untuk BAPPERIDA (Badan Perencanaan, Penelitian dan Pengembangan Daer
 - Race-condition-safe request number sequence generation
 - Dashboard statistics per domain
 - **Draft-first workflow**: News auto-saves as draft; publish toggle button inline in list view
-- **Document masters**: Mandatory kind/category/type fields with filter dropdowns; seeded with PPID data
+- **Document masters**: Mandatory kind/category/type fields with filter dropdowns; seeded with PPID data; full CRUD pages
 - **Banner image upload**: Desktop + mobile image fields with preview
 - **DOCX generation**: Letter templates generate proper Word documents via `docx` npm package
-- **Quill image upload fixed**: `/api/admin/news/upload-image` endpoint returns proper JSON
-- **News toggle-status**: `PATCH /api/admin/news/:id/toggle-status` endpoint toggles draft/published
+- **Quill rich text editor**: Paste image support, caption dialog after upload, full toolbar
+- **Collapsible sidebar**: Dokumen PPID section with expandable sub-items (List, Jenis, Kategori, Tipe)
+- **Logout confirmation**: AlertDialog modal before logout
+- **Language switcher**: Indonesian/English (ID/EN) with flags in top-right header
+- **User management tabs**: Split by role (Super Admin, Admin RIDA, Admin BAPPEDA)
+- **Letter template preview**: Preview dialog with/without sample data rendering
 
 ## Architecture
 ```
 client/src/
-  contexts/auth.tsx       # Auth context + JWT management
-  components/app-sidebar.tsx  # RBAC-aware sidebar
+  contexts/
+    auth.tsx           # Auth context + JWT management
+    language.tsx       # Language context (ID/EN i18n)
+  components/app-sidebar.tsx  # RBAC-aware sidebar with collapsible Dokumen section
   pages/
-    login.tsx             # Login page
-    dashboard.tsx         # Statistics dashboard
-    news/                 # News CRUD
-    banners/              # Banner management
-    menus/                # Menu management
-    documents/            # Document PPID
-    permits/              # Research permit workflow
-    surveys/              # IKM surveys
-    reports/              # Final reports
-    suggestions/          # Suggestion box
-    letter-templates/     # Letter template editor
-    users/                # User management (super_admin only)
+    login.tsx          # Login page
+    dashboard.tsx      # Statistics dashboard
+    news/              # News CRUD + categories
+    banners/           # Banner management
+    menus/             # Menu management
+    documents/
+      index.tsx        # Document list + CRUD
+      masters.tsx      # DocKindsPage, DocCategoriesPage, DocTypesPage (reusable MasterPage)
+    permits/           # Research permit workflow
+    surveys/           # IKM surveys
+    reports/           # Final reports
+    suggestions/       # Suggestion box
+    letter-templates/  # Plaintext letter templates + preview
+    users/             # User management with tabs by role
 
 server/
-  db.ts                   # Drizzle connection
-  storage.ts              # All CRUD operations (DatabaseStorage)
-  routes.ts               # All API endpoints + seed function
-  auth.ts                 # JWT helpers + middleware
+  db.ts               # Drizzle connection
+  storage.ts          # All CRUD operations (DatabaseStorage) including doc master CRUD
+  routes.ts           # All API endpoints + seed function
+  auth.ts             # JWT helpers + middleware
 
 shared/
-  schema.ts               # Complete Drizzle schema (all tables)
+  schema.ts           # Complete Drizzle schema (all tables)
+
+backend/                    # Go backend (port 8080) for Flutter
+  internal/
+    transport/http/         # Gin handlers (auth, news, banner, menu, document, permit, misc)
+    repository/postgres/    # Raw SQL repositories
+    domain/                 # Domain types
+    middleware/             # JWT auth + role-based middleware
 ```
 
-## API Endpoints
+## Node.js API Endpoints (port 5000 - for React Admin)
 - `POST /api/auth/login` - Login
 - `GET /api/auth/me` - Current user
 - `GET /api/admin/dashboard` - Dashboard stats
@@ -101,9 +119,12 @@ shared/
 - `GET|POST|PATCH|DELETE /api/admin/banners*` - Banners
 - `GET|POST|PATCH|DELETE /api/admin/menus*` - Menus
 - `GET|POST|PATCH|DELETE /api/admin/documents*` - Documents
+- `GET|POST|PATCH|DELETE /api/admin/document-kinds*` - Document kinds CRUD
+- `GET|POST|PATCH|DELETE /api/admin/document-categories*` - Document categories CRUD
+- `GET|POST|PATCH|DELETE /api/admin/document-types*` - Document types CRUD
 - `GET|POST /api/admin/permits*` - Research permits
 - `PATCH /api/admin/permits/:id/status` - Update permit status
-- `POST /api/admin/permits/:id/generate-letter` - Generate HTML letter
+- `POST /api/admin/permits/:id/generate-letter` - Generate DOCX letter
 - `GET /api/admin/surveys` - Survey list
 - `GET /api/admin/final-reports` - Final reports
 - `GET /api/admin/suggestions` - Suggestions
@@ -127,6 +148,7 @@ shared/
 - Admin banners: `GET|POST|PATCH|DELETE /api/admin/banners*`
 - Admin menus: `GET|POST|PATCH|DELETE /api/admin/menus*`, `PATCH|DELETE /api/admin/menu-items/:id`
 - Admin documents: `GET|POST|PATCH|DELETE /api/admin/documents*`
+- Admin doc masters: `POST|PATCH|DELETE /api/admin/document-kinds/:id`, categories, types
 - Admin permits: `GET /api/admin/permits*`, `PATCH /api/admin/permits/:id/status`
 - Admin surveys: `GET /api/admin/surveys`
 - Admin reports: `GET /api/admin/final-reports`
