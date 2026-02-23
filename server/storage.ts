@@ -95,13 +95,19 @@ export interface IStorage {
   updateMenuItem(id: string, data: Partial<InsertMenuItem>): Promise<MenuItem>;
   deleteMenuItem(id: string): Promise<void>;
 
+  // Document Masters
+  listDocumentKinds(): Promise<any[]>;
+  listDocumentCategories(): Promise<any[]>;
+  listDocumentTypes(): Promise<any[]>;
+
   // Documents
-  listDocuments(opts?: { page?: number; limit?: number; search?: string; trash?: boolean }): Promise<{ items: Document[]; total: number }>;
+  listDocuments(opts?: { page?: number; limit?: number; search?: string; trash?: boolean; kindId?: string; categoryId?: string; typeId?: string }): Promise<{ items: Document[]; total: number }>;
   getDocument(id: string): Promise<Document | undefined>;
   createDocument(data: InsertDocument): Promise<Document>;
   updateDocument(id: string, data: Partial<InsertDocument>): Promise<Document>;
   deleteDocument(id: string): Promise<void>;
   restoreDocument(id: string): Promise<void>;
+  toggleNewsStatus(id: string): Promise<News>;
 
   // Research Permits
   listPermits(opts?: { page?: number; limit?: number; status?: string; search?: string }): Promise<{ items: ResearchPermit[]; total: number }>;
@@ -318,14 +324,28 @@ export class DatabaseStorage implements IStorage {
     await db.update(schema.menuItems).set({ deletedAt: new Date() }).where(eq(schema.menuItems.id, id));
   }
 
+  // ── Document Masters ────────────────────────────────────────────────────────
+  async listDocumentKinds() {
+    return db.select().from(schema.documentKinds).where(isNull(schema.documentKinds.deletedAt)).orderBy(schema.documentKinds.name);
+  }
+  async listDocumentCategories() {
+    return db.select().from(schema.documentCategories).where(isNull(schema.documentCategories.deletedAt)).orderBy(schema.documentCategories.name);
+  }
+  async listDocumentTypes() {
+    return db.select().from(schema.documentTypes).where(isNull(schema.documentTypes.deletedAt)).orderBy(schema.documentTypes.name);
+  }
+
   // ── Documents ───────────────────────────────────────────────────────────────
-  async listDocuments(opts: { page?: number; limit?: number; search?: string; trash?: boolean } = {}) {
-    const { page = 1, limit = 10, search, trash = false } = opts;
+  async listDocuments(opts: { page?: number; limit?: number; search?: string; trash?: boolean; kindId?: string; categoryId?: string; typeId?: string } = {}) {
+    const { page = 1, limit = 10, search, trash = false, kindId, categoryId, typeId } = opts;
     const offset = (page - 1) * limit;
     const conditions = trash
       ? [sql`${schema.documents.deletedAt} IS NOT NULL`]
       : [isNull(schema.documents.deletedAt)];
     if (search) conditions.push(ilike(schema.documents.title, `%${search}%`));
+    if (kindId) conditions.push(eq(schema.documents.kindId, kindId));
+    if (categoryId) conditions.push(eq(schema.documents.categoryId, categoryId));
+    if (typeId) conditions.push(eq(schema.documents.typeId, typeId));
     const where = and(...conditions);
     const [{ count }] = await db.select({ count: sql<number>`count(*)::int` }).from(schema.documents).where(where);
     const items = await db.select().from(schema.documents).where(where).orderBy(desc(schema.documents.createdAt)).limit(limit).offset(offset);
@@ -348,6 +368,14 @@ export class DatabaseStorage implements IStorage {
   }
   async restoreDocument(id: string) {
     await db.update(schema.documents).set({ deletedAt: null }).where(eq(schema.documents.id, id));
+  }
+  async toggleNewsStatus(id: string): Promise<News> {
+    const [cur] = await db.select({ status: schema.news.status }).from(schema.news).where(eq(schema.news.id, id));
+    if (!cur) throw new Error("Berita tidak ditemukan");
+    const newStatus = cur.status === "published" ? "draft" : "published";
+    const publishedAt = newStatus === "published" ? new Date() : null;
+    const [r] = await db.update(schema.news).set({ status: newStatus as any, publishedAt, updatedAt: new Date() }).where(eq(schema.news.id, id)).returning();
+    return r;
   }
 
   // ── Research Permits ────────────────────────────────────────────────────────

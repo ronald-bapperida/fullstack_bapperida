@@ -9,10 +9,10 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ArrowLeft, Save, Upload, X } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import { ArrowLeft, Save, Upload, X, Globe, FileText } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useForm, Controller } from "react-hook-form";
-import { useAuth } from "@/contexts/auth";
 import QuillEditor from "@/components/quill-editor";
 
 interface Category { id: string; name: string; slug: string; }
@@ -21,12 +21,12 @@ export default function NewsFormPage() {
   const { id } = useParams<{ id: string }>();
   const [, setLoc] = useLocation();
   const { toast } = useToast();
-  const { user } = useAuth();
   const isEdit = !!id;
 
   const [featuredImageFile, setFeaturedImageFile] = useState<File | null>(null);
   const [featuredImagePreview, setFeaturedImagePreview] = useState<string | null>(null);
   const [content, setContent] = useState("");
+  const [savedStatus, setSavedStatus] = useState<string>("draft");
 
   const { data: categories = [] } = useQuery<Category[]>({ queryKey: ["/api/news-categories"] });
   const { data: existingNews, isLoading: loadingNews } = useQuery<any>({
@@ -34,14 +34,13 @@ export default function NewsFormPage() {
     enabled: isEdit,
   });
 
-  const { register, handleSubmit, control, setValue, watch, reset } = useForm({
+  const { register, handleSubmit, control, reset } = useForm({
     defaultValues: {
       title: "",
       categoryId: "",
       excerpt: "",
       url: "",
       featuredCaption: "",
-      status: "draft",
       publishedAt: "",
       eventAt: "",
     },
@@ -55,11 +54,11 @@ export default function NewsFormPage() {
         excerpt: existingNews.excerpt || "",
         url: existingNews.url || "",
         featuredCaption: existingNews.featuredCaption || "",
-        status: existingNews.status || "draft",
         publishedAt: existingNews.publishedAt ? existingNews.publishedAt.split("T")[0] : "",
         eventAt: existingNews.eventAt ? existingNews.eventAt.split("T")[0] : "",
       });
       setContent(existingNews.content || "");
+      setSavedStatus(existingNews.status || "draft");
       if (existingNews.featuredImage) setFeaturedImagePreview(existingNews.featuredImage);
     }
   }, [existingNews, reset]);
@@ -78,9 +77,9 @@ export default function NewsFormPage() {
       if (!res.ok) throw new Error(await res.text());
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/news"] });
-      toast({ title: isEdit ? "Berita diupdate!" : "Berita berhasil dibuat!" });
+      toast({ title: isEdit ? "Berita diupdate!" : "Draft berita disimpan!" });
       setLoc("/news");
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
@@ -118,7 +117,22 @@ export default function NewsFormPage() {
         <Button size="icon" variant="ghost" onClick={() => setLoc("/news")} data-testid="button-back">
           <ArrowLeft className="w-4 h-4" />
         </Button>
-        <h1 className="text-xl font-bold">{isEdit ? "Edit Berita" : "Tambah Berita"}</h1>
+        <div className="flex items-center gap-3">
+          <h1 className="text-xl font-bold">{isEdit ? "Edit Berita" : "Tambah Berita"}</h1>
+          {isEdit && (
+            <Badge variant={savedStatus === "published" ? "default" : "secondary"}>
+              {savedStatus === "published"
+                ? <><Globe className="w-3 h-3 mr-1" />Published</>
+                : <><FileText className="w-3 h-3 mr-1" />Draft</>
+              }
+            </Badge>
+          )}
+          {!isEdit && (
+            <Badge variant="secondary">
+              <FileText className="w-3 h-3 mr-1" />Draft (disimpan sebagai draft)
+            </Badge>
+          )}
+        </div>
       </div>
 
       <form onSubmit={handleSubmitForm}>
@@ -166,20 +180,10 @@ export default function NewsFormPage() {
             <Card>
               <CardHeader><CardTitle className="text-base">Publikasi</CardTitle></CardHeader>
               <CardContent className="flex flex-col gap-4">
-                <div className="flex flex-col gap-2">
-                  <Label>Status</Label>
-                  <Controller name="status" control={control} render={({ field }) => (
-                    <Select value={field.value} onValueChange={field.onChange}>
-                      <SelectTrigger data-testid="select-news-status">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="draft">Draft</SelectItem>
-                        <SelectItem value="published">Published</SelectItem>
-                      </SelectContent>
-                    </Select>
-                  )} />
-                </div>
+                <p className="text-xs text-muted-foreground bg-muted p-3 rounded-md">
+                  Berita baru disimpan sebagai <strong>draft</strong> secara otomatis.
+                  Gunakan tombol <strong>Publish / Draft</strong> di halaman daftar berita untuk mengubah status.
+                </p>
 
                 <div className="flex flex-col gap-2">
                   <Label>Tanggal Publikasi</Label>
@@ -212,7 +216,7 @@ export default function NewsFormPage() {
                   data-testid="button-save-news"
                 >
                   <Save className="w-4 h-4" />
-                  {mutation.isPending ? "Menyimpan..." : "Simpan Berita"}
+                  {mutation.isPending ? "Menyimpan..." : (isEdit ? "Update Berita" : "Simpan Draft")}
                 </Button>
               </CardContent>
             </Card>

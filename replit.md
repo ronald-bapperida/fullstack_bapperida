@@ -56,6 +56,12 @@ Admin panel untuk BAPPERIDA (Badan Perencanaan, Penelitian dan Pengembangan Daer
 - Auto-slug generation (UUID-suffixed, collision-safe)
 - Race-condition-safe request number sequence generation
 - Dashboard statistics per domain
+- **Draft-first workflow**: News auto-saves as draft; publish toggle button inline in list view
+- **Document masters**: Mandatory kind/category/type fields with filter dropdowns; seeded with PPID data
+- **Banner image upload**: Desktop + mobile image fields with preview
+- **DOCX generation**: Letter templates generate proper Word documents via `docx` npm package
+- **Quill image upload fixed**: `/api/admin/news/upload-image` endpoint returns proper JSON
+- **News toggle-status**: `PATCH /api/admin/news/:id/toggle-status` endpoint toggles draft/published
 
 ## Architecture
 ```

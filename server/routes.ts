@@ -6,6 +6,11 @@ import fs from "fs";
 import { storage as db } from "./storage";
 import { authMiddleware, requireRole, hashPassword, verifyPassword, signToken } from "./auth";
 import { randomUUID } from "crypto";
+import {
+  Document as DocxDocument, Packer, Paragraph, TextRun, HeadingLevel,
+  AlignmentType, BorderStyle, Table as DocxTable, TableRow as DocxTableRow,
+  TableCell as DocxTableCell, WidthType,
+} from "docx";
 
 // ─── File Upload Setup ────────────────────────────────────────────────────────
 const uploadDir = path.join(process.cwd(), "uploads");
@@ -329,6 +334,20 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     catch (e: any) { return res.status(500).json({ error: e.message }); }
   });
 
+  app.patch("/api/admin/news/:id/toggle-status", authMiddleware, requireRole("super_admin", "admin_bpp"), async (req, res) => {
+    try { return res.json(await db.toggleNewsStatus(req.params.id)); }
+    catch (e: any) { return res.status(500).json({ error: e.message }); }
+  });
+
+  // Quill image upload (standalone, before :id routes to avoid conflict)
+  const newsImageUpload = getMulter("news", 5);
+  app.post("/api/admin/news/upload-image", authMiddleware, newsImageUpload.single("image"), async (req: any, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ error: "No file" });
+      return res.json({ url: fileUrl("news", req.file.filename) });
+    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+  });
+
   // News Media
   app.get("/api/admin/news/:id/media", authMiddleware, async (req, res) => {
     try { return res.json(await db.listNewsMedia(req.params.id)); }
@@ -470,18 +489,32 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     catch (e: any) { return res.status(500).json({ error: e.message }); }
   });
 
+  // ─── Document Masters (public) ─────────────────────────────────────────────
+  app.get("/api/document-kinds", async (_req, res) => {
+    try { return res.json(await db.listDocumentKinds()); }
+    catch (e: any) { return res.status(500).json({ error: e.message }); }
+  });
+  app.get("/api/document-categories", async (_req, res) => {
+    try { return res.json(await db.listDocumentCategories()); }
+    catch (e: any) { return res.status(500).json({ error: e.message }); }
+  });
+  app.get("/api/document-types", async (_req, res) => {
+    try { return res.json(await db.listDocumentTypes()); }
+    catch (e: any) { return res.status(500).json({ error: e.message }); }
+  });
+
   // ─── Documents ───────────────────────────────────────────────────────────────
   app.get("/api/documents", async (req, res) => {
     try {
-      const { page = "1", limit = "10", search } = req.query as any;
-      return res.json(await db.listDocuments({ page: +page, limit: +limit, search }));
+      const { page = "1", limit = "10", search, kindId, categoryId, typeId } = req.query as any;
+      return res.json(await db.listDocuments({ page: +page, limit: +limit, search, kindId, categoryId, typeId }));
     } catch (e: any) { return res.status(500).json({ error: e.message }); }
   });
 
   app.get("/api/admin/documents", authMiddleware, async (req, res) => {
     try {
-      const { page = "1", limit = "10", search, trash } = req.query as any;
-      return res.json(await db.listDocuments({ page: +page, limit: +limit, search, trash: trash === "true" }));
+      const { page = "1", limit = "10", search, trash, kindId, categoryId, typeId } = req.query as any;
+      return res.json(await db.listDocuments({ page: +page, limit: +limit, search, trash: trash === "true", kindId, categoryId, typeId }));
     } catch (e: any) { return res.status(500).json({ error: e.message }); }
   });
 
@@ -607,6 +640,63 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const letter = await db.createGeneratedLetter({ permitId: permit.id, templateId: template.id, fileUrl: fileUrl2 });
       await db.updatePermitStatus(permit.id, "generated_letter", "Surat izin berhasil digenerate", req.user.id);
       return res.json({ letter, html });
+    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+  });
+
+  // Generate letter as DOCX
+  app.post("/api/admin/permits/:id/generate-letter-docx", authMiddleware, requireRole("super_admin", "admin_rida"), async (req: any, res) => {
+    try {
+      const permit = await db.getPermit(req.params.id);
+      if (!permit) return res.status(404).json({ error: "Not found" });
+      const templates = await db.listTemplates();
+      const template = templates[0];
+      if (!template) return res.status(400).json({ error: "No template found" });
+      const dateStr = new Date().toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" });
+      const fillText = (s: string) => (s || "").replace(/{{request_number}}/g, permit.requestNumber).replace(/{{full_name}}/g, permit.fullName).replace(/{{nim_nik}}/g, permit.nimNik).replace(/{{institution}}/g, permit.institution).replace(/{{research_title}}/g, permit.researchTitle).replace(/{{research_location}}/g, permit.researchLocation).replace(/{{research_duration}}/g, permit.researchDuration).replace(/{{date}}/g, dateStr).replace(/{{signer_name}}/g, "Kepala BAPPERIDA Prov. Kalteng");
+      const doc = new DocxDocument({
+        sections: [{
+          properties: {},
+          children: [
+            new Paragraph({ text: "PEMERINTAH PROVINSI KALIMANTAN TENGAH", heading: HeadingLevel.HEADING_1, alignment: AlignmentType.CENTER }),
+            new Paragraph({ text: "BADAN PERENCANAAN, PENELITIAN DAN PENGEMBANGAN DAERAH (BAPPERIDA)", alignment: AlignmentType.CENTER }),
+            new Paragraph({ text: "", border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: "000000" } } }),
+            new Paragraph({ text: "" }),
+            new Paragraph({ text: "SURAT IZIN PENELITIAN", heading: HeadingLevel.HEADING_2, alignment: AlignmentType.CENTER }),
+            new Paragraph({ text: `Nomor: ${fillText("{{request_number}}")}`, alignment: AlignmentType.CENTER }),
+            new Paragraph({ text: "" }),
+            new Paragraph({ children: [new TextRun("Yang bertanda tangan di bawah ini, Kepala Badan Perencanaan, Penelitian dan Pengembangan Daerah Provinsi Kalimantan Tengah, dengan ini memberikan izin penelitian kepada:")] }),
+            new Paragraph({ text: "" }),
+            new DocxTable({ rows: [
+              new DocxTableRow({ children: [new DocxTableCell({ children: [new Paragraph("Nama")], width: { size: 3000, type: WidthType.DXA } }), new DocxTableCell({ children: [new Paragraph(`: ${permit.fullName}`)] })] }),
+              new DocxTableRow({ children: [new DocxTableCell({ children: [new Paragraph("NIM/NIK")], width: { size: 3000, type: WidthType.DXA } }), new DocxTableCell({ children: [new Paragraph(`: ${permit.nimNik}`)] })] }),
+              new DocxTableRow({ children: [new DocxTableCell({ children: [new Paragraph("Asal Lembaga")], width: { size: 3000, type: WidthType.DXA } }), new DocxTableCell({ children: [new Paragraph(`: ${permit.institution}`)] })] }),
+              new DocxTableRow({ children: [new DocxTableCell({ children: [new Paragraph("Judul Penelitian")], width: { size: 3000, type: WidthType.DXA } }), new DocxTableCell({ children: [new Paragraph(`: ${permit.researchTitle}`)] })] }),
+              new DocxTableRow({ children: [new DocxTableCell({ children: [new Paragraph("Lokasi Penelitian")], width: { size: 3000, type: WidthType.DXA } }), new DocxTableCell({ children: [new Paragraph(`: ${permit.researchLocation}`)] })] }),
+              new DocxTableRow({ children: [new DocxTableCell({ children: [new Paragraph("Durasi Penelitian")], width: { size: 3000, type: WidthType.DXA } }), new DocxTableCell({ children: [new Paragraph(`: ${permit.researchDuration}`)] })] }),
+            ], width: { size: 9000, type: WidthType.DXA } }),
+            new Paragraph({ text: "" }),
+            new Paragraph({ children: [new TextRun("Demikian surat izin penelitian ini diberikan untuk dapat digunakan sebagaimana mestinya.")] }),
+            new Paragraph({ text: "" }),
+            new Paragraph({ text: `Palangka Raya, ${dateStr}`, alignment: AlignmentType.RIGHT }),
+            new Paragraph({ text: "Kepala BAPPERIDA Provinsi Kalimantan Tengah,", alignment: AlignmentType.RIGHT }),
+            new Paragraph({ text: "" }),
+            new Paragraph({ text: "" }),
+            new Paragraph({ text: "" }),
+            new Paragraph({ children: [new TextRun({ text: "Kepala BAPPERIDA Prov. Kalteng", bold: true })], alignment: AlignmentType.RIGHT }),
+          ],
+        }],
+      });
+      const buffer = await Packer.toBuffer(doc);
+      const letterDir = path.join(uploadDir, "letters");
+      if (!fs.existsSync(letterDir)) fs.mkdirSync(letterDir, { recursive: true });
+      const fileName = `${permit.requestNumber.replace(/\//g, "-")}.docx`;
+      fs.writeFileSync(path.join(letterDir, fileName), buffer);
+      const fileUrl2 = `/uploads/letters/${fileName}`;
+      await db.createGeneratedLetter({ permitId: permit.id, templateId: template.id, fileUrl: fileUrl2 });
+      await db.updatePermitStatus(permit.id, "generated_letter", "Surat izin DOCX berhasil digenerate", req.user.id);
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+      res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+      return res.send(buffer);
     } catch (e: any) { return res.status(500).json({ error: e.message }); }
   });
 
