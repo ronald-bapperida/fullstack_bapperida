@@ -7,13 +7,13 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Badge } from "@/components/ui/badge";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Skeleton } from "@/components/ui/skeleton";
-import { ArrowLeft, Save, Upload, X, Eye } from "lucide-react";
+import { ArrowLeft, Save, Upload, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useForm, Controller } from "react-hook-form";
 import { useAuth } from "@/contexts/auth";
+import QuillEditor from "@/components/quill-editor";
 
 interface Category { id: string; name: string; slug: string; }
 
@@ -26,6 +26,7 @@ export default function NewsFormPage() {
 
   const [featuredImageFile, setFeaturedImageFile] = useState<File | null>(null);
   const [featuredImagePreview, setFeaturedImagePreview] = useState<string | null>(null);
+  const [content, setContent] = useState("");
 
   const { data: categories = [] } = useQuery<Category[]>({ queryKey: ["/api/news-categories"] });
   const { data: existingNews, isLoading: loadingNews } = useQuery<any>({
@@ -37,7 +38,6 @@ export default function NewsFormPage() {
     defaultValues: {
       title: "",
       categoryId: "",
-      content: "",
       excerpt: "",
       url: "",
       featuredCaption: "",
@@ -52,7 +52,6 @@ export default function NewsFormPage() {
       reset({
         title: existingNews.title || "",
         categoryId: existingNews.categoryId || "",
-        content: existingNews.content || "",
         excerpt: existingNews.excerpt || "",
         url: existingNews.url || "",
         featuredCaption: existingNews.featuredCaption || "",
@@ -60,14 +59,18 @@ export default function NewsFormPage() {
         publishedAt: existingNews.publishedAt ? existingNews.publishedAt.split("T")[0] : "",
         eventAt: existingNews.eventAt ? existingNews.eventAt.split("T")[0] : "",
       });
+      setContent(existingNews.content || "");
       if (existingNews.featuredImage) setFeaturedImagePreview(existingNews.featuredImage);
     }
   }, [existingNews, reset]);
 
   const mutation = useMutation({
     mutationFn: async (data: any) => {
+      const payload = { ...data, content };
       const fd = new FormData();
-      Object.entries(data).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== "") fd.append(k, String(v)); });
+      Object.entries(payload).forEach(([k, v]) => {
+        if (v !== undefined && v !== null && v !== "") fd.append(k, String(v));
+      });
       if (featuredImageFile) fd.append("featuredImage", featuredImageFile);
       const res = isEdit
         ? await apiRequest("PATCH", `/api/admin/news/${id}`, fd)
@@ -75,7 +78,7 @@ export default function NewsFormPage() {
       if (!res.ok) throw new Error(await res.text());
       return res.json();
     },
-    onSuccess: (data) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/news"] });
       toast({ title: isEdit ? "Berita diupdate!" : "Berita berhasil dibuat!" });
       setLoc("/news");
@@ -91,6 +94,14 @@ export default function NewsFormPage() {
     }
   };
 
+  const handleSubmitForm = handleSubmit((data) => {
+    if (!content || content === "<p><br></p>" || content.trim() === "") {
+      toast({ title: "Error", description: "Konten berita tidak boleh kosong", variant: "destructive" });
+      return;
+    }
+    mutation.mutate(data);
+  });
+
   if (isEdit && loadingNews) return (
     <div className="flex flex-col gap-6 p-6">
       <Skeleton className="h-10 w-48" />
@@ -104,13 +115,13 @@ export default function NewsFormPage() {
   return (
     <div className="flex flex-col gap-6 p-6">
       <div className="flex items-center gap-3">
-        <Button size="icon" variant="ghost" onClick={() => setLoc("/news")}>
+        <Button size="icon" variant="ghost" onClick={() => setLoc("/news")} data-testid="button-back">
           <ArrowLeft className="w-4 h-4" />
         </Button>
         <h1 className="text-xl font-bold">{isEdit ? "Edit Berita" : "Tambah Berita"}</h1>
       </div>
 
-      <form onSubmit={handleSubmit(d => mutation.mutate(d))}>
+      <form onSubmit={handleSubmitForm}>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
           <div className="lg:col-span-2 flex flex-col gap-6">
             <Card>
@@ -118,19 +129,24 @@ export default function NewsFormPage() {
               <CardContent className="flex flex-col gap-4">
                 <div className="flex flex-col gap-2">
                   <Label>Judul Berita *</Label>
-                  <Input {...register("title", { required: true })} placeholder="Judul berita yang menarik..." data-testid="input-news-title" />
+                  <Input
+                    {...register("title", { required: true })}
+                    placeholder="Judul berita yang menarik..."
+                    data-testid="input-news-title"
+                  />
                 </div>
 
                 <div className="flex flex-col gap-2">
-                  <Label>Konten (HTML) *</Label>
-                  <Textarea
-                    {...register("content", { required: true })}
-                    rows={12}
-                    placeholder="<p>Isi konten berita...</p>"
-                    className="font-mono text-sm"
-                    data-testid="input-news-content"
+                  <Label>Konten Berita *</Label>
+                  <QuillEditor
+                    value={content}
+                    onChange={setContent}
+                    placeholder="Tulis konten berita di sini..."
+                    minHeight={360}
                   />
-                  <p className="text-xs text-muted-foreground">Masukkan konten HTML. Untuk live editor, gunakan TinyMCE atau rich text editor.</p>
+                  <p className="text-xs text-muted-foreground">
+                    Gunakan toolbar untuk format teks, heading, list, dan sisipkan gambar.
+                  </p>
                 </div>
 
                 <div className="flex flex-col gap-2">
@@ -189,7 +205,12 @@ export default function NewsFormPage() {
                   )} />
                 </div>
 
-                <Button type="submit" className="w-full gap-2" disabled={mutation.isPending} data-testid="button-save-news">
+                <Button
+                  type="submit"
+                  className="w-full gap-2"
+                  disabled={mutation.isPending}
+                  data-testid="button-save-news"
+                >
                   <Save className="w-4 h-4" />
                   {mutation.isPending ? "Menyimpan..." : "Simpan Berita"}
                 </Button>
@@ -213,12 +234,24 @@ export default function NewsFormPage() {
                     </Button>
                   </div>
                 )}
-                <Label htmlFor="featured-image-input" className="flex flex-col items-center gap-2 border-2 border-dashed rounded-md p-4 cursor-pointer">
+                <Label
+                  htmlFor="featured-image-input"
+                  className="flex flex-col items-center gap-2 border-2 border-dashed rounded-md p-4 cursor-pointer hover:bg-muted/50 transition-colors"
+                >
                   <Upload className="w-5 h-5 text-muted-foreground" />
-                  <span className="text-sm text-muted-foreground">{featuredImageFile ? featuredImageFile.name : "Klik untuk upload gambar"}</span>
+                  <span className="text-sm text-muted-foreground">
+                    {featuredImageFile ? featuredImageFile.name : "Klik untuk upload gambar"}
+                  </span>
                   <span className="text-xs text-muted-foreground">JPG, PNG, WEBP max 5MB</span>
                 </Label>
-                <input id="featured-image-input" type="file" className="hidden" accept=".jpg,.jpeg,.png,.webp" onChange={handleImageChange} />
+                <input
+                  id="featured-image-input"
+                  type="file"
+                  className="hidden"
+                  accept=".jpg,.jpeg,.png,.webp"
+                  onChange={handleImageChange}
+                  data-testid="input-featured-image"
+                />
 
                 <div className="flex flex-col gap-2">
                   <Label>Caption Gambar</Label>

@@ -3,8 +3,8 @@ package domain
 import "time"
 
 // ─── Enums ────────────────────────────────────────────────────────────────────
-type Role string
 
+type Role string
 const (
 	RoleSuperAdmin Role = "super_admin"
 	RoleAdminBPP   Role = "admin_bpp"
@@ -12,14 +12,12 @@ const (
 )
 
 type NewsStatus string
-
 const (
 	NewsStatusDraft     NewsStatus = "draft"
 	NewsStatusPublished NewsStatus = "published"
 )
 
 type PermitStatus string
-
 const (
 	PermitStatusSubmitted        PermitStatus = "submitted"
 	PermitStatusInReview         PermitStatus = "in_review"
@@ -31,7 +29,6 @@ const (
 )
 
 type BannerLinkType string
-
 const (
 	BannerLinkExternal BannerLinkType = "external"
 	BannerLinkPage     BannerLinkType = "page"
@@ -39,7 +36,6 @@ const (
 )
 
 type MenuLocation string
-
 const (
 	MenuLocationHeader  MenuLocation = "header"
 	MenuLocationFooter  MenuLocation = "footer"
@@ -47,7 +43,6 @@ const (
 )
 
 type MenuItemType string
-
 const (
 	MenuItemTypeRoute MenuItemType = "route"
 	MenuItemTypeURL   MenuItemType = "url"
@@ -56,7 +51,6 @@ const (
 )
 
 type AccessLevel string
-
 const (
 	AccessLevelTerbuka  AccessLevel = "terbuka"
 	AccessLevelTerbatas AccessLevel = "terbatas"
@@ -64,6 +58,7 @@ const (
 )
 
 // ─── User ─────────────────────────────────────────────────────────────────────
+
 type User struct {
 	ID        string    `json:"id"`
 	Username  string    `json:"username"`
@@ -76,7 +71,8 @@ type User struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
-// ─── News Category ────────────────────────────────────────────────────────────
+// ─── News ─────────────────────────────────────────────────────────────────────
+
 type NewsCategory struct {
 	ID          string     `json:"id"`
 	Name        string     `json:"name"`
@@ -86,7 +82,6 @@ type NewsCategory struct {
 	CreatedAt   time.Time  `json:"created_at"`
 }
 
-// ─── News ─────────────────────────────────────────────────────────────────────
 type News struct {
 	ID              string     `json:"id"`
 	Title           string     `json:"title"`
@@ -105,17 +100,39 @@ type News struct {
 	DeletedAt       *time.Time `json:"deleted_at,omitempty"`
 	CreatedAt       time.Time  `json:"created_at"`
 	UpdatedAt       time.Time  `json:"updated_at"`
+	// Relations
+	CategoryName *string     `json:"category_name,omitempty"`
+	Media        []NewsMedia `json:"media,omitempty"`
+}
+
+type NewsMedia struct {
+	ID          string     `json:"id"`
+	NewsID      string     `json:"news_id"`
+	FileURL     string     `json:"file_url"`
+	FileName    string     `json:"file_name"`
+	FileSize    int        `json:"file_size"`
+	MimeType    string     `json:"mime_type"`
+	Caption     *string    `json:"caption"`
+	IsMain      bool       `json:"is_main"`
+	Type        string     `json:"type"`
+	SortOrder   int        `json:"sort_order"`
+	CreatedAt   time.Time  `json:"created_at"`
 }
 
 // ─── Banner ───────────────────────────────────────────────────────────────────
+
 type Banner struct {
 	ID           string         `json:"id"`
 	Title        string         `json:"title"`
+	Slug         *string        `json:"slug"`
 	Placement    string         `json:"placement"`
 	ImageDesktop *string        `json:"image_desktop"`
 	ImageMobile  *string        `json:"image_mobile"`
+	AltText      *string        `json:"alt_text"`
 	LinkType     BannerLinkType `json:"link_type"`
 	LinkURL      *string        `json:"link_url"`
+	Target       string         `json:"target"`
+	SortOrder    int            `json:"sort_order"`
 	StartAt      *time.Time     `json:"start_at"`
 	EndAt        *time.Time     `json:"end_at"`
 	IsActive     bool           `json:"is_active"`
@@ -127,6 +144,7 @@ type Banner struct {
 }
 
 // ─── Menu ─────────────────────────────────────────────────────────────────────
+
 type Menu struct {
 	ID        string       `json:"id"`
 	Name      string       `json:"name"`
@@ -144,6 +162,8 @@ type MenuItem struct {
 	Title        string       `json:"title"`
 	Type         MenuItemType `json:"type"`
 	Value        *string      `json:"value"`
+	Icon         *string      `json:"icon"`
+	Target       string       `json:"target"`
 	RequiresAuth bool         `json:"requires_auth"`
 	SortOrder    int          `json:"sort_order"`
 	DeletedAt    *time.Time   `json:"deleted_at,omitempty"`
@@ -151,51 +171,75 @@ type MenuItem struct {
 }
 
 // ─── Document ─────────────────────────────────────────────────────────────────
+
+type DocumentMaster struct {
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
+type DocumentType struct {
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
+	Extension string    `json:"extension"`
+	CreatedAt time.Time `json:"created_at"`
+}
+
 type Document struct {
 	ID          string      `json:"id"`
 	Title       string      `json:"title"`
+	DocNo       *string     `json:"doc_no"`
 	KindID      *string     `json:"kind_id"`
 	CategoryID  *string     `json:"category_id"`
 	TypeID      *string     `json:"type_id"`
+	Publisher   *string     `json:"publisher"`
+	Content     *string     `json:"content"`
 	FileURL     *string     `json:"file_url"`
+	FilePath    *string     `json:"file_path,omitempty"`
 	AccessLevel AccessLevel `json:"access_level"`
 	PublishedAt *time.Time  `json:"published_at"`
 	Status      NewsStatus  `json:"status"`
 	DeletedAt   *time.Time  `json:"deleted_at,omitempty"`
 	CreatedAt   time.Time   `json:"created_at"`
 	UpdatedAt   time.Time   `json:"updated_at"`
+	// Joined fields
+	KindName      string `json:"kind_name,omitempty"`
+	CategoryName  string `json:"category_name,omitempty"`
+	TypeName      string `json:"type_name,omitempty"`
+	TypeExtension string `json:"type_extension,omitempty"`
 }
 
 // ─── Research Permit ──────────────────────────────────────────────────────────
+
 type ResearchPermit struct {
-	ID                  string       `json:"id"`
-	RequestNumber       string       `json:"request_number"`
-	Email               string       `json:"email"`
-	FullName            string       `json:"full_name"`
-	NimNik              string       `json:"nim_nik"`
-	BirthPlace          string       `json:"birth_place"`
-	WorkUnit            string       `json:"work_unit"`
-	Institution         string       `json:"institution"`
-	PhoneWA             string       `json:"phone_wa"`
-	Citizenship         string       `json:"citizenship"`
-	ResearchLocation    string       `json:"research_location"`
-	ResearchDuration    string       `json:"research_duration"`
-	ResearchTitle       string       `json:"research_title"`
-	SignerPosition      string       `json:"signer_position"`
-	IntroLetterNumber   string       `json:"intro_letter_number"`
-	IntroLetterDate     time.Time    `json:"intro_letter_date"`
-	FileIdentity        *string      `json:"file_identity"`
-	FileIntroLetter     *string      `json:"file_intro_letter"`
-	FileProposal        *string      `json:"file_proposal"`
-	FileSocialMedia     *string      `json:"file_social_media"`
-	FileSurvey          *string      `json:"file_survey"`
-	AgreementFinalReport bool        `json:"agreement_final_report"`
-	Status              PermitStatus `json:"status"`
-	ReviewNote          *string      `json:"review_note"`
-	ProcessedBy         *string      `json:"processed_by"`
-	DeletedAt           *time.Time   `json:"deleted_at,omitempty"`
-	CreatedAt           time.Time    `json:"created_at"`
-	UpdatedAt           time.Time    `json:"updated_at"`
+	ID                   string       `json:"id"`
+	RequestNumber        string       `json:"request_number"`
+	Email                string       `json:"email"`
+	FullName             string       `json:"full_name"`
+	NimNik               string       `json:"nim_nik"`
+	BirthPlace           string       `json:"birth_place"`
+	WorkUnit             string       `json:"work_unit"`
+	Institution          string       `json:"institution"`
+	PhoneWA              string       `json:"phone_wa"`
+	Citizenship          string       `json:"citizenship"`
+	ResearchLocation     string       `json:"research_location"`
+	ResearchDuration     string       `json:"research_duration"`
+	ResearchTitle        string       `json:"research_title"`
+	SignerPosition        string       `json:"signer_position"`
+	IntroLetterNumber    string       `json:"intro_letter_number"`
+	IntroLetterDate      time.Time    `json:"intro_letter_date"`
+	FileIdentity         *string      `json:"file_identity"`
+	FileIntroLetter      *string      `json:"file_intro_letter"`
+	FileProposal         *string      `json:"file_proposal"`
+	FileSocialMedia      *string      `json:"file_social_media"`
+	FileSurvey           *string      `json:"file_survey"`
+	AgreementFinalReport bool         `json:"agreement_final_report"`
+	Status               PermitStatus `json:"status"`
+	ReviewNote           *string      `json:"review_note"`
+	ProcessedBy          *string      `json:"processed_by"`
+	DeletedAt            *time.Time   `json:"deleted_at,omitempty"`
+	CreatedAt            time.Time    `json:"created_at"`
+	UpdatedAt            time.Time    `json:"updated_at"`
 }
 
 type PermitStatusHistory struct {
@@ -208,27 +252,23 @@ type PermitStatusHistory struct {
 	CreatedAt  time.Time     `json:"created_at"`
 }
 
-// ─── Letter Template & Generated Letter ──────────────────────────────────────
+// ─── Letter Template ──────────────────────────────────────────────────────────
+
 type LetterTemplate struct {
-	ID        string    `json:"id"`
-	Name      string    `json:"name"`
-	Content   string    `json:"content"`
-	IsActive  bool      `json:"is_active"`
-	CreatedAt time.Time `json:"created_at"`
-	UpdatedAt time.Time `json:"updated_at"`
+	ID           string     `json:"id"`
+	Name         string     `json:"name"`
+	Type         string     `json:"type"`
+	Content      string     `json:"content"`
+	Placeholders *string    `json:"placeholders"`
+	IsActive     bool       `json:"is_active"`
+	CreatedBy    *string    `json:"created_by"`
+	UpdatedBy    *string    `json:"updated_by"`
+	CreatedAt    time.Time  `json:"created_at"`
+	UpdatedAt    time.Time  `json:"updated_at"`
 }
 
-type GeneratedLetter struct {
-	ID         string     `json:"id"`
-	PermitID   string     `json:"permit_id"`
-	TemplateID *string    `json:"template_id"`
-	FileURL    *string    `json:"file_url"`
-	SentAt     *time.Time `json:"sent_at"`
-	DeletedAt  *time.Time `json:"deleted_at,omitempty"`
-	CreatedAt  time.Time  `json:"created_at"`
-}
+// ─── Survey & Reports ─────────────────────────────────────────────────────────
 
-// ─── Survey ───────────────────────────────────────────────────────────────────
 type Survey struct {
 	ID             string    `json:"id"`
 	RespondentName string    `json:"respondent_name"`
@@ -249,7 +289,6 @@ type Survey struct {
 	CreatedAt      time.Time `json:"created_at"`
 }
 
-// ─── Final Report & Suggestion ───────────────────────────────────────────────
 type FinalReport struct {
 	ID              string     `json:"id"`
 	Name            string     `json:"name"`
@@ -262,14 +301,15 @@ type FinalReport struct {
 }
 
 type Suggestion struct {
-	ID        string    `json:"id"`
-	Name      *string   `json:"name"`
-	Email     *string   `json:"email"`
-	Message   string    `json:"message"`
-	CreatedAt time.Time `json:"created_at"`
+	ID        string     `json:"id"`
+	Name      *string    `json:"name"`
+	Email     *string    `json:"email"`
+	Message   string     `json:"message"`
+	CreatedAt time.Time  `json:"created_at"`
 }
 
 // ─── Pagination ───────────────────────────────────────────────────────────────
+
 type PaginatedResult[T any] struct {
 	Items []T `json:"items"`
 	Total int `json:"total"`

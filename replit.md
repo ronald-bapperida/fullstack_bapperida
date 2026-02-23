@@ -8,10 +8,15 @@ Lihat `backend/README.md` untuk dokumentasi lengkap dan contoh curl.
 Admin panel untuk BAPPERIDA (Badan Perencanaan, Penelitian dan Pengembangan Daerah) Kalimantan Tengah. Sistem dual-domain: BAPPEDA dan RIDA.
 
 ## Tech Stack
-- **Frontend**: React + TypeScript, Wouter (routing), TanStack Query, Shadcn UI, Tailwind CSS
-- **Backend**: Express.js + TypeScript, JWT Auth
-- **Database**: PostgreSQL + Drizzle ORM
+- **Frontend**: React + TypeScript, Wouter (routing), TanStack Query, Shadcn UI, Tailwind CSS, **react-quill-new** (rich text editor)
+- **Node.js Backend**: Express.js + TypeScript, JWT Auth (port 5000 - serves React admin panel)
+- **Go Backend**: Gin + Clean Architecture, JWT Auth (port 8080 - serves Flutter mobile app)
+- **Database**: PostgreSQL + Drizzle ORM (Node.js) + raw SQL (Go)
 - **File Storage**: Local filesystem (`/uploads`)
+
+## Dual Backend Architecture
+- **Go API (port 8080)**: Primary REST API for Flutter mobile app. Full public endpoints (news, banners, menus, documents, surveys, suggestions) + protected admin endpoints with RBAC
+- **Node.js API (port 5000)**: Serves React admin panel via Express + Drizzle ORM
 
 ## Default Credentials
 | Username | Password | Role |
@@ -98,5 +103,27 @@ shared/
 - `GET /api/admin/suggestions` - Suggestions
 - `GET|POST|PATCH /api/admin/letter-templates*` - Letter templates
 - `GET|POST|PATCH /api/admin/users*` - User management
-- Public: `GET /api/news`, `GET /api/banners/active`, `GET /api/menus`, `GET /api/documents`
-- Public: `POST /api/permits`, `GET /api/permits/:id`, `POST /api/surveys`, `POST /api/final-reports`, `POST /api/suggestions`
+- Public: `GET /api/news`, `GET /api/news/:slug`, `GET /api/news-categories`
+- Public: `GET /api/banners/active`, `POST /api/banners/:id/view`, `POST /api/banners/:id/click`
+- Public: `GET /api/menus/:location`, `GET /api/documents`, `GET /api/documents/:id`
+- Public: `GET /api/document-kinds`, `GET /api/document-categories`, `GET /api/document-types`
+- Public: `POST /api/permits`, `POST /api/surveys`, `POST /api/final-reports`, `POST /api/suggestions`
+
+## Go API Endpoints (port 8080 - for Flutter)
+- Health: `GET /health`
+- Auth: `POST /api/auth/login`, `GET /api/auth/me`
+- Public news: `GET /api/news`, `GET /api/news/:slug`
+- Public banners: `GET /api/banners/active?placement=home`
+- Public menus: `GET /api/menus/:location`
+- Public documents: `GET /api/documents`, `GET /api/documents/:id`
+- Public masters: `GET /api/document-kinds`, `GET /api/document-categories`, `GET /api/document-types`
+- Admin news: `GET|POST|PATCH|DELETE /api/admin/news*`, `GET|POST|PATCH|DELETE /api/admin/news-categories*`
+- Admin banners: `GET|POST|PATCH|DELETE /api/admin/banners*`
+- Admin menus: `GET|POST|PATCH|DELETE /api/admin/menus*`, `PATCH|DELETE /api/admin/menu-items/:id`
+- Admin documents: `GET|POST|PATCH|DELETE /api/admin/documents*`
+- Admin permits: `GET /api/admin/permits*`, `PATCH /api/admin/permits/:id/status`
+- Admin surveys: `GET /api/admin/surveys`
+- Admin reports: `GET /api/admin/final-reports`
+- Admin suggestions: `GET /api/admin/suggestions`
+- Admin letter templates: `GET|POST|PATCH /api/admin/letter-templates*`
+- Admin users: `GET|POST|PATCH /api/admin/users*` (super_admin only)

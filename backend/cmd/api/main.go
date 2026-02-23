@@ -48,6 +48,14 @@ func main() {
 	userRepo := postgres.NewUserRepository(db)
 	newsRepo := postgres.NewNewsRepository(db)
 	permitRepo := postgres.NewPermitRepository(db)
+	bannerRepo := postgres.NewBannerRepository(db)
+	menuRepo := postgres.NewMenuRepository(db)
+	documentRepo := postgres.NewDocumentRepository(db)
+	newsCatRepo := postgres.NewNewsCategoryRepository(db)
+	surveyRepo := postgres.NewSurveyRepository(db)
+	finalReportRepo := postgres.NewFinalReportRepository(db)
+	suggestionRepo := postgres.NewSuggestionRepository(db)
+	letterTemplateRepo := postgres.NewLetterTemplateRepository(db)
 
 	// 3. Wire usecases (business logic layer)
 	authUC := usecase.NewAuthUsecase(userRepo)
@@ -58,9 +66,32 @@ func main() {
 	authHandler := handler.NewAuthHandler(authUC, userRepo)
 	newsHandler := handler.NewNewsHandler(newsUC)
 	permitHandler := handler.NewPermitHandler(permitUC)
+	bannerHandler := handler.NewBannerHandler(bannerRepo)
+	menuHandler := handler.NewMenuHandler(menuRepo)
+	documentHandler := handler.NewDocumentHandler(documentRepo)
+	newsCatHandler := handler.NewNewsCategoryHandler(newsCatRepo)
+	surveyHandler := handler.NewSurveyHandler(surveyRepo)
+	finalReportHandler := handler.NewFinalReportHandler(finalReportRepo)
+	suggestionHandler := handler.NewSuggestionHandler(suggestionRepo)
+	letterTemplateHandler := handler.NewLetterTemplateHandler(letterTemplateRepo)
+	userHandler := handler.NewUserHandler(userRepo)
 
 	// 5. Build router
-	r := handler.NewRouter(authHandler, newsHandler, permitHandler, authUC.JWTSecret())
+	r := handler.NewRouter(
+		authHandler,
+		newsHandler,
+		permitHandler,
+		bannerHandler,
+		menuHandler,
+		documentHandler,
+		newsCatHandler,
+		surveyHandler,
+		finalReportHandler,
+		suggestionHandler,
+		letterTemplateHandler,
+		userHandler,
+		authUC.JWTSecret(),
+	)
 
 	// 6. Start server
 	port := os.Getenv("GO_API_PORT")
@@ -68,11 +99,12 @@ func main() {
 		port = "8080"
 	}
 
-	fmt.Printf("🚀 BAPPERIDA Go API listening on :%s\n", port)
-	fmt.Println("   Docs: GET /health")
-	fmt.Println("   Auth: POST /api/auth/login")
-	fmt.Println("   News: GET  /api/admin/news  (Bearer token required)")
-	fmt.Println("   Permits: GET /api/admin/permits (Bearer token required)")
+	fmt.Printf("BAPPERIDA Go API listening on :%s\n", port)
+	fmt.Println("  Health:  GET  /health")
+	fmt.Println("  Auth:    POST /api/auth/login")
+	fmt.Println("  News:    GET  /api/news (public)")
+	fmt.Println("  Admin:   GET  /api/admin/news (Bearer required)")
+	fmt.Println("  Permits: GET  /api/admin/permits (Bearer required)")
 
 	if err := r.Run(":" + port); err != nil {
 		log.Fatalf("Server failed: %v", err)

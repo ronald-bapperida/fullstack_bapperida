@@ -75,7 +75,7 @@ export const insertNewsSchema = createInsertSchema(news).omit({ id: true, create
 export type InsertNews = z.infer<typeof insertNewsSchema>;
 export type News = typeof news.$inferSelect;
 
-// ─── News Media ───────────────────────────────────────────────────────────────
+// ─── News Media (images with caption) ────────────────────────────────────────
 export const newsMedia = pgTable("news_media", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   newsId: varchar("news_id").notNull().references(() => news.id),
@@ -83,6 +83,9 @@ export const newsMedia = pgTable("news_media", {
   fileName: text("file_name").notNull(),
   fileSize: integer("file_size").notNull(),
   mimeType: text("mime_type").notNull(),
+  caption: text("caption"),
+  isMain: boolean("is_main").notNull().default(false),
+  type: text("type").notNull().default("image"),
   insertAfterParagraph: integer("insert_after_paragraph").default(0),
   sortOrder: integer("sort_order").default(0),
   deletedAt: timestamp("deleted_at"),
@@ -97,11 +100,15 @@ export type NewsMedia = typeof newsMedia.$inferSelect;
 export const banners = pgTable("banners", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   title: text("title").notNull(),
+  slug: text("slug"),
   placement: text("placement").notNull().default("home"),
   imageDesktop: text("image_desktop"),
   imageMobile: text("image_mobile"),
+  altText: text("alt_text"),
   linkType: bannerLinkTypeEnum("link_type").notNull().default("external"),
   linkUrl: text("link_url"),
+  target: text("target").notNull().default("_self"),
+  sortOrder: integer("sort_order").notNull().default(0),
   startAt: timestamp("start_at"),
   endAt: timestamp("end_at"),
   isActive: boolean("is_active").notNull().default(true),
@@ -137,6 +144,8 @@ export const menuItems = pgTable("menu_items", {
   title: text("title").notNull(),
   type: menuItemTypeEnum("type").notNull().default("url"),
   value: text("value"),
+  icon: text("icon"),
+  target: text("target").notNull().default("_self"),
   requiresAuth: boolean("requires_auth").notNull().default(false),
   sortOrder: integer("sort_order").notNull().default(0),
   deletedAt: timestamp("deleted_at"),
@@ -165,6 +174,7 @@ export const documentCategories = pgTable("document_categories", {
 export const documentTypes = pgTable("document_types", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
+  extension: text("extension"),
   deletedAt: timestamp("deleted_at"),
   createdAt: timestamp("created_at").defaultNow(),
 });
@@ -173,10 +183,14 @@ export const documentTypes = pgTable("document_types", {
 export const documents = pgTable("documents", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   title: text("title").notNull(),
+  docNo: text("doc_no"),
   kindId: varchar("kind_id").references(() => documentKinds.id),
   categoryId: varchar("category_id").references(() => documentCategories.id),
   typeId: varchar("type_id").references(() => documentTypes.id),
+  publisher: text("publisher"),
+  content: text("content"),
   fileUrl: text("file_url"),
+  filePath: text("file_path"),
   accessLevel: accessLevelEnum("access_level").notNull().default("terbuka"),
   publishedAt: timestamp("published_at"),
   status: newsStatusEnum("status").notNull().default("draft"),
@@ -248,8 +262,12 @@ export const permitStatusHistories = pgTable("permit_status_histories", {
 export const letterTemplates = pgTable("letter_templates", {
   id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
   name: text("name").notNull(),
+  type: text("type").notNull().default("research_permit"),
   content: text("content").notNull(),
+  placeholders: text("placeholders"),
   isActive: boolean("is_active").notNull().default(true),
+  createdBy: varchar("created_by").references(() => users.id),
+  updatedBy: varchar("updated_by").references(() => users.id),
   createdAt: timestamp("created_at").defaultNow(),
   updatedAt: timestamp("updated_at").defaultNow(),
 });
@@ -259,7 +277,14 @@ export const generatedLetters = pgTable("generated_letters", {
   permitId: varchar("permit_id").notNull().references(() => researchPermitRequests.id),
   templateId: varchar("template_id").references(() => letterTemplates.id),
   fileUrl: text("file_url"),
+  letterNumber: text("letter_number"),
+  letterDate: timestamp("letter_date"),
+  dataSnapshot: text("data_snapshot"),
+  generatedBy: varchar("generated_by").references(() => users.id),
+  generatedAt: timestamp("generated_at"),
   sentAt: timestamp("sent_at"),
+  sentToEmail: text("sent_to_email"),
+  sendError: text("send_error"),
   deletedAt: timestamp("deleted_at"),
   createdAt: timestamp("created_at").defaultNow(),
 });
