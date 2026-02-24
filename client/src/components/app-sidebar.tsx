@@ -10,7 +10,7 @@ import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/component
 import {
   LayoutDashboard, Newspaper, Tag, Image, Menu, FileText,
   ClipboardList, BarChart2, Upload, MessageSquare, FileEdit,
-  Users, LogOut, Building2, ChevronDown, Layers, FileType2, FolderOpen,
+  Users, LogOut, ChevronDown, Layers, FileType2, FolderOpen,
 } from "lucide-react";
 import { useAuth } from "@/contexts/auth";
 import { useLang } from "@/contexts/language";
@@ -21,6 +21,8 @@ import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import logoBapperida from "@assets/logo_bapperida_1771921692764.png";
+import logoKalteng from "@assets/logo_1771921695925.png";
 
 const ROLE_LABELS: Record<string, string> = {
   super_admin: "Super Admin",
@@ -101,15 +103,22 @@ export function AppSidebar() {
   return (
     <>
       <Sidebar>
-        <SidebarHeader className="px-4 py-4">
-          <div className="flex items-center gap-3">
-            <div className="flex items-center justify-center w-9 h-9 rounded-md bg-primary text-primary-foreground shrink-0">
-              <Building2 className="w-5 h-5" />
+        <SidebarHeader className="px-3 py-3">
+          <div className="flex items-center gap-2">
+            <img
+              src={logoKalteng}
+              alt="Logo Kalimantan Tengah"
+              className="w-10 h-10 object-contain shrink-0"
+            />
+            <div className="flex flex-col min-w-0 flex-1">
+              <span className="text-xs font-bold leading-tight">BAPPERIDA</span>
+              <span className="text-[10px] text-muted-foreground leading-tight">Kalimantan Tengah</span>
             </div>
-            <div className="flex flex-col min-w-0">
-              <span className="text-sm font-bold leading-tight truncate">BAPPERIDA</span>
-              <span className="text-xs text-muted-foreground truncate">Kalimantan Tengah</span>
-            </div>
+            <img
+              src={logoBapperida}
+              alt="Logo BAPPERIDA"
+              className="w-14 h-10 object-contain shrink-0"
+            />
           </div>
         </SidebarHeader>
 

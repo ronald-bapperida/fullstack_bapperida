@@ -90,31 +90,48 @@ export default function QuillEditor({
   };
 
   useEffect(() => {
-    const quill = quillRef.current?.getEditor() as any;
-    if (!quill) return;
+    let origOnCapturePaste: any = null;
+    let clipboard: any = null;
 
-    const clipboard = quill.getModule("clipboard");
-    if (!clipboard) return;
+    const setup = () => {
+      try {
+        const quill = quillRef.current?.getEditor() as any;
+        if (!quill) return false;
+        clipboard = quill.getModule("clipboard");
+        if (!clipboard) return false;
 
-    const origOnPaste = clipboard.onPaste.bind(clipboard);
-    clipboard.onPaste = (e: ClipboardEvent) => {
-      const items = e.clipboardData?.items;
-      if (!items) { origOnPaste(e); return; }
-
-      let hasImage = false;
-      for (let i = 0; i < items.length; i++) {
-        if (items[i].type.startsWith("image/")) {
-          hasImage = true;
-          const file = items[i].getAsFile();
-          if (file) {
-            e.preventDefault();
-            setCaptionDialog({ open: true, file, previewUrl: URL.createObjectURL(file) });
-            setCaption("");
+        origOnCapturePaste = clipboard.onCapturePaste.bind(clipboard);
+        clipboard.onCapturePaste = (e: ClipboardEvent) => {
+          const items = e.clipboardData?.items;
+          if (items) {
+            for (let i = 0; i < items.length; i++) {
+              if (items[i].type.startsWith("image/")) {
+                e.preventDefault();
+                e.stopPropagation();
+                const file = items[i].getAsFile();
+                if (file) {
+                  setCaptionDialog({ open: true, file, previewUrl: URL.createObjectURL(file) });
+                  setCaption("");
+                }
+                return;
+              }
+            }
           }
-          break;
-        }
+          origOnCapturePaste(e);
+        };
+        return true;
+      } catch {
+        return false;
       }
-      if (!hasImage) origOnPaste(e);
+    };
+
+    const timer = setTimeout(() => { setup(); }, 100);
+
+    return () => {
+      clearTimeout(timer);
+      if (clipboard && origOnCapturePaste) {
+        clipboard.onCapturePaste = origOnCapturePaste;
+      }
     };
   }, []);
 

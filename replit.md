@@ -63,12 +63,12 @@ Admin panel untuk BAPPERIDA (Badan Perencanaan, Penelitian dan Pengembangan Daer
 - **Document masters**: Mandatory kind/category/type fields with filter dropdowns; seeded with PPID data; full CRUD pages
 - **Banner image upload**: Desktop + mobile image fields with preview
 - **DOCX generation**: Letter templates generate proper Word documents via `docx` npm package
-- **Quill rich text editor**: Paste image support, caption dialog after upload, full toolbar
-- **Collapsible sidebar**: Dokumen PPID section with expandable sub-items (List, Jenis, Kategori, Tipe)
+- **Quill rich text editor**: Paste image support (intercepts via onCapturePaste override), caption dialog after upload, full toolbar; 100ms setup delay prevents "non-instantiated editor" error
+- **Collapsible sidebar**: Dokumen PPID section with expandable sub-items; BAPPERIDA + Kalteng logos in sidebar header
 - **Logout confirmation**: AlertDialog modal before logout
-- **Language switcher**: Indonesian/English (ID/EN) with flags in top-right header
+- **Language switcher**: Indonesian/English (ID/EN) with flags in top-right header; t() used across news, permits, users, letter-templates pages for page titles, buttons, table headers
 - **User management tabs**: Split by role (Super Admin, Admin RIDA, Admin BAPPEDA)
-- **Letter template preview**: Preview dialog with/without sample data rendering
+- **Letter template DOCX**: Proper government letter format — letterhead table with logos (Kalteng + BAPPERIDA), double horizontal line, IZIN PENELITIAN title, Membaca/Perihal/Mengingat sections, conditions a-e, signature block (Kabid RIDA), CC list, 1-month validity
 
 ## Architecture
 ```

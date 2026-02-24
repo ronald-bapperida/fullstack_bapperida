@@ -12,6 +12,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, Edit, FileEdit, Copy, CheckCircle2, Eye } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useLang } from "@/contexts/language";
 import { useForm, Controller } from "react-hook-form";
 import { format } from "date-fns";
 import { id } from "date-fns/locale";
@@ -193,6 +194,7 @@ function PreviewDialog({ template, onClose }: { template: Template; onClose: () 
 }
 
 export default function LetterTemplatesPage() {
+  const { t } = useLang();
   const [open, setOpen] = useState(false);
   const [editTemplate, setEditTemplate] = useState<Template | undefined>();
   const [previewTemplate, setPreviewTemplate] = useState<Template | undefined>();
@@ -207,13 +209,13 @@ export default function LetterTemplatesPage() {
     <div className="flex flex-col gap-6 p-6">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2"><FileEdit className="w-6 h-6" /> Template Surat</h1>
+          <h1 className="text-2xl font-bold flex items-center gap-2"><FileEdit className="w-6 h-6" /> {t("templates")}</h1>
           <p className="text-muted-foreground text-sm mt-1">
-            Template teks biasa dengan placeholder — generate ke DOCX Word document
+            {t("templateSubtitle")}
           </p>
         </div>
         <Button size="sm" className="gap-2" onClick={() => { setEditTemplate(undefined); setOpen(true); }} data-testid="button-add-template">
-          <Plus className="w-4 h-4" /> Tambah Template
+          <Plus className="w-4 h-4" /> {t("addTemplate")}
         </Button>
       </div>
 

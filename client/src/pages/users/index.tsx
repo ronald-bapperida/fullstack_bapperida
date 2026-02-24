@@ -14,6 +14,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Plus, Edit, Users, ShieldCheck, UserCog, UserCircle2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useLang } from "@/contexts/language";
 import { useForm, Controller } from "react-hook-form";
 import { format } from "date-fns";
 import { id } from "date-fns/locale";
@@ -164,6 +165,7 @@ function UserTable({ users, onEdit }: { users: UserData[]; onEdit: (u: UserData)
 }
 
 export default function UsersPage() {
+  const { t } = useLang();
   const [open, setOpen] = useState(false);
   const [editUser, setEditUser] = useState<UserData | undefined>();
   const [defaultRole, setDefaultRole] = useState<string>("admin_bpp");
@@ -184,11 +186,11 @@ export default function UsersPage() {
     <div className="flex flex-col gap-6 p-6">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2"><Users className="w-6 h-6" /> Manajemen User</h1>
-          <p className="text-muted-foreground text-sm mt-1">{users.length} pengguna terdaftar</p>
+          <h1 className="text-2xl font-bold flex items-center gap-2"><Users className="w-6 h-6" /> {t("userTitle")}</h1>
+          <p className="text-muted-foreground text-sm mt-1">{users.length} {t("totalData")}</p>
         </div>
         <Button size="sm" className="gap-2" onClick={() => openCreate("admin_bpp")} data-testid="button-add-user">
-          <Plus className="w-4 h-4" /> Tambah User
+          <Plus className="w-4 h-4" /> {t("addUser")}
         </Button>
       </div>
 

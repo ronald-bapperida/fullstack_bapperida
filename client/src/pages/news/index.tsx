@@ -12,6 +12,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Plus, Search, Trash2, Edit, Eye, RefreshCw, Newspaper, Globe, FileText } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useLang } from "@/contexts/language";
 import { format } from "date-fns";
 import { id } from "date-fns/locale";
 
@@ -23,6 +24,7 @@ interface News {
 
 export default function NewsPage() {
   const { toast } = useToast();
+  const { t } = useLang();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("all");
@@ -70,9 +72,9 @@ export default function NewsPage() {
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
-            <Newspaper className="w-6 h-6" /> Berita
+            <Newspaper className="w-6 h-6" /> {t("news")}
           </h1>
-          <p className="text-muted-foreground text-sm mt-1">{total} total berita</p>
+          <p className="text-muted-foreground text-sm mt-1">{total} {t("totalData")}</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap">
           <Button
@@ -82,13 +84,13 @@ export default function NewsPage() {
             data-testid="button-toggle-trash"
           >
             <Trash2 className="w-4 h-4 mr-1" />
-            {trash ? "Keluar Trash" : "Trash"}
+            {trash ? t("back") : t("trash")}
           </Button>
           {!trash && (
             <Link href="/news/create">
               <Button size="sm" className="gap-2" data-testid="button-create-news">
                 <Plus className="w-4 h-4" />
-                Tambah Berita
+                {t("addNews")}
               </Button>
             </Link>
           )}
@@ -99,7 +101,7 @@ export default function NewsPage() {
         <div className="relative flex-1 min-w-52">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
           <Input
-            placeholder="Cari berita..."
+            placeholder={t("searchPlaceholder")}
             className="pl-9"
             value={search}
             onChange={e => { setSearch(e.target.value); setPage(1); }}
@@ -112,9 +114,9 @@ export default function NewsPage() {
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
-              <SelectItem value="all">Semua Status</SelectItem>
-              <SelectItem value="published">Published</SelectItem>
-              <SelectItem value="draft">Draft</SelectItem>
+              <SelectItem value="all">{t("filterAll")}</SelectItem>
+              <SelectItem value="published">{t("published")}</SelectItem>
+              <SelectItem value="draft">{t("draft")}</SelectItem>
             </SelectContent>
           </Select>
         )}
@@ -124,11 +126,11 @@ export default function NewsPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Judul</TableHead>
-              <TableHead className="w-36">Status</TableHead>
-              <TableHead className="w-36">Tanggal</TableHead>
+              <TableHead>{t("tableColTitle")}</TableHead>
+              <TableHead className="w-36">{t("tableColStatus")}</TableHead>
+              <TableHead className="w-36">{t("tableColDate")}</TableHead>
               <TableHead className="w-20 text-right">Views</TableHead>
-              <TableHead className="w-28 text-right">Aksi</TableHead>
+              <TableHead className="w-28 text-right">{t("tableColAction")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -205,14 +207,14 @@ export default function NewsPage() {
                           </AlertDialogTrigger>
                           <AlertDialogContent>
                             <AlertDialogHeader>
-                              <AlertDialogTitle>Hapus Berita?</AlertDialogTitle>
+                              <AlertDialogTitle>{t("confirmDelete")}</AlertDialogTitle>
                               <AlertDialogDescription>
-                                "{item.title}" akan dipindahkan ke trash. Bisa dipulihkan nanti.
+                                "{item.title}" {t("confirmDeleteDesc")}
                               </AlertDialogDescription>
                             </AlertDialogHeader>
                             <AlertDialogFooter>
-                              <AlertDialogCancel>Batal</AlertDialogCancel>
-                              <AlertDialogAction onClick={() => deleteMutation.mutate(item.id)}>Hapus</AlertDialogAction>
+                              <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>
+                              <AlertDialogAction onClick={() => deleteMutation.mutate(item.id)}>{t("delete")}</AlertDialogAction>
                             </AlertDialogFooter>
                           </AlertDialogContent>
                         </AlertDialog>
@@ -228,10 +230,10 @@ export default function NewsPage() {
 
       {totalPages > 1 && (
         <div className="flex items-center justify-between">
-          <span className="text-sm text-muted-foreground">Halaman {page} dari {totalPages}</span>
+          <span className="text-sm text-muted-foreground">{t("page")} {page} {t("of")} {totalPages}</span>
           <div className="flex gap-2">
-            <Button size="sm" variant="outline" disabled={page === 1} onClick={() => setPage(p => p - 1)}>Sebelumnya</Button>
-            <Button size="sm" variant="outline" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>Berikutnya</Button>
+            <Button size="sm" variant="outline" disabled={page === 1} onClick={() => setPage(p => p - 1)}>{t("previous")}</Button>
+            <Button size="sm" variant="outline" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>{t("next")}</Button>
           </div>
         </div>
       )}

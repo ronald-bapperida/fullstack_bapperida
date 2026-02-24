@@ -7,9 +7,9 @@ import { storage as db } from "./storage";
 import { authMiddleware, requireRole, hashPassword, verifyPassword, signToken } from "./auth";
 import { randomUUID } from "crypto";
 import {
-  Document as DocxDocument, Packer, Paragraph, TextRun, HeadingLevel,
+  Document as DocxDocument, Packer, Paragraph, TextRun,
   AlignmentType, BorderStyle, Table as DocxTable, TableRow as DocxTableRow,
-  TableCell as DocxTableCell, WidthType,
+  TableCell as DocxTableCell, WidthType, ImageRun, UnderlineType,
 } from "docx";
 
 // ─── File Upload Setup ────────────────────────────────────────────────────────
@@ -681,56 +681,239 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { return res.status(500).json({ error: e.message }); }
   });
 
-  // Generate letter as DOCX
+  // Generate letter as DOCX - format resmi surat pemerintah
   app.post("/api/admin/permits/:id/generate-letter-docx", authMiddleware, requireRole("super_admin", "admin_rida"), async (req: any, res) => {
     try {
       const permit = await db.getPermit(req.params.id);
       if (!permit) return res.status(404).json({ error: "Not found" });
       const templates = await db.listTemplates();
       const template = templates[0];
-      if (!template) return res.status(400).json({ error: "No template found" });
-      const dateStr = new Date().toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" });
-      const fillText = (s: string) => (s || "").replace(/{{request_number}}/g, permit.requestNumber).replace(/{{full_name}}/g, permit.fullName).replace(/{{nim_nik}}/g, permit.nimNik).replace(/{{institution}}/g, permit.institution).replace(/{{research_title}}/g, permit.researchTitle).replace(/{{research_location}}/g, permit.researchLocation).replace(/{{research_duration}}/g, permit.researchDuration).replace(/{{date}}/g, dateStr).replace(/{{signer_name}}/g, "Kepala BAPPERIDA Prov. Kalteng");
+
+      const now = new Date();
+      const dateStr = now.toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" }).toUpperCase();
+      const endDate = new Date(now);
+      endDate.setMonth(endDate.getMonth() + 1);
+      const endDateStr = endDate.toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" }).toUpperCase();
+
+      const logoKaltengPath = path.join(process.cwd(), "client", "public", "logo_kalteng.png");
+      const logoBapperidaPath = path.join(process.cwd(), "client", "public", "logo_bapperida.png");
+      const logoKaltengBuf = fs.existsSync(logoKaltengPath) ? fs.readFileSync(logoKaltengPath) : null;
+      const logoBapperidaBuf = fs.existsSync(logoBapperidaPath) ? fs.readFileSync(logoBapperidaPath) : null;
+
+      const cellBorder = {
+        top: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+        bottom: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+        left: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+        right: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+      };
+
+      const logoKaltengCell = new DocxTableCell({
+        borders: cellBorder,
+        width: { size: 1200, type: WidthType.DXA },
+        children: [
+          new Paragraph({
+            alignment: AlignmentType.CENTER,
+            children: logoKaltengBuf
+              ? [new ImageRun({ data: logoKaltengBuf, transformation: { width: 65, height: 65 }, type: "png" })]
+              : [new TextRun("")],
+          }),
+        ],
+      });
+
+      const logoBapperidaCell = new DocxTableCell({
+        borders: cellBorder,
+        width: { size: 1800, type: WidthType.DXA },
+        children: [
+          new Paragraph({
+            alignment: AlignmentType.CENTER,
+            children: logoBapperidaBuf
+              ? [new ImageRun({ data: logoBapperidaBuf, transformation: { width: 100, height: 55 }, type: "png" })]
+              : [new TextRun("")],
+          }),
+        ],
+      });
+
+      const govTextCell = new DocxTableCell({
+        borders: cellBorder,
+        width: { size: 6000, type: WidthType.DXA },
+        children: [
+          new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "PEMERINTAH PROVINSI KALIMANTAN TENGAH", bold: true, size: 22 })] }),
+          new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "BADAN PERENCANAAN PEMBANGUNAN", bold: true, size: 26 })] }),
+          new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "RISET DAN INOVASI DAERAH", bold: true, size: 26 })] }),
+          new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "Jalan Diponegoro No. 60 Tlp/Fax (0536) 3221645", size: 17 })] }),
+          new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "Website: www.bapperida.kalteng.go.id  Email: bapperida@kalteng.go.id", size: 17 })] }),
+          new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "Palangka Raya 73111", size: 17 })] }),
+        ],
+      });
+
+      const headerTable = new DocxTable({
+        width: { size: 9000, type: WidthType.DXA },
+        borders: {
+          top: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+          bottom: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+          left: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+          right: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+          insideH: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+          insideV: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+        },
+        rows: [
+          new DocxTableRow({
+            children: [logoKaltengCell, govTextCell, logoBapperidaCell],
+          }),
+        ],
+      });
+
+      const HR = new Paragraph({
+        border: {
+          bottom: { style: BorderStyle.DOUBLE, size: 6, color: "000000" },
+        },
+        children: [],
+        spacing: { before: 60, after: 60 },
+      });
+
+      const tRow = (label: string, value: string) => new DocxTableRow({
+        children: [
+          new DocxTableCell({
+            borders: cellBorder,
+            width: { size: 2200, type: WidthType.DXA },
+            children: [new Paragraph({ children: [new TextRun({ text: label })] })],
+          }),
+          new DocxTableCell({
+            borders: cellBorder,
+            width: { size: 200, type: WidthType.DXA },
+            children: [new Paragraph({ children: [new TextRun(":")] })],
+          }),
+          new DocxTableCell({
+            borders: cellBorder,
+            children: [new Paragraph({ children: [new TextRun({ text: value })] })],
+          }),
+        ],
+      });
+
+      const bodyTable = new DocxTable({
+        width: { size: 9000, type: WidthType.DXA },
+        borders: {
+          top: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+          bottom: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+          left: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+          right: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+          insideH: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+          insideV: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+        },
+        rows: [
+          tRow("Membaca", `Surat dari ${permit.fullName} Nomor: - Tanggal ${dateStr}`),
+          tRow("Perihal", "Surat Izin Penelitian"),
+          tRow("Mengingat", "1.  Undang-Undang Nomor 18 Tahun 2002, Tentang Sistem Nasional Penelitian, Pengembangan dan Penerapan Ilmu Pengetahuan dan Teknologi."),
+        ],
+      });
+
       const doc = new DocxDocument({
         sections: [{
-          properties: {},
+          properties: {
+            page: {
+              margin: { top: 1134, right: 1134, bottom: 1134, left: 1134 },
+            },
+          },
           children: [
-            new Paragraph({ text: "PEMERINTAH PROVINSI KALIMANTAN TENGAH", heading: HeadingLevel.HEADING_1, alignment: AlignmentType.CENTER }),
-            new Paragraph({ text: "BADAN PERENCANAAN, PENELITIAN DAN PENGEMBANGAN DAERAH (BAPPERIDA)", alignment: AlignmentType.CENTER }),
-            new Paragraph({ text: "", border: { bottom: { style: BorderStyle.SINGLE, size: 6, color: "000000" } } }),
+            headerTable,
+            HR,
             new Paragraph({ text: "" }),
-            new Paragraph({ text: "SURAT IZIN PENELITIAN", heading: HeadingLevel.HEADING_2, alignment: AlignmentType.CENTER }),
-            new Paragraph({ text: `Nomor: ${fillText("{{request_number}}")}`, alignment: AlignmentType.CENTER }),
+
+            new Paragraph({
+              alignment: AlignmentType.CENTER,
+              children: [new TextRun({ text: "IZIN PENELITIAN", bold: true, size: 26, underline: { type: UnderlineType.SINGLE } })],
+              spacing: { before: 120, after: 60 },
+            }),
+            new Paragraph({
+              alignment: AlignmentType.CENTER,
+              children: [new TextRun({ text: `Nomor : ${permit.requestNumber}`, size: 22 })],
+              spacing: { after: 240 },
+            }),
+
+            bodyTable,
             new Paragraph({ text: "" }),
-            new Paragraph({ children: [new TextRun("Yang bertanda tangan di bawah ini, Kepala Badan Perencanaan, Penelitian dan Pengembangan Daerah Provinsi Kalimantan Tengah, dengan ini memberikan izin penelitian kepada:")] }),
+            new Paragraph({ children: [new TextRun({ text: "2.  Peraturan Menteri Dalam Negeri Nomor 17 Tahun 2016 Tentang Pedoman Penyelenggaraan Penelitian dan Pengembangan di Lingkungan Departemen Dalam Negeri dan Pemerintah Daerah.", size: 21, indent: { left: 600 } })] }),
+            new Paragraph({ children: [new TextRun({ text: "3.  Peraturan Gubernur Kalimantan Tengah Nomor 12 Tahun 2015 Tentang Perubahan Atas Peraturan Gubernur Kalimantan Tengah Nomor 59 Tahun 2008 Tentang Tata Cara Pemberian Izin Penelitian / Pendataan.", size: 21, indent: { left: 600 } })] }),
             new Paragraph({ text: "" }),
-            new DocxTable({ rows: [
-              new DocxTableRow({ children: [new DocxTableCell({ children: [new Paragraph("Nama")], width: { size: 3000, type: WidthType.DXA } }), new DocxTableCell({ children: [new Paragraph(`: ${permit.fullName}`)] })] }),
-              new DocxTableRow({ children: [new DocxTableCell({ children: [new Paragraph("NIM/NIK")], width: { size: 3000, type: WidthType.DXA } }), new DocxTableCell({ children: [new Paragraph(`: ${permit.nimNik}`)] })] }),
-              new DocxTableRow({ children: [new DocxTableCell({ children: [new Paragraph("Asal Lembaga")], width: { size: 3000, type: WidthType.DXA } }), new DocxTableCell({ children: [new Paragraph(`: ${permit.institution}`)] })] }),
-              new DocxTableRow({ children: [new DocxTableCell({ children: [new Paragraph("Judul Penelitian")], width: { size: 3000, type: WidthType.DXA } }), new DocxTableCell({ children: [new Paragraph(`: ${permit.researchTitle}`)] })] }),
-              new DocxTableRow({ children: [new DocxTableCell({ children: [new Paragraph("Lokasi Penelitian")], width: { size: 3000, type: WidthType.DXA } }), new DocxTableCell({ children: [new Paragraph(`: ${permit.researchLocation}`)] })] }),
-              new DocxTableRow({ children: [new DocxTableCell({ children: [new Paragraph("Durasi Penelitian")], width: { size: 3000, type: WidthType.DXA } }), new DocxTableCell({ children: [new Paragraph(`: ${permit.researchDuration}`)] })] }),
-            ], width: { size: 9000, type: WidthType.DXA } }),
+
+            new DocxTable({
+              width: { size: 9000, type: WidthType.DXA },
+              borders: { top: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" }, bottom: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" }, left: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" }, right: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" }, insideH: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" }, insideV: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" } },
+              rows: [
+                tRow("Memberikan Izin Kepada", permit.fullName),
+                tRow("NIM", permit.nimNik),
+                tRow("Tim Survey / Peneliti dari", permit.institution),
+                tRow("Akan melaksanakan Penelitian yang berjudul", permit.researchTitle),
+                tRow("Lokasi", permit.researchLocation),
+              ],
+            }),
+
             new Paragraph({ text: "" }),
-            new Paragraph({ children: [new TextRun("Demikian surat izin penelitian ini diberikan untuk dapat digunakan sebagaimana mestinya.")] }),
+            new Paragraph({ children: [new TextRun({ text: "Dengan ketentuan sebagai berikut :", bold: true })] }),
+            new Paragraph({ spacing: { before: 60 }, children: [new TextRun("a.  Setibanya peneliti di tempat lokasi penelitian harus melaporkan diri kepada Pejabat yang berwenang setempat.")] }),
+            new Paragraph({ children: [new TextRun("b.  Hasil Penelitian ini supaya disampaikan kepada :")] }),
+            new Paragraph({ children: [new TextRun({ text: `1).  Kepala BAPPERIDA Provinsi Kalimantan Tengah berupa Soft Copy.`, indent: { left: 720 } })] }),
+            new Paragraph({ children: [new TextRun({ text: `2).  ${permit.researchLocation} Sebanyak 1 (Satu) eksemplar.`, indent: { left: 720 } })] }),
+            new Paragraph({ children: [new TextRun("c.  Surat Izin Penelitian ini agar tidak disalahgunakan untuk tujuan tertentu yang dapat mengganggu kestabilan Pemerintah; tetapi hanya digunakan untuk keperluan ilmiah;")] }),
+            new Paragraph({ children: [new TextRun("d.  Surat Izin Penelitian ini dapat dibatalkan sewaktu-waktu apabila peneliti tidak memenuhi ketentuan-ketentuan pada butir a, b dan c tersebut diatas;")] }),
+            new Paragraph({ children: [new TextRun(`e.  Surat Izin penelitian ini berlaku sejak diterbitkan dan berakhir pada tanggal ${endDateStr}`)] }),
+
             new Paragraph({ text: "" }),
-            new Paragraph({ text: `Palangka Raya, ${dateStr}`, alignment: AlignmentType.RIGHT }),
-            new Paragraph({ text: "Kepala BAPPERIDA Provinsi Kalimantan Tengah,", alignment: AlignmentType.RIGHT }),
+            new Paragraph({ children: [new TextRun("Demikian Surat izin penelitian ini diberikan agar dapat dipergunakan sebagaimana mestinya.")] }),
             new Paragraph({ text: "" }),
             new Paragraph({ text: "" }),
+
+            new DocxTable({
+              width: { size: 9000, type: WidthType.DXA },
+              borders: { top: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" }, bottom: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" }, left: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" }, right: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" }, insideH: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" }, insideV: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" } },
+              rows: [
+                new DocxTableRow({
+                  children: [
+                    new DocxTableCell({
+                      borders: cellBorder,
+                      width: { size: 4500, type: WidthType.DXA },
+                      children: [new Paragraph({ children: [new TextRun("DIKELUARKAN DI    :  PALANGKA RAYA")] }), new Paragraph({ children: [new TextRun(`PADA TANGGAL ${dateStr}`)] })],
+                    }),
+                    new DocxTableCell({
+                      borders: cellBorder,
+                      width: { size: 4500, type: WidthType.DXA },
+                      children: [
+                        new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun("An.KEPALA BADAN PERENCANAAN PEMBANGUNAN,")] }),
+                        new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun("RISET DAN INOVASI DAERAH")] }),
+                        new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun("PROVINSI KALIMANTAN TENGAH,")] }),
+                        new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun("KABID RIDA")] }),
+                        new Paragraph({ text: "" }),
+                        new Paragraph({ text: "" }),
+                        new Paragraph({ text: "" }),
+                        new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "Endy, ST, MT", bold: true, underline: { type: UnderlineType.SINGLE } })] }),
+                        new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun("Pembina Tk.I")] }),
+                        new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun("NIP. 197412232000031002")] }),
+                      ],
+                    }),
+                  ],
+                }),
+              ],
+            }),
+
             new Paragraph({ text: "" }),
-            new Paragraph({ children: [new TextRun({ text: "Kepala BAPPERIDA Prov. Kalteng", bold: true })], alignment: AlignmentType.RIGHT }),
+            new Paragraph({ border: { top: { style: BorderStyle.SINGLE, size: 4, color: "000000" } }, children: [new TextRun({ text: "Tembusan disampaikan kepada Yth. :", bold: true })] }),
+            new Paragraph({ children: [new TextRun("1.  Gubernur Kalimantan Tengah Sebagai Laporan;")] }),
+            new Paragraph({ children: [new TextRun("2.  Kepala Badan Kesbang Dan Politik Provinsi Kalimantan Tengah;")] }),
+            new Paragraph({ children: [new TextRun("3.  Kepala Dinas Pendidikan Provinsi Kalimantan Tengah;")] }),
+            new Paragraph({ children: [new TextRun(`4.  ${permit.fullName}.`)] }),
           ],
         }],
       });
+
       const buffer = await Packer.toBuffer(doc);
       const letterDir = path.join(uploadDir, "letters");
       if (!fs.existsSync(letterDir)) fs.mkdirSync(letterDir, { recursive: true });
-      const fileName = `${permit.requestNumber.replace(/\//g, "-")}.docx`;
+      const fileName = `${permit.requestNumber.replace(/\//g, "-")}-${Date.now()}.docx`;
       fs.writeFileSync(path.join(letterDir, fileName), buffer);
       const fileUrl2 = `/uploads/letters/${fileName}`;
-      await db.createGeneratedLetter({ permitId: permit.id, templateId: template.id, fileUrl: fileUrl2 });
+      if (template) {
+        await db.createGeneratedLetter({ permitId: permit.id, templateId: template.id, fileUrl: fileUrl2 });
+      }
       await db.updatePermitStatus(permit.id, "generated_letter", "Surat izin DOCX berhasil digenerate", req.user.id);
       res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
       res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);

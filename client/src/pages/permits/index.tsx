@@ -11,6 +11,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { Eye, Search, ClipboardList } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useLang } from "@/contexts/language";
 import { format } from "date-fns";
 import { id } from "date-fns/locale";
 
@@ -41,6 +42,7 @@ const STATUS_VARIANTS: Record<string, "default" | "secondary" | "destructive" | 
 
 export default function PermitsPage() {
   const { toast } = useToast();
+  const { t } = useLang();
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("all");
@@ -55,21 +57,21 @@ export default function PermitsPage() {
   return (
     <div className="flex flex-col gap-6 p-6">
       <div>
-        <h1 className="text-2xl font-bold flex items-center gap-2"><ClipboardList className="w-6 h-6" /> Izin Penelitian</h1>
-        <p className="text-muted-foreground text-sm mt-1">{total} total permohonan</p>
+        <h1 className="text-2xl font-bold flex items-center gap-2"><ClipboardList className="w-6 h-6" /> {t("permits")}</h1>
+        <p className="text-muted-foreground text-sm mt-1">{total} {t("totalData")}</p>
       </div>
 
       <div className="flex items-center gap-3 flex-wrap">
         <div className="relative flex-1 min-w-52">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-          <Input placeholder="Cari nama, judul, nomor..." className="pl-9" value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} />
+          <Input placeholder={t("searchPlaceholder")} className="pl-9" value={search} onChange={e => { setSearch(e.target.value); setPage(1); }} />
         </div>
         <Select value={status} onValueChange={v => { setStatus(v); setPage(1); }}>
           <SelectTrigger className="w-44">
             <SelectValue />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="all">Semua Status</SelectItem>
+            <SelectItem value="all">{t("filterAll")}</SelectItem>
             {Object.entries(STATUS_LABELS).map(([k, v]) => <SelectItem key={k} value={k}>{v}</SelectItem>)}
           </SelectContent>
         </Select>
@@ -79,12 +81,12 @@ export default function PermitsPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-48">No. Permohonan</TableHead>
-              <TableHead>Pemohon</TableHead>
-              <TableHead>Judul Penelitian</TableHead>
-              <TableHead className="w-32">Status</TableHead>
-              <TableHead className="w-32">Tanggal</TableHead>
-              <TableHead className="w-16 text-right">Aksi</TableHead>
+              <TableHead className="w-48">{t("tableColNumber")}</TableHead>
+              <TableHead>{t("tableColApplicant")}</TableHead>
+              <TableHead>{t("researchTitle")}</TableHead>
+              <TableHead className="w-32">{t("tableColStatus")}</TableHead>
+              <TableHead className="w-32">{t("tableColDate")}</TableHead>
+              <TableHead className="w-16 text-right">{t("tableColAction")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
@@ -127,10 +129,10 @@ export default function PermitsPage() {
 
       {totalPages > 1 && (
         <div className="flex items-center justify-between">
-          <span className="text-sm text-muted-foreground">Halaman {page} dari {totalPages}</span>
+          <span className="text-sm text-muted-foreground">{t("page")} {page} {t("of")} {totalPages}</span>
           <div className="flex gap-2">
-            <Button size="sm" variant="outline" disabled={page === 1} onClick={() => setPage(p => p - 1)}>Sebelumnya</Button>
-            <Button size="sm" variant="outline" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>Berikutnya</Button>
+            <Button size="sm" variant="outline" disabled={page === 1} onClick={() => setPage(p => p - 1)}>{t("previous")}</Button>
+            <Button size="sm" variant="outline" disabled={page >= totalPages} onClick={() => setPage(p => p + 1)}>{t("next")}</Button>
           </div>
         </div>
       )}
