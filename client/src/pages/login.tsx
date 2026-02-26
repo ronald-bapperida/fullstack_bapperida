@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { Building2, LogIn, Eye, EyeOff } from "lucide-react";
+import logoBapperida from "@assets/logo_bapperida_1771921692764.png";
 
 export default function LoginPage() {
   const [, setLoc] = useLocation();
@@ -35,8 +36,13 @@ export default function LoginPage() {
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
         <div className="flex flex-col items-center gap-4 mb-8">
-          <div className="flex items-center justify-center w-16 h-16 rounded-xl bg-primary text-primary-foreground shadow-lg">
-            <Building2 className="w-8 h-8" />
+          <div className="flex items-center justify-center rounded-xl text-primary-foreground shadow-lg">
+            {/* <Building2 className="w-8 h-8" /> */}
+            <img
+              src={logoBapperida}
+              alt="Logo BAPPERIDA"
+              className="object-contain shrink-0"
+            />
           </div>
           <div className="text-center">
             <h1 className="text-2xl font-bold tracking-tight">Portal Admin</h1>
@@ -97,9 +103,9 @@ export default function LoginPage() {
                 {loading ? "Memproses..." : "Masuk"}
               </Button>
             </form>
-            <p className="text-xs text-muted-foreground text-center mt-4">
+            {/* <p className="text-xs text-muted-foreground text-center mt-4">
               Default: superadmin / Admin@123
-            </p>
+            </p> */}
           </CardContent>
         </Card>
       </div>

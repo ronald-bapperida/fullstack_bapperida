@@ -1,4 +1,4 @@
-import { eq, and, isNull, desc, ilike, or, sql, lte } from "drizzle-orm";
+import { eq, and, isNull, desc, like, or, sql } from "drizzle-orm";
 import { db } from "./db";
 import * as schema from "@shared/schema";
 import type {
@@ -9,6 +9,11 @@ import type {
   FinalReport, InsertFinalReport, Suggestion, InsertSuggestion,
 } from "@shared/schema";
 import { randomUUID } from "crypto";
+
+// ─── Helper: case-insensitive LIKE (MySQL-safe) ───────────────────────────────
+function ciLike(column: any, term: string) {
+  return like(sql`lower(${column})`, `%${term.toLowerCase()}%`);
+}
 
 // ─── Slug Generator ───────────────────────────────────────────────────────────
 function generateSlug(title: string): string {
@@ -21,27 +26,56 @@ function generateSlug(title: string): string {
   return `${base}-${randomUUID().slice(0, 8)}`;
 }
 
+// ─── Generic helpers to replace `.returning()` on MySQL ───────────────────────
+async function insertAndGet<T>(
+  table: any,
+  idColumn: any,
+  values: any
+): Promise<T> {
+  const id = values.id ?? randomUUID();
+  await db.insert(table).values({ ...values, id });
+  const [row] = await db.select().from(table).where(eq(idColumn, id));
+  if (!row) throw new Error("Insert failed (row not found after insert)");
+  return row as T;
+}
+
+async function updateAndGet<T>(
+  table: any,
+  idColumn: any,
+  id: string,
+  values: any
+): Promise<T> {
+  await db.update(table).set(values).where(eq(idColumn, id));
+  const [row] = await db.select().from(table).where(eq(idColumn, id));
+  if (!row) throw new Error("Update failed (row not found after update)");
+  return row as T;
+}
+
 // ─── Request Number Generator ─────────────────────────────────────────────────
 async function generateRequestNumber(): Promise<string> {
   const year = new Date().getFullYear();
-  const result = await db.transaction(async (tx) => {
+
+  const seq = await db.transaction(async (tx) => {
     const [existing] = await tx
       .select()
       .from(schema.requestSequences)
       .where(eq(schema.requestSequences.year, year))
       .for("update");
+
     if (existing) {
-      const newSeq = existing.lastSeq + 1;
-      await tx.update(schema.requestSequences)
+      const newSeq = (existing.lastSeq ?? 0) + 1;
+      await tx
+        .update(schema.requestSequences)
         .set({ lastSeq: newSeq })
         .where(eq(schema.requestSequences.id, existing.id));
       return newSeq;
-    } else {
-      await tx.insert(schema.requestSequences).values({ year, lastSeq: 1 });
-      return 1;
     }
+
+    await tx.insert(schema.requestSequences).values({ year, lastSeq: 1 });
+    return 1;
   });
-  return `BAPPERIDA-RID-${year}-${String(result).padStart(6, "0")}`;
+
+  return `BAPPERIDA-RID-${year}-${String(seq).padStart(6, "0")}`;
 }
 
 export interface IStorage {
@@ -133,6 +167,14 @@ export interface IStorage {
   getTemplate(id: string): Promise<any>;
   createTemplate(data: { name: string; content: string }): Promise<any>;
   updateTemplate(id: string, data: any): Promise<any>;
+  createLetterTemplateFile(data: {
+    templateId: string;
+    fileUrl: string;
+    fileName: string;
+    fileSize: number;
+    mimeType: string;
+  }): Promise<any>;
+  listLetterTemplateFiles(templateId: string): Promise<any[]>;
 
   // Generated Letters
   createGeneratedLetter(data: { permitId: string; templateId?: string; fileUrl?: string }): Promise<any>;
@@ -169,29 +211,29 @@ export class DatabaseStorage implements IStorage {
     return r;
   }
   async createUser(user: InsertUser) {
-    const [r] = await db.insert(schema.users).values(user).returning();
-    return r;
+    return insertAndGet<User>(schema.users, schema.users.id, user);
   }
   async listUsers() {
     return db.select().from(schema.users).orderBy(desc(schema.users.createdAt));
   }
   async updateUser(id: string, data: Partial<InsertUser>) {
-    const [r] = await db.update(schema.users).set({ ...data, updatedAt: new Date() }).where(eq(schema.users.id, id)).returning();
-    return r;
+    return updateAndGet<User>(schema.users, schema.users.id, id, { ...data, updatedAt: new Date() });
   }
 
   // ── News Categories ─────────────────────────────────────────────────────────
   async listNewsCategories() {
-    return db.select().from(schema.newsCategories).where(isNull(schema.newsCategories.deletedAt)).orderBy(schema.newsCategories.name);
+    return db
+      .select()
+      .from(schema.newsCategories)
+      .where(isNull(schema.newsCategories.deletedAt))
+      .orderBy(schema.newsCategories.name);
   }
   async createNewsCategory(data: InsertNewsCategory) {
-    const slug = data.slug || generateSlug(data.name);
-    const [r] = await db.insert(schema.newsCategories).values({ ...data, slug }).returning();
-    return r;
+    const slug = (data as any).slug || generateSlug((data as any).name);
+    return insertAndGet<NewsCategory>(schema.newsCategories, schema.newsCategories.id, { ...data, slug });
   }
   async updateNewsCategory(id: string, data: Partial<InsertNewsCategory>) {
-    const [r] = await db.update(schema.newsCategories).set(data).where(eq(schema.newsCategories.id, id)).returning();
-    return r;
+    return updateAndGet<NewsCategory>(schema.newsCategories, schema.newsCategories.id, id, data);
   }
   async deleteNewsCategory(id: string) {
     await db.update(schema.newsCategories).set({ deletedAt: new Date() }).where(eq(schema.newsCategories.id, id));
@@ -205,37 +247,54 @@ export class DatabaseStorage implements IStorage {
   async listNews(opts: { page?: number; limit?: number; categoryId?: string; search?: string; status?: string; trash?: boolean } = {}) {
     const { page = 1, limit = 10, categoryId, search, status, trash = false } = opts;
     const offset = (page - 1) * limit;
-    const conditions = [];
-    if (trash) {
-      conditions.push(sql`${schema.news.deletedAt} IS NOT NULL`);
-    } else {
-      conditions.push(isNull(schema.news.deletedAt));
-    }
+
+    const conditions: any[] = [];
+    if (trash) conditions.push(sql`${schema.news.deletedAt} IS NOT NULL`);
+    else conditions.push(isNull(schema.news.deletedAt));
     if (categoryId) conditions.push(eq(schema.news.categoryId, categoryId));
-    if (search) conditions.push(ilike(schema.news.title, `%${search}%`));
+    if (search) conditions.push(ciLike(schema.news.title, search));
     if (status) conditions.push(eq(schema.news.status, status as any));
+
     const where = and(...conditions);
-    const [{ count }] = await db.select({ count: sql<number>`count(*)::int` }).from(schema.news).where(where);
-    const items = await db.select().from(schema.news).where(where).orderBy(desc(schema.news.createdAt)).limit(limit).offset(offset);
+
+    const [{ count }] = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(schema.news)
+      .where(where);
+
+    const items = await db
+      .select()
+      .from(schema.news)
+      .where(where)
+      .orderBy(desc(schema.news.createdAt))
+      .limit(limit)
+      .offset(offset);
+
     return { items, total: Number(count) };
   }
+
   async getNews(id: string) {
     const [r] = await db.select().from(schema.news).where(eq(schema.news.id, id));
     return r;
   }
+
   async getNewsBySlug(slug: string) {
-    const [r] = await db.select().from(schema.news).where(and(eq(schema.news.slug, slug), isNull(schema.news.deletedAt)));
+    const [r] = await db
+      .select()
+      .from(schema.news)
+      .where(and(eq(schema.news.slug, slug), isNull(schema.news.deletedAt)));
     return r;
   }
+
   async createNews(data: InsertNews) {
-    const slug = data.slug || generateSlug(data.title);
-    const [r] = await db.insert(schema.news).values({ ...data, slug }).returning();
-    return r;
+    const slug = (data as any).slug || generateSlug((data as any).title);
+    return insertAndGet<News>(schema.news, schema.news.id, { ...data, slug });
   }
+
   async updateNews(id: string, data: Partial<InsertNews>) {
-    const [r] = await db.update(schema.news).set({ ...data, updatedAt: new Date() }).where(eq(schema.news.id, id)).returning();
-    return r;
+    return updateAndGet<News>(schema.news, schema.news.id, id, { ...data, updatedAt: new Date() });
   }
+
   async deleteNews(id: string, hard = false) {
     if (hard) {
       await db.delete(schema.news).where(eq(schema.news.id, id));
@@ -243,92 +302,121 @@ export class DatabaseStorage implements IStorage {
       await db.update(schema.news).set({ deletedAt: new Date() }).where(eq(schema.news.id, id));
     }
   }
+
   async restoreNews(id: string) {
     await db.update(schema.news).set({ deletedAt: null }).where(eq(schema.news.id, id));
   }
 
   // ── News Media ──────────────────────────────────────────────────────────────
   async listNewsMedia(newsId: string) {
-    return db.select().from(schema.newsMedia)
+    return db
+      .select()
+      .from(schema.newsMedia)
       .where(and(eq(schema.newsMedia.newsId, newsId), isNull(schema.newsMedia.deletedAt)))
       .orderBy(schema.newsMedia.sortOrder);
   }
+
   async createNewsMedia(data: InsertNewsMedia) {
-    const [r] = await db.insert(schema.newsMedia).values(data).returning();
-    return r;
+    return insertAndGet<NewsMedia>(schema.newsMedia, schema.newsMedia.id, data);
   }
+
   async deleteNewsMedia(id: string) {
-    const [r] = await db.update(schema.newsMedia).set({ deletedAt: new Date() }).where(eq(schema.newsMedia.id, id)).returning();
+    await db.update(schema.newsMedia).set({ deletedAt: new Date() }).where(eq(schema.newsMedia.id, id));
+    const [r] = await db.select().from(schema.newsMedia).where(eq(schema.newsMedia.id, id));
     return r;
   }
 
   // ── Banners ─────────────────────────────────────────────────────────────────
   async listBanners(opts: { trash?: boolean } = {}) {
     if (opts.trash) {
-      return db.select().from(schema.banners).where(sql`${schema.banners.deletedAt} IS NOT NULL`).orderBy(desc(schema.banners.createdAt));
+      return db
+        .select()
+        .from(schema.banners)
+        .where(sql`${schema.banners.deletedAt} IS NOT NULL`)
+        .orderBy(desc(schema.banners.createdAt));
     }
-    return db.select().from(schema.banners).where(isNull(schema.banners.deletedAt)).orderBy(desc(schema.banners.createdAt));
+    return db
+      .select()
+      .from(schema.banners)
+      .where(isNull(schema.banners.deletedAt))
+      .orderBy(desc(schema.banners.createdAt));
   }
+
   async getBanner(id: string) {
     const [r] = await db.select().from(schema.banners).where(eq(schema.banners.id, id));
     return r;
   }
+
   async createBanner(data: InsertBanner) {
-    const [r] = await db.insert(schema.banners).values(data).returning();
-    return r;
+    return insertAndGet<Banner>(schema.banners, schema.banners.id, data);
   }
+
   async updateBanner(id: string, data: Partial<InsertBanner>) {
-    const [r] = await db.update(schema.banners).set({ ...data, updatedAt: new Date() }).where(eq(schema.banners.id, id)).returning();
-    return r;
+    return updateAndGet<Banner>(schema.banners, schema.banners.id, id, { ...data, updatedAt: new Date() });
   }
+
   async deleteBanner(id: string) {
     await db.update(schema.banners).set({ deletedAt: new Date() }).where(eq(schema.banners.id, id));
   }
+
   async trackBannerView(id: string) {
-    await db.update(schema.banners).set({ viewCount: sql`${schema.banners.viewCount} + 1` }).where(eq(schema.banners.id, id));
+    await db.update(schema.banners)
+      .set({ viewCount: sql`${schema.banners.viewCount} + 1` })
+      .where(eq(schema.banners.id, id));
   }
+
   async trackBannerClick(id: string) {
-    await db.update(schema.banners).set({ clickCount: sql`${schema.banners.clickCount} + 1` }).where(eq(schema.banners.id, id));
+    await db.update(schema.banners)
+      .set({ clickCount: sql`${schema.banners.clickCount} + 1` })
+      .where(eq(schema.banners.id, id));
   }
+
   async getActiveBanners() {
-    const now = new Date();
-    return db.select().from(schema.banners).where(
-      and(isNull(schema.banners.deletedAt), eq(schema.banners.isActive, true))
-    ).orderBy(desc(schema.banners.createdAt));
+    return db
+      .select()
+      .from(schema.banners)
+      .where(and(isNull(schema.banners.deletedAt), eq(schema.banners.isActive, true)))
+      .orderBy(desc(schema.banners.createdAt));
   }
 
   // ── Menus ───────────────────────────────────────────────────────────────────
   async listMenus() {
     return db.select().from(schema.menus).where(isNull(schema.menus.deletedAt)).orderBy(schema.menus.name);
   }
+
   async getMenu(id: string) {
     const [r] = await db.select().from(schema.menus).where(eq(schema.menus.id, id));
     return r;
   }
+
   async createMenu(data: InsertMenu) {
-    const [r] = await db.insert(schema.menus).values(data).returning();
-    return r;
+    return insertAndGet<Menu>(schema.menus, schema.menus.id, data);
   }
+
   async updateMenu(id: string, data: Partial<InsertMenu>) {
-    const [r] = await db.update(schema.menus).set(data).where(eq(schema.menus.id, id)).returning();
-    return r;
+    return updateAndGet<Menu>(schema.menus, schema.menus.id, id, data);
   }
+
   async deleteMenu(id: string) {
     await db.update(schema.menus).set({ deletedAt: new Date() }).where(eq(schema.menus.id, id));
   }
+
   async listMenuItems(menuId: string) {
-    return db.select().from(schema.menuItems)
+    return db
+      .select()
+      .from(schema.menuItems)
       .where(and(eq(schema.menuItems.menuId, menuId), isNull(schema.menuItems.deletedAt)))
       .orderBy(schema.menuItems.sortOrder);
   }
+
   async createMenuItem(data: InsertMenuItem) {
-    const [r] = await db.insert(schema.menuItems).values(data).returning();
-    return r;
+    return insertAndGet<MenuItem>(schema.menuItems, schema.menuItems.id, data);
   }
+
   async updateMenuItem(id: string, data: Partial<InsertMenuItem>) {
-    const [r] = await db.update(schema.menuItems).set(data).where(eq(schema.menuItems.id, id)).returning();
-    return r;
+    return updateAndGet<MenuItem>(schema.menuItems, schema.menuItems.id, id, data);
   }
+
   async deleteMenuItem(id: string) {
     await db.update(schema.menuItems).set({ deletedAt: new Date() }).where(eq(schema.menuItems.id, id));
   }
@@ -338,40 +426,36 @@ export class DatabaseStorage implements IStorage {
     return db.select().from(schema.documentKinds).where(isNull(schema.documentKinds.deletedAt)).orderBy(schema.documentKinds.name);
   }
   async createDocumentKind(data: { name: string }) {
-    const [r] = await db.insert(schema.documentKinds).values({ name: data.name }).returning();
-    return r;
+    return insertAndGet<any>(schema.documentKinds, schema.documentKinds.id, { name: data.name });
   }
   async updateDocumentKind(id: string, data: { name: string }) {
-    const [r] = await db.update(schema.documentKinds).set({ name: data.name }).where(eq(schema.documentKinds.id, id)).returning();
-    return r;
+    return updateAndGet<any>(schema.documentKinds, schema.documentKinds.id, id, { name: data.name });
   }
   async deleteDocumentKind(id: string) {
     await db.update(schema.documentKinds).set({ deletedAt: new Date() }).where(eq(schema.documentKinds.id, id));
   }
+
   async listDocumentCategories() {
     return db.select().from(schema.documentCategories).where(isNull(schema.documentCategories.deletedAt)).orderBy(schema.documentCategories.name);
   }
   async createDocumentCategory(data: { name: string }) {
-    const [r] = await db.insert(schema.documentCategories).values({ name: data.name }).returning();
-    return r;
+    return insertAndGet<any>(schema.documentCategories, schema.documentCategories.id, { name: data.name });
   }
   async updateDocumentCategory(id: string, data: { name: string }) {
-    const [r] = await db.update(schema.documentCategories).set({ name: data.name }).where(eq(schema.documentCategories.id, id)).returning();
-    return r;
+    return updateAndGet<any>(schema.documentCategories, schema.documentCategories.id, id, { name: data.name });
   }
   async deleteDocumentCategory(id: string) {
     await db.update(schema.documentCategories).set({ deletedAt: new Date() }).where(eq(schema.documentCategories.id, id));
   }
+
   async listDocumentTypes() {
     return db.select().from(schema.documentTypes).where(isNull(schema.documentTypes.deletedAt)).orderBy(schema.documentTypes.name);
   }
   async createDocumentType(data: { name: string; extension?: string }) {
-    const [r] = await db.insert(schema.documentTypes).values({ name: data.name, extension: data.extension }).returning();
-    return r;
+    return insertAndGet<any>(schema.documentTypes, schema.documentTypes.id, { name: data.name, extension: data.extension });
   }
   async updateDocumentType(id: string, data: { name: string; extension?: string }) {
-    const [r] = await db.update(schema.documentTypes).set({ name: data.name, extension: data.extension }).where(eq(schema.documentTypes.id, id)).returning();
-    return r;
+    return updateAndGet<any>(schema.documentTypes, schema.documentTypes.id, id, { name: data.name, extension: data.extension });
   }
   async deleteDocumentType(id: string) {
     await db.update(schema.documentTypes).set({ deletedAt: new Date() }).where(eq(schema.documentTypes.id, id));
@@ -381,42 +465,68 @@ export class DatabaseStorage implements IStorage {
   async listDocuments(opts: { page?: number; limit?: number; search?: string; trash?: boolean; kindId?: string; categoryId?: string; typeId?: string } = {}) {
     const { page = 1, limit = 10, search, trash = false, kindId, categoryId, typeId } = opts;
     const offset = (page - 1) * limit;
-    const conditions = trash
+
+    const conditions: any[] = trash
       ? [sql`${schema.documents.deletedAt} IS NOT NULL`]
       : [isNull(schema.documents.deletedAt)];
-    if (search) conditions.push(ilike(schema.documents.title, `%${search}%`));
+
+    if (search) conditions.push(ciLike(schema.documents.title, search));
     if (kindId) conditions.push(eq(schema.documents.kindId, kindId));
     if (categoryId) conditions.push(eq(schema.documents.categoryId, categoryId));
     if (typeId) conditions.push(eq(schema.documents.typeId, typeId));
+
     const where = and(...conditions);
-    const [{ count }] = await db.select({ count: sql<number>`count(*)::int` }).from(schema.documents).where(where);
-    const items = await db.select().from(schema.documents).where(where).orderBy(desc(schema.documents.createdAt)).limit(limit).offset(offset);
+
+    const [{ count }] = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(schema.documents)
+      .where(where);
+
+    const items = await db
+      .select()
+      .from(schema.documents)
+      .where(where)
+      .orderBy(desc(schema.documents.createdAt))
+      .limit(limit)
+      .offset(offset);
+
     return { items, total: Number(count) };
   }
+
   async getDocument(id: string) {
     const [r] = await db.select().from(schema.documents).where(eq(schema.documents.id, id));
     return r;
   }
+
   async createDocument(data: InsertDocument) {
-    const [r] = await db.insert(schema.documents).values(data).returning();
-    return r;
+    return insertAndGet<Document>(schema.documents, schema.documents.id, data);
   }
+
   async updateDocument(id: string, data: Partial<InsertDocument>) {
-    const [r] = await db.update(schema.documents).set({ ...data, updatedAt: new Date() }).where(eq(schema.documents.id, id)).returning();
-    return r;
+    return updateAndGet<Document>(schema.documents, schema.documents.id, id, { ...data, updatedAt: new Date() });
   }
+
   async deleteDocument(id: string) {
     await db.update(schema.documents).set({ deletedAt: new Date() }).where(eq(schema.documents.id, id));
   }
+
   async restoreDocument(id: string) {
     await db.update(schema.documents).set({ deletedAt: null }).where(eq(schema.documents.id, id));
   }
+
   async toggleNewsStatus(id: string): Promise<News> {
     const [cur] = await db.select({ status: schema.news.status }).from(schema.news).where(eq(schema.news.id, id));
     if (!cur) throw new Error("Berita tidak ditemukan");
+
     const newStatus = cur.status === "published" ? "draft" : "published";
     const publishedAt = newStatus === "published" ? new Date() : null;
-    const [r] = await db.update(schema.news).set({ status: newStatus as any, publishedAt, updatedAt: new Date() }).where(eq(schema.news.id, id)).returning();
+
+    await db.update(schema.news)
+      .set({ status: newStatus as any, publishedAt, updatedAt: new Date() })
+      .where(eq(schema.news.id, id));
+
+    const [r] = await db.select().from(schema.news).where(eq(schema.news.id, id));
+    if (!r) throw new Error("Update failed");
     return r;
   }
 
@@ -424,45 +534,83 @@ export class DatabaseStorage implements IStorage {
   async listPermits(opts: { page?: number; limit?: number; status?: string; search?: string } = {}) {
     const { page = 1, limit = 10, status, search } = opts;
     const offset = (page - 1) * limit;
-    const conditions = [isNull(schema.researchPermitRequests.deletedAt)];
+
+    const conditions: any[] = [isNull(schema.researchPermitRequests.deletedAt)];
     if (status) conditions.push(eq(schema.researchPermitRequests.status, status as any));
-    if (search) conditions.push(or(
-      ilike(schema.researchPermitRequests.fullName, `%${search}%`),
-      ilike(schema.researchPermitRequests.researchTitle, `%${search}%`),
-      ilike(schema.researchPermitRequests.requestNumber, `%${search}%`),
-    )!);
+
+    if (search) {
+      conditions.push(or(
+        ciLike(schema.researchPermitRequests.fullName, search),
+        ciLike(schema.researchPermitRequests.researchTitle, search),
+        ciLike(schema.researchPermitRequests.requestNumber, search),
+      )!);
+    }
+
     const where = and(...conditions);
-    const [{ count }] = await db.select({ count: sql<number>`count(*)::int` }).from(schema.researchPermitRequests).where(where);
-    const items = await db.select().from(schema.researchPermitRequests).where(where).orderBy(desc(schema.researchPermitRequests.createdAt)).limit(limit).offset(offset);
+
+    const [{ count }] = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(schema.researchPermitRequests)
+      .where(where);
+
+    const items = await db
+      .select()
+      .from(schema.researchPermitRequests)
+      .where(where)
+      .orderBy(desc(schema.researchPermitRequests.createdAt))
+      .limit(limit)
+      .offset(offset);
+
     return { items, total: Number(count) };
   }
+
   async getPermit(id: string) {
     const [r] = await db.select().from(schema.researchPermitRequests).where(eq(schema.researchPermitRequests.id, id));
     return r;
   }
+
   async getPermitByEmail(email: string) {
     return db.select().from(schema.researchPermitRequests)
       .where(and(eq(schema.researchPermitRequests.email, email), isNull(schema.researchPermitRequests.deletedAt)))
       .orderBy(desc(schema.researchPermitRequests.createdAt));
   }
+
   async createPermit(data: InsertResearchPermit) {
     const requestNumber = await generateRequestNumber();
-    const [r] = await db.insert(schema.researchPermitRequests).values({ ...data, requestNumber }).returning();
-    await this.addPermitStatusHistory({ permitId: r.id, fromStatus: null, toStatus: "submitted" });
-    return r;
+    const permit = await insertAndGet<ResearchPermit>(
+      schema.researchPermitRequests,
+      schema.researchPermitRequests.id,
+      { ...data, requestNumber }
+    );
+
+    await this.addPermitStatusHistory({ permitId: permit.id, fromStatus: null, toStatus: "submitted" });
+    return permit;
   }
+
   async updatePermitStatus(id: string, status: string, note?: string, processedBy?: string) {
     const current = await this.getPermit(id);
-    const [r] = await db.update(schema.researchPermitRequests)
+
+    await db.update(schema.researchPermitRequests)
       .set({ status: status as any, reviewNote: note, processedBy, updatedAt: new Date() })
-      .where(eq(schema.researchPermitRequests.id, id)).returning();
-    await this.addPermitStatusHistory({ permitId: id, fromStatus: current?.status || null, toStatus: status, note, changedBy: processedBy });
+      .where(eq(schema.researchPermitRequests.id, id));
+
+    await this.addPermitStatusHistory({
+      permitId: id,
+      fromStatus: (current?.status as any) || null,
+      toStatus: status,
+      note,
+      changedBy: processedBy,
+    });
+
+    const [r] = await db.select().from(schema.researchPermitRequests).where(eq(schema.researchPermitRequests.id, id));
+    if (!r) throw new Error("Update failed");
     return r;
   }
+
   async updatePermit(id: string, data: Partial<ResearchPermit>) {
-    const [r] = await db.update(schema.researchPermitRequests).set({ ...data, updatedAt: new Date() }).where(eq(schema.researchPermitRequests.id, id)).returning();
-    return r;
+    return updateAndGet<ResearchPermit>(schema.researchPermitRequests, schema.researchPermitRequests.id, id, { ...data, updatedAt: new Date() });
   }
+
   async addPermitStatusHistory(data: { permitId: string; fromStatus: string | null; toStatus: string; note?: string; changedBy?: string }) {
     await db.insert(schema.permitStatusHistories).values({
       permitId: data.permitId,
@@ -472,6 +620,7 @@ export class DatabaseStorage implements IStorage {
       changedBy: data.changedBy,
     });
   }
+
   async getPermitHistory(permitId: string) {
     return db.select().from(schema.permitStatusHistories)
       .where(eq(schema.permitStatusHistories.permitId, permitId))
@@ -482,24 +631,47 @@ export class DatabaseStorage implements IStorage {
   async listTemplates() {
     return db.select().from(schema.letterTemplates).orderBy(desc(schema.letterTemplates.createdAt));
   }
+
   async getTemplate(id: string) {
     const [r] = await db.select().from(schema.letterTemplates).where(eq(schema.letterTemplates.id, id));
     return r;
   }
+
   async createTemplate(data: { name: string; content: string }) {
-    const [r] = await db.insert(schema.letterTemplates).values(data).returning();
-    return r;
+    return insertAndGet<any>(schema.letterTemplates, schema.letterTemplates.id, data);
   }
+
   async updateTemplate(id: string, data: any) {
-    const [r] = await db.update(schema.letterTemplates).set({ ...data, updatedAt: new Date() }).where(eq(schema.letterTemplates.id, id)).returning();
-    return r;
+    return updateAndGet<any>(schema.letterTemplates, schema.letterTemplates.id, id, { ...data, updatedAt: new Date() });
+  }
+
+  async createLetterTemplateFile(data: {
+    templateId: string;
+    fileUrl: string;
+    filePath: string;
+    fileName: string;
+    fileSize: number;
+    mimeType: string;
+  }) {
+    return insertAndGet<any>(
+      schema.letterTemplateFiles,
+      schema.letterTemplateFiles.id,
+      data
+    );
+  }
+  
+  async listLetterTemplateFiles(templateId: string) {
+    return db
+      .select()
+      .from(schema.letterTemplateFiles)
+      .where(eq(schema.letterTemplateFiles.templateId, templateId));
   }
 
   // ── Generated Letters ───────────────────────────────────────────────────────
   async createGeneratedLetter(data: { permitId: string; templateId?: string; fileUrl?: string }) {
-    const [r] = await db.insert(schema.generatedLetters).values(data).returning();
-    return r;
+    return insertAndGet<any>(schema.generatedLetters, schema.generatedLetters.id, data);
   }
+
   async getGeneratedLetter(permitId: string) {
     const [r] = await db.select().from(schema.generatedLetters)
       .where(and(eq(schema.generatedLetters.permitId, permitId), isNull(schema.generatedLetters.deletedAt)))
@@ -509,53 +681,60 @@ export class DatabaseStorage implements IStorage {
 
   // ── Surveys ─────────────────────────────────────────────────────────────────
   async createSurvey(data: InsertSurvey) {
-    const [r] = await db.insert(schema.surveys).values(data).returning();
-    return r;
+    return insertAndGet<Survey>(schema.surveys, schema.surveys.id, data);
   }
+
   async listSurveys(opts: { page?: number; limit?: number } = {}) {
     const { page = 1, limit = 10 } = opts;
     const offset = (page - 1) * limit;
-    const [{ count }] = await db.select({ count: sql<number>`count(*)::int` }).from(schema.surveys);
+
+    const [{ count }] = await db.select({ count: sql<number>`count(*)` }).from(schema.surveys);
     const items = await db.select().from(schema.surveys).orderBy(desc(schema.surveys.createdAt)).limit(limit).offset(offset);
+
     return { items, total: Number(count) };
   }
 
   // ── Final Reports ───────────────────────────────────────────────────────────
   async createFinalReport(data: InsertFinalReport) {
-    const [r] = await db.insert(schema.finalReports).values(data).returning();
-    return r;
+    return insertAndGet<FinalReport>(schema.finalReports, schema.finalReports.id, data);
   }
+
   async listFinalReports(opts: { page?: number; limit?: number } = {}) {
     const { page = 1, limit = 10 } = opts;
     const offset = (page - 1) * limit;
-    const [{ count }] = await db.select({ count: sql<number>`count(*)::int` }).from(schema.finalReports);
+
+    const [{ count }] = await db.select({ count: sql<number>`count(*)` }).from(schema.finalReports);
     const items = await db.select().from(schema.finalReports).orderBy(desc(schema.finalReports.createdAt)).limit(limit).offset(offset);
+
     return { items, total: Number(count) };
   }
 
   // ── Suggestions ─────────────────────────────────────────────────────────────
   async createSuggestion(data: InsertSuggestion) {
-    const [r] = await db.insert(schema.suggestionBox).values(data).returning();
-    return r;
+    return insertAndGet<Suggestion>(schema.suggestionBox, schema.suggestionBox.id, data);
   }
+
   async listSuggestions(opts: { page?: number; limit?: number } = {}) {
     const { page = 1, limit = 10 } = opts;
     const offset = (page - 1) * limit;
-    const [{ count }] = await db.select({ count: sql<number>`count(*)::int` }).from(schema.suggestionBox);
+
+    const [{ count }] = await db.select({ count: sql<number>`count(*)` }).from(schema.suggestionBox);
     const items = await db.select().from(schema.suggestionBox).orderBy(desc(schema.suggestionBox.createdAt)).limit(limit).offset(offset);
+
     return { items, total: Number(count) };
   }
 
   // ── Dashboard Stats ─────────────────────────────────────────────────────────
   async getDashboardStats() {
-    const [newsCount] = await db.select({ count: sql<number>`count(*)::int` }).from(schema.news).where(isNull(schema.news.deletedAt));
-    const [newsTrash] = await db.select({ count: sql<number>`count(*)::int` }).from(schema.news).where(sql`${schema.news.deletedAt} IS NOT NULL`);
-    const [publishedNews] = await db.select({ count: sql<number>`count(*)::int` }).from(schema.news).where(and(isNull(schema.news.deletedAt), eq(schema.news.status, "published")));
-    const [permitCount] = await db.select({ count: sql<number>`count(*)::int` }).from(schema.researchPermitRequests).where(isNull(schema.researchPermitRequests.deletedAt));
-    const [pendingPermits] = await db.select({ count: sql<number>`count(*)::int` }).from(schema.researchPermitRequests).where(and(isNull(schema.researchPermitRequests.deletedAt), eq(schema.researchPermitRequests.status, "submitted")));
-    const [surveyCount] = await db.select({ count: sql<number>`count(*)::int` }).from(schema.surveys);
-    const [bannerCount] = await db.select({ count: sql<number>`count(*)::int` }).from(schema.banners).where(isNull(schema.banners.deletedAt));
-    const [docCount] = await db.select({ count: sql<number>`count(*)::int` }).from(schema.documents).where(isNull(schema.documents.deletedAt));
+    const [newsCount] = await db.select({ count: sql<number>`count(*)` }).from(schema.news).where(isNull(schema.news.deletedAt));
+    const [newsTrash] = await db.select({ count: sql<number>`count(*)` }).from(schema.news).where(sql`${schema.news.deletedAt} IS NOT NULL`);
+    const [publishedNews] = await db.select({ count: sql<number>`count(*)` }).from(schema.news).where(and(isNull(schema.news.deletedAt), eq(schema.news.status, "published")));
+    const [permitCount] = await db.select({ count: sql<number>`count(*)` }).from(schema.researchPermitRequests).where(isNull(schema.researchPermitRequests.deletedAt));
+    const [pendingPermits] = await db.select({ count: sql<number>`count(*)` }).from(schema.researchPermitRequests).where(and(isNull(schema.researchPermitRequests.deletedAt), eq(schema.researchPermitRequests.status, "submitted")));
+    const [surveyCount] = await db.select({ count: sql<number>`count(*)` }).from(schema.surveys);
+    const [bannerCount] = await db.select({ count: sql<number>`count(*)` }).from(schema.banners).where(isNull(schema.banners.deletedAt));
+    const [docCount] = await db.select({ count: sql<number>`count(*)` }).from(schema.documents).where(isNull(schema.documents.deletedAt));
+
     return {
       news: Number(newsCount.count),
       publishedNews: Number(publishedNews.count),

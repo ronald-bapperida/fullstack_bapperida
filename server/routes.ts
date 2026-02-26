@@ -40,139 +40,6 @@ function fileUrl(subdir: string, filename: string) {
   return `/uploads/${subdir}/${filename}`;
 }
 
-// ─── Seed DB ──────────────────────────────────────────────────────────────────
-async function seedDatabase() {
-  const existing = await db.listUsers();
-  if (existing.length > 0) return;
-
-  const superAdmin = await db.createUser({
-    username: "superadmin",
-    email: "superadmin@bapperida.go.id",
-    password: hashPassword("Admin@123"),
-    fullName: "Super Administrator",
-    role: "super_admin",
-    isActive: true,
-  });
-
-  await db.createUser({
-    username: "admin_bpp",
-    email: "admin.bpp@bapperida.go.id",
-    password: hashPassword("Admin@123"),
-    fullName: "Admin BAPPEDA",
-    role: "admin_bpp",
-    isActive: true,
-  });
-
-  await db.createUser({
-    username: "admin_rida",
-    email: "admin.rida@bapperida.go.id",
-    password: hashPassword("Admin@123"),
-    fullName: "Admin RIDA",
-    role: "admin_rida",
-    isActive: true,
-  });
-
-  // Seed Categories
-  const cat1 = await db.createNewsCategory({ name: "Pembangunan Daerah", slug: "pembangunan-daerah", description: "Berita seputar pembangunan daerah Kalimantan Tengah" });
-  const cat2 = await db.createNewsCategory({ name: "Riset & Inovasi", slug: "riset-inovasi", description: "Berita seputar riset dan inovasi daerah" });
-  const cat3 = await db.createNewsCategory({ name: "Pengumuman", slug: "pengumuman", description: "Pengumuman resmi dari BAPPERIDA" });
-
-  // Seed News
-  await db.createNews({
-    title: "BAPPERIDA Kalteng Dorong Inovasi Daerah 2025",
-    categoryId: cat2.id,
-    content: "<p>BAPPERIDA Kalimantan Tengah terus mendorong inovasi daerah dalam rangka peningkatan pelayanan publik dan pembangunan berkelanjutan. Program unggulan tahun 2025 mencakup digitalisasi layanan, penelitian terapan, dan pengembangan SDM lokal.</p><p>Kepala BAPPERIDA menyampaikan bahwa inovasi daerah merupakan kunci untuk mewujudkan Kalimantan Tengah yang maju dan sejahtera.</p>",
-    excerpt: "BAPPERIDA Kalteng terus mendorong inovasi daerah dalam rangka peningkatan pelayanan publik dan pembangunan berkelanjutan.",
-    status: "published",
-    publishedAt: new Date("2025-01-15"),
-    authorId: superAdmin.id,
-    eventAt: new Date("2025-01-15"),
-  });
-
-  await db.createNews({
-    title: "Rapat Koordinasi Perencanaan Pembangunan Kalteng 2025",
-    categoryId: cat1.id,
-    content: "<p>Rapat koordinasi perencanaan pembangunan Kalimantan Tengah 2025 digelar di Palangka Raya. Pertemuan ini membahas prioritas pembangunan infrastruktur, ekonomi, dan sumber daya manusia.</p>",
-    excerpt: "Rapat koordinasi perencanaan pembangunan Kalteng 2025 membahas prioritas infrastruktur dan SDM.",
-    status: "published",
-    publishedAt: new Date("2025-01-20"),
-    authorId: superAdmin.id,
-    eventAt: new Date("2025-01-20"),
-  });
-
-  await db.createNews({
-    title: "Pembukaan Penerimaan Izin Penelitian Tahun 2025",
-    categoryId: cat3.id,
-    content: "<p>BAPPERIDA RIDA membuka penerimaan permohonan izin penelitian untuk tahun 2025. Peneliti dari berbagai instansi dapat mengajukan permohonan melalui portal digital resmi BAPPERIDA Kalimantan Tengah.</p>",
-    excerpt: "BAPPERIDA RIDA membuka penerimaan permohonan izin penelitian 2025 melalui portal digital.",
-    status: "published",
-    publishedAt: new Date("2025-02-01"),
-    authorId: superAdmin.id,
-  });
-
-  await db.createNews({
-    title: "Draft: Program Kerja BAPPERIDA Semester 2",
-    categoryId: cat1.id,
-    content: "<p>Draft program kerja BAPPERIDA untuk semester 2 sedang dalam penyusunan.</p>",
-    excerpt: "Draft program kerja semester 2.",
-    status: "draft",
-    authorId: superAdmin.id,
-  });
-
-  // Seed Banner
-  await db.createBanner({
-    title: "Selamat Datang di Portal BAPPERIDA Kalteng",
-    placement: "home",
-    linkType: "external",
-    linkUrl: "https://bapperida.kalteng.go.id",
-    isActive: true,
-    startAt: new Date("2025-01-01"),
-    endAt: new Date("2025-12-31"),
-  });
-
-  // Seed Menu
-  const mainMenu = await db.createMenu({ name: "Menu Utama", location: "mobile", isActive: true });
-  await db.createMenuItem({ menuId: mainMenu.id, title: "Beranda", type: "route", value: "/", sortOrder: 1, requiresAuth: false });
-  await db.createMenuItem({ menuId: mainMenu.id, title: "Berita", type: "route", value: "/berita", sortOrder: 2, requiresAuth: false });
-  await db.createMenuItem({ menuId: mainMenu.id, title: "Izin Penelitian", type: "route", value: "/izin-penelitian", sortOrder: 3, requiresAuth: false });
-  await db.createMenuItem({ menuId: mainMenu.id, title: "Dokumen PPID", type: "route", value: "/dokumen", sortOrder: 4, requiresAuth: false });
-
-  // Seed Letter Template
-  await db.createTemplate({
-    name: "Template Surat Izin Penelitian",
-    content: `<div style="font-family: Arial, sans-serif; padding: 40px; max-width: 800px; margin: 0 auto;">
-  <div style="text-align: center; margin-bottom: 20px;">
-    <h2 style="margin: 0;">PEMERINTAH PROVINSI KALIMANTAN TENGAH</h2>
-    <h3 style="margin: 0;">BADAN PERENCANAAN, PENELITIAN DAN PENGEMBANGAN DAERAH</h3>
-    <p style="margin: 5px 0;">(BAPPERIDA)</p>
-    <hr style="border: 2px solid #000;" />
-  </div>
-  <div style="text-align: center; margin: 20px 0;">
-    <h3>SURAT IZIN PENELITIAN</h3>
-    <p>Nomor: {{request_number}}</p>
-  </div>
-  <p>Yang bertanda tangan di bawah ini, Kepala Badan Perencanaan, Penelitian dan Pengembangan Daerah Provinsi Kalimantan Tengah, dengan ini memberikan izin penelitian kepada:</p>
-  <table style="width: 100%; margin: 20px 0;">
-    <tr><td style="width: 200px;">Nama</td><td>: {{full_name}}</td></tr>
-    <tr><td>NIM/NIK</td><td>: {{nim_nik}}</td></tr>
-    <tr><td>Asal Lembaga</td><td>: {{institution}}</td></tr>
-    <tr><td>Judul Penelitian</td><td>: {{research_title}}</td></tr>
-    <tr><td>Lokasi Penelitian</td><td>: {{research_location}}</td></tr>
-    <tr><td>Durasi Penelitian</td><td>: {{research_duration}}</td></tr>
-  </table>
-  <p>Demikian surat izin penelitian ini diberikan untuk dapat digunakan sebagaimana mestinya.</p>
-  <div style="margin-top: 40px; float: right; text-align: center;">
-    <p>Palangka Raya, {{date}}</p>
-    <p>Kepala BAPPERIDA Provinsi Kalimantan Tengah,</p>
-    <br/><br/><br/>
-    <p><strong>{{signer_name}}</strong></p>
-  </div>
-</div>`,
-  });
-
-  console.log("Database seeded successfully!");
-}
-
 export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
   // Serve uploads
   app.use("/uploads", (req, res, next) => {
@@ -921,11 +788,192 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { return res.status(500).json({ error: e.message }); }
   });
 
+  function fillTemplate(html: string, permit: any) {
+    const dateStr = new Date().toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" });
+  
+    return html
+      .replace(/{{request_number}}/g, permit.requestNumber ?? "")
+      .replace(/{{full_name}}/g, permit.fullName ?? "")
+      .replace(/{{nim_nik}}/g, permit.nimNik ?? "")
+      .replace(/{{institution}}/g, permit.institution ?? "")
+      .replace(/{{research_title}}/g, permit.researchTitle ?? "")
+      .replace(/{{research_location}}/g, permit.researchLocation ?? "")
+      .replace(/{{research_duration}}/g, permit.researchDuration ?? "")
+      .replace(/{{date}}/g, dateStr)
+      .replace(/{{signer_name}}/g, "Kepala BAPPERIDA Prov. Kalteng");
+  }
+
+  async function renderPdfFromHtml(html: string): Promise<Buffer> {
+    const puppeteer = require("puppeteer");
+    const browser = await puppeteer.launch();
+    const page = await browser.newPage();
+    await page.setContent(html, { waitUntil: "networkidle0" });
+    const buffer = await page.pdf({ format: "A4", printBackground: true });
+    await browser.close();
+    return buffer;
+  }
+
+  app.get(
+    "/api/admin/permits/:id/letter/preview",
+    authMiddleware,
+    requireRole("super_admin", "admin_rida"),
+    async (req: any, res) => {
+      try {
+        const permit = await db.getPermit(req.params.id);
+        if (!permit) return res.status(404).json({ error: "Not found" });
+  
+        const templates = await db.listTemplates();
+        const template = templates[0];
+        if (!template) return res.status(400).json({ error: "No template found" });
+  
+        const html = fillTemplate(template.content, permit);
+  
+        const pdfBuffer = await renderPdfFromHtml(html);
+  
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Content-Disposition", `inline; filename="Preview-${permit.requestNumber}.pdf"`);
+        return res.send(pdfBuffer);
+      } catch (e: any) {
+        return res.status(500).json({ error: e.message });
+      }
+    }
+  );
+
+  // app.post(
+  //   "/api/admin/permits/:id/letter/send-email",
+  //   authMiddleware,
+  //   requireRole("super_admin", "admin_rida"),
+  //   async (req: any, res) => {
+  //     try {
+  //       const { format = "pdf" } = req.body || {};
+  //       const permit = await db.getPermit(req.params.id);
+  //       if (!permit) return res.status(404).json({ error: "Not found" });
+  //       if (!permit.email) return res.status(400).json({ error: "Permit email empty" });
+  
+  //       // build attachment buffer + filename
+  //       let buffer: Buffer;
+  //       let filename: string;
+  //       let contentType: string;
+  
+  //       if (format === "docx") {
+  //         // ambil docx existing atau generate
+  //         // buffer = ...
+  //         // filename = ...
+  //         // contentType = ...
+  //       } else {
+  //         // pdf
+  //         const templates = await db.listTemplates();
+  //         const template = templates[0];
+  //         const html = fillTemplate(template.content, permit);
+  //         buffer = await renderPdfFromHtml(html);
+  //         filename = `Surat-Izin-${permit.requestNumber}.pdf`;
+  //         contentType = "application/pdf";
+  //       }
+  
+  //       await sendMail({
+  //         to: permit.email,
+  //         subject: `Surat Izin Penelitian - ${permit.requestNumber}`,
+  //         text: "Terlampir surat izin penelitian.",
+  //         attachments: [{ filename, content: buffer, contentType }],
+  //       });
+  
+  //       // update generated_letters metadata (opsional)
+  //       // await db.markLetterSent(...)
+  
+  //       return res.json({ ok: true });
+  //     } catch (e: any) {
+  //       return res.status(500).json({ error: e.message });
+  //     }
+  //   }
+  // );
+
+  app.get(
+    "/api/admin/permits/:id/letter/download",
+    authMiddleware,
+    requireRole("super_admin", "admin_rida"),
+    async (req: any, res) => {
+      try {
+        const format = String(req.query.format || "pdf"); // pdf|docx
+        const permit = await db.getPermit(req.params.id);
+        if (!permit) return res.status(404).json({ error: "Not found" });
+  
+        if (format === "docx") {
+          // ✅ kalau kamu mau gunakan generated docx yang sudah ada:
+          const letter = await db.getGeneratedLetter(permit.id);
+          if (letter?.fileUrl?.endsWith(".docx")) {
+            // fileUrl kamu bentuknya /uploads/letters/xxx.docx
+            const abs = path.join(uploadDir, letter.fileUrl.replace("/uploads/", "")); // sesuaikan
+            if (fs.existsSync(abs)) {
+              res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+              res.setHeader("Content-Disposition", `attachment; filename="Surat-Izin-${permit.requestNumber}.docx"`);
+              return res.send(fs.readFileSync(abs));
+            }
+          }
+  
+          return res.status(400).json({ error: "DOCX belum tergenerate. Silakan generate DOCX dulu." });
+        }
+  
+        // format pdf
+        const templates = await db.listTemplates();
+        const template = templates[0];
+        if (!template) return res.status(400).json({ error: "No template found" });
+  
+        const html = fillTemplate(template.content, permit);
+        const pdfBuffer = await renderPdfFromHtml(html);
+  
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Content-Disposition", `attachment; filename="Surat-Izin-${permit.requestNumber}.pdf"`);
+        return res.send(pdfBuffer);
+      } catch (e: any) {
+        return res.status(500).json({ error: e.message });
+      }
+    }
+  );
+
   // ─── Letter Templates ─────────────────────────────────────────────────────────
   app.get("/api/admin/letter-templates", authMiddleware, requireRole("super_admin", "admin_rida"), async (req, res) => {
-    try { return res.json(await db.listTemplates()); }
+    try { 
+      
+      return res.json(await db.listTemplates()); 
+    }
     catch (e: any) { return res.status(500).json({ error: e.message }); }
   });
+
+  const letterTemplateUpload = getMulter("letter-templates", 10);
+
+  app.post(
+    "/api/admin/letter-templates/upload",
+    authMiddleware,
+    requireRole("super_admin", "admin_rida"),
+    letterTemplateUpload.single("file"),
+    async (req: any, res) => {
+      try {
+        if (!req.file) return res.status(400).json({ error: "No file" });
+
+        const folder = "letter-templates";
+
+        const url = fileUrl("letter-templates", req.file.filename);
+
+        const path = `${folder}/${req.file.filename}`;
+
+        const templateId = req.body?.templateId;
+        if (templateId) {
+          await db.createLetterTemplateFile({
+            templateId,
+            fileUrl: url,
+            filePath: path,
+            fileName: req.file.originalname,
+            fileSize: req.file.size,
+            mimeType: req.file.mimetype,
+          });
+        }
+
+        return res.json({ location: url, url });
+      } catch (e: any) {
+        return res.status(500).json({ error: e.message });
+      }
+    },
+  );
 
   app.post("/api/admin/letter-templates", authMiddleware, requireRole("super_admin", "admin_rida"), async (req, res) => {
     try { return res.json(await db.createTemplate(req.body)); }
@@ -936,6 +984,21 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try { return res.json(await db.updateTemplate(req.params.id, req.body)); }
     catch (e: any) { return res.status(500).json({ error: e.message }); }
   });
+
+  app.get(
+    "/api/admin/letter-templates/:id",
+    authMiddleware,
+    requireRole("super_admin", "admin_rida"),
+    async (req, res) => {
+      try {
+        const item = await db.getTemplate(req.params.id);
+        if (!item) return res.status(404).json({ error: "Not found" });
+        return res.json(item);
+      } catch (e: any) {
+        return res.status(500).json({ error: e.message });
+      }
+    },
+  );
 
   // ─── Surveys ─────────────────────────────────────────────────────────────────
   app.post("/api/surveys", async (req, res) => {
@@ -979,9 +1042,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       return res.json(await db.listSuggestions({ page: +page, limit: +limit }));
     } catch (e: any) { return res.status(500).json({ error: e.message }); }
   });
-
-  // ─── Seed ─────────────────────────────────────────────────────────────────────
-  await seedDatabase();
 
   return httpServer;
 }

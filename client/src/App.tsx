@@ -23,7 +23,10 @@ import PermitDetailPage from "@/pages/permits/detail";
 import SurveysPage from "@/pages/surveys/index";
 import FinalReportsPage from "@/pages/reports/index";
 import SuggestionsPage from "@/pages/suggestions/index";
-import LetterTemplatesPage from "@/pages/letter-templates/index";
+import LetterTemplatesPage from "@/pages/letter-templates";
+import LetterTemplatesCreatePage from "@/pages/letter-templates/new";
+import LetterTemplatesEditPage from "@/pages/letter-templates/[id]/edit";
+import LetterTemplatesPreviewPage from "@/pages/letter-templates/[id]/index";
 import UsersPage from "@/pages/users/index";
 import NotFound from "@/pages/not-found";
 
@@ -139,7 +142,11 @@ function Router() {
       <Route path="/surveys" component={() => <ProtectedRoute component={SurveysPage} roles={["super_admin", "admin_rida"]} />} />
       <Route path="/final-reports" component={() => <ProtectedRoute component={FinalReportsPage} roles={["super_admin", "admin_rida"]} />} />
       <Route path="/suggestions" component={() => <ProtectedRoute component={SuggestionsPage} roles={["super_admin", "admin_rida"]} />} />
-      <Route path="/letter-templates" component={() => <ProtectedRoute component={LetterTemplatesPage} roles={["super_admin", "admin_rida"]} />} />
+      {/* <Route path="/letter-templates" component={() => <ProtectedRoute component={LetterTemplatesPage} roles={["super_admin", "admin_rida"]} />} /> */}
+      <Route path="/letter-templates" component={() => <ProtectedRoute component={LetterTemplatesPage} roles={["super_admin", "admin_rida"]}/>} />
+      <Route path="/letter-templates/new" component={() => <ProtectedRoute component={LetterTemplatesCreatePage} roles={["super_admin", "admin_rida"]}/>} />
+      <Route path="/letter-templates/:id/edit" component={() => <ProtectedRoute component={LetterTemplatesEditPage} roles={["super_admin", "admin_rida"]}/>} />
+      <Route path="/letter-templates/:id" component={() => <ProtectedRoute component={LetterTemplatesPreviewPage} roles={["super_admin", "admin_rida"]}/>} />
       <Route path="/users" component={() => <ProtectedRoute component={UsersPage} roles={["super_admin"]} />} />
       <Route component={NotFound} />
     </Switch>
