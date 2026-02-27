@@ -602,7 +602,7 @@ export function registerFlutterApiRoutes(app: express.Express) {
       }
       
       // Hash password
-      const { hashPassword } = await import("../auth");
+      const { hashPassword } = await import("./auth");
       const hashedPassword = hashPassword(password);
       
       // Create user
@@ -886,7 +886,7 @@ export function registerFlutterApiRoutes(app: express.Express) {
         });
       }
       
-      const { verifyPassword, hashPassword } = await import("../auth");
+      const { verifyPassword, hashPassword } = await import("./auth");
       
       if (!verifyPassword(current_password, user.password)) {
         return res.status(401).json({
