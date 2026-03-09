@@ -186,11 +186,11 @@ export function registerFlutterApiRoutes(app: express.Express) {
    * @desc    Get news detail by slug
    * @access  Public
    */
-  flutterRouter.get("/v1/news/:slug", async (req: Request, res: Response) => {
+  flutterRouter.get("/v1/news/:id", async (req: Request, res: Response) => {
     try {
-      const { slug } = req.params;
+      const { id } = req.params;
       
-      const news = await db.getNewsBySlug(slug);
+      const news = await db.getNewsById(id);
       if (!news) {
         return res.status(404).json({
           success: false,
