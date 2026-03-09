@@ -1,4 +1,4 @@
-import { eq, and, isNull, desc, like, or, sql } from "drizzle-orm";
+import { eq, and, isNull, asc, desc, like, or, sql } from "drizzle-orm";
 import { db } from "./db";
 import * as schema from "@shared/schema";
 import type {
@@ -180,6 +180,9 @@ export interface IStorage {
   createGeneratedLetter(data: { permitId: string; templateId?: string; fileUrl?: string }): Promise<any>;
   getGeneratedLetter(permitId: string): Promise<any>;
 
+  listLetterTemplateFiles(templateId: string): Promise<any[]>;
+  getTemplateByType(type: string): Promise<any>;
+
   // Surveys
   createSurvey(data: InsertSurvey): Promise<Survey>;
   listSurveys(opts?: { page?: number; limit?: number }): Promise<{ items: Survey[]; total: number }>;
@@ -244,8 +247,8 @@ export class DatabaseStorage implements IStorage {
   }
 
   // ── News ────────────────────────────────────────────────────────────────────
-  async listNews(opts: { page?: number; limit?: number; categoryId?: string; search?: string; status?: string; trash?: boolean } = {}) {
-    const { page = 1, limit = 10, categoryId, search, status, trash = false } = opts;
+  async listNews(opts: { page?: number; limit?: number; categoryId?: string; search?: string; status?: string; trash?: boolean; sortBy?: string; sortDir?: string } = {}) {
+    const { page = 1, limit = 10, categoryId, search, status, trash = false, sortBy = "publishedAt", sortDir = "desc" } = opts;
     const offset = (page - 1) * limit;
 
     const conditions: any[] = [];
@@ -266,7 +269,7 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(schema.news)
       .where(where)
-      .orderBy(desc(schema.news.createdAt))
+      .orderBy(sortDir === "asc" ? asc(schema.news[sortBy as keyof typeof schema.news] as any) : desc(schema.news[sortBy as keyof typeof schema.news] as any))
       .limit(limit)
       .offset(offset);
 
@@ -462,8 +465,8 @@ export class DatabaseStorage implements IStorage {
   }
 
   // ── Documents ───────────────────────────────────────────────────────────────
-  async listDocuments(opts: { page?: number; limit?: number; search?: string; trash?: boolean; kindId?: string; categoryId?: string; typeId?: string } = {}) {
-    const { page = 1, limit = 10, search, trash = false, kindId, categoryId, typeId } = opts;
+  async listDocuments(opts: { page?: number; limit?: number; search?: string; trash?: boolean; kindId?: string; categoryId?: string; typeId?: string; sortBy?: string; sortDir?: string } = {}) {
+    const { page = 1, limit = 10, search, trash = false, kindId, categoryId, typeId, sortBy = "publishedAt", sortDir = "desc" } = opts;
     const offset = (page - 1) * limit;
 
     const conditions: any[] = trash
@@ -486,7 +489,7 @@ export class DatabaseStorage implements IStorage {
       .select()
       .from(schema.documents)
       .where(where)
-      .orderBy(desc(schema.documents.createdAt))
+      .orderBy(sortDir === "asc" ? asc(schema.documents[sortBy as keyof typeof schema.documents] as any) : desc(schema.documents[sortBy as keyof typeof schema.documents] as any))
       .limit(limit)
       .offset(offset);
 
@@ -575,16 +578,56 @@ export class DatabaseStorage implements IStorage {
       .orderBy(desc(schema.researchPermitRequests.createdAt));
   }
 
-  async createPermit(data: InsertResearchPermit) {
-    const requestNumber = await generateRequestNumber();
-    const permit = await insertAndGet<ResearchPermit>(
-      schema.researchPermitRequests,
-      schema.researchPermitRequests.id,
-      { ...data, requestNumber }
-    );
+  async getPermitByNumber(requestNumber: string) {
+    const [r] = await db
+      .select()
+      .from(schema.researchPermitRequests)
+      .where(
+        and(
+          eq(schema.researchPermitRequests.requestNumber, requestNumber),
+          isNull(schema.researchPermitRequests.deletedAt)
+        )
+      );
+  
+    return r;
+  }
 
-    await this.addPermitStatusHistory({ permitId: permit.id, fromStatus: null, toStatus: "submitted" });
-    return permit;
+  async createPermit(data: InsertResearchPermit) {
+    const MAX_RETRY = 5;
+  
+    for (let attempt = 0; attempt < MAX_RETRY; attempt++) {
+      const requestNumber = await generateRequestNumber();
+  
+      try {
+        const permit = await insertAndGet<ResearchPermit>(
+          schema.researchPermitRequests,
+          schema.researchPermitRequests.id,
+          { ...data, requestNumber }
+        );
+  
+        await this.addPermitStatusHistory({
+          permitId: permit.id,
+          fromStatus: null,
+          toStatus: "submitted",
+        });
+  
+        return permit;
+  
+      } catch (err: any) {
+  
+        if (err?.errno === 1062 || err?.code === "ER_DUP_ENTRY") {
+          if (attempt === MAX_RETRY - 1) {
+            throw new Error("Failed to generate unique request number after retries");
+          }
+  
+          continue; 
+        }
+  
+        throw err;
+      }
+    }
+  
+    throw new Error("Unexpected error creating permit");
   }
 
   async updatePermitStatus(id: string, status: string, note?: string, processedBy?: string) {
@@ -656,8 +699,19 @@ export class DatabaseStorage implements IStorage {
     return insertAndGet<any>(
       schema.letterTemplateFiles,
       schema.letterTemplateFiles.id,
-      data
+      {
+        ...data,
+        createdAt: new Date(),
+      }
     );
+  }  
+
+  async getLetterTemplateFile(id: string) {
+    const [file] = await db
+      .select()
+      .from(schema.letterTemplateFiles)
+      .where(eq(schema.letterTemplateFiles.id, id));
+    return file;
   }
   
   async listLetterTemplateFiles(templateId: string) {

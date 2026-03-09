@@ -163,7 +163,7 @@ export function AppSidebar() {
                   <NavItem href="/surveys" icon={BarChart2} label={t("surveys")} />
                   <NavItem href="/final-reports" icon={Upload} label={t("reports")} />
                   <NavItem href="/suggestions" icon={MessageSquare} label={t("suggestions")} />
-                  <NavItem href="/letter-templates" icon={FileEdit} label={t("templates")} />
+                  {/* <NavItem href="/letter-templates" icon={FileEdit} label={t("templates")} /> */}
                 </SidebarMenu>
               </SidebarGroupContent>
             </SidebarGroup>

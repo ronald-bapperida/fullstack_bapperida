@@ -11,15 +11,14 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Plus, Edit, Trash2, FileText, ExternalLink, RefreshCw, Search, Filter } from "lucide-react";
+import { Plus, Edit, Trash2, FileText, ExternalLink, RefreshCw, Search, Filter, ArrowUp, ArrowDown } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useForm, Controller } from "react-hook-form";
 import { format } from "date-fns";
-import { id } from "date-fns/locale";
 
 interface DocMaster { id: string; name: string; }
 interface Doc {
-  id: string; title: string; accessLevel: string; status: string;
+  id: string; title: string; accessLevel: string; status: string; publishedAt: string | null;
   fileUrl: string | null; createdAt: string; deletedAt: string | null;
   kindId: string | null; categoryId: string | null; typeId: string | null;
 }
@@ -33,6 +32,7 @@ function DocForm({ doc, kinds, categories, types, onDone }: {
 }) {
   const { toast } = useToast();
   const [file, setFile] = useState<File | null>(null);
+
   const { register, handleSubmit, control, formState: { errors } } = useForm({
     defaultValues: {
       title: doc?.title || "",
@@ -41,15 +41,27 @@ function DocForm({ doc, kinds, categories, types, onDone }: {
       typeId: doc?.typeId || "",
       accessLevel: doc?.accessLevel || "terbuka",
       status: doc?.status || "draft",
-      publishedAt: "",
+      publishedAt: doc?.publishedAt
+                  ? format(new Date(doc.publishedAt), "yyyy-MM-dd'T'HH:mm")
+                  : "",
     },
   });
 
   const mutation = useMutation({
     mutationFn: async (data: any) => {
       const fd = new FormData();
-      Object.entries(data).forEach(([k, v]) => { if (v !== undefined && v !== null && v !== "") fd.append(k, String(v)); });
+      Object.entries(data).forEach(([k, v]) => {
+        if (k === "publishedAt") {
+          fd.append(k, v ? String(v) : "");
+          return;
+        }
+        if (v !== undefined && v !== null && v !== "") fd.append(k, String(v));
+      });
       if (file) fd.append("file", file);
+      // if (data.publishedAt) {
+      //   const dt = new Date(data.publishedAt + "T00:00:00");
+      //   fd.set("publishedAt", dt.toISOString());
+      // }
       const res = doc
         ? await apiRequest("PATCH", `/api/admin/documents/${doc.id}`, fd)
         : await apiRequest("POST", "/api/admin/documents", fd);
@@ -113,8 +125,8 @@ function DocForm({ doc, kinds, categories, types, onDone }: {
         </div>
       </div>
 
-      <div className="grid grid-cols-2 gap-4">
-        <div className="flex flex-col gap-2">
+      <div className="grid gap-4">
+        {/* <div className="flex flex-col gap-2">
           <Label>Level Akses</Label>
           <Controller name="accessLevel" control={control} render={({ field }) => (
             <Select value={field.value} onValueChange={field.onChange}>
@@ -126,7 +138,7 @@ function DocForm({ doc, kinds, categories, types, onDone }: {
               </SelectContent>
             </Select>
           )} />
-        </div>
+        </div> */}
         <div className="flex flex-col gap-2">
           <Label>Status</Label>
           <Controller name="status" control={control} render={({ field }) => (
@@ -143,7 +155,7 @@ function DocForm({ doc, kinds, categories, types, onDone }: {
 
       <div className="flex flex-col gap-2">
         <Label>Tanggal Publikasi</Label>
-        <Input type="date" {...register("publishedAt")} />
+        <Input type="datetime-local" {...register("publishedAt")} />
       </div>
 
       <div className="flex flex-col gap-2">
@@ -178,12 +190,16 @@ export default function DocumentsPage() {
   const [filterKind, setFilterKind] = useState("");
   const [filterCategory, setFilterCategory] = useState("");
 
+  const [sortBy, setSortBy] = useState<"title" | "publishedAt" | "createdAt">("publishedAt");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
+
   const { data: kinds = [] } = useQuery<DocMaster[]>({ queryKey: ["/api/document-kinds"] });
   const { data: categories = [] } = useQuery<DocMaster[]>({ queryKey: ["/api/document-categories"] });
   const { data: types = [] } = useQuery<DocMaster[]>({ queryKey: ["/api/document-types"] });
 
   const params = {
     page: String(page), limit: "15",
+    sortBy, sortDir,
     ...(search ? { search } : {}),
     ...(trash ? { trash: "true" } : {}),
     ...(filterKind ? { kindId: filterKind } : {}),
@@ -210,6 +226,52 @@ export default function DocumentsPage() {
   const kindMap = Object.fromEntries(kinds.map(k => [k.id, k.name]));
   const categoryMap = Object.fromEntries(categories.map(c => [c.id, c.name]));
   const typeMap = Object.fromEntries(types.map(t => [t.id, t.name]));
+
+  function toggleSort(key: "title" | "publishedAt") {
+    setPage(1);
+    setSortBy(prev => {
+      if (prev !== key) {
+        setSortDir(key === "title" ? "asc" : "desc");
+        return key;
+      }
+      setSortDir(d => (d === "asc" ? "desc" : "asc"));
+      return prev;
+    });
+  }
+
+  function SortableHead({
+    label,
+    colKey,
+    sortBy,
+    sortDir,
+    onSort,
+    className,
+  }: {
+    label: React.ReactNode;
+    colKey: "title" | "publishedAt";
+    sortBy: string;
+    sortDir: "asc" | "desc";
+    onSort: (key: "title" | "publishedAt") => void;
+    className?: string;
+  }) {
+    const active = sortBy === colKey;
+    return (
+      <TableHead className={className}>
+        <button
+          type="button"
+          onClick={() => onSort(colKey)}
+          className="inline-flex items-center gap-2 select-none hover:text-foreground"
+        >
+          <span>{label}</span>
+          {active ? (
+            sortDir === "asc" ? <ArrowUp className="w-4 h-4" /> : <ArrowDown className="w-4 h-4" />
+          ) : (
+            <ArrowUp className="w-4 h-4" />
+          )}
+        </button>
+      </TableHead>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-6 p-6">
@@ -294,11 +356,26 @@ export default function DocumentsPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Judul</TableHead>
+            <SortableHead
+                label="Judul"
+                colKey="title"
+                sortBy={sortBy}
+                sortDir={sortDir}
+                onSort={toggleSort}
+              />
+              {/* <TableHead>Judul</TableHead> */}
               <TableHead className="w-32">Jenis</TableHead>
               <TableHead className="w-32">Kategori</TableHead>
               <TableHead className="w-20">Tipe</TableHead>
-              <TableHead className="w-24">Akses</TableHead>
+              {/* <TableHead className="w-24">Akses</TableHead> */}
+              <SortableHead
+                label="Tanggal Publikasi"
+                colKey="publishedAt"
+                sortBy={sortBy}
+                sortDir={sortDir}
+                onSort={toggleSort}
+                className="w-44"
+              />
               <TableHead className="w-24">Status</TableHead>
               <TableHead className="w-24 text-right">Aksi</TableHead>
             </TableRow>
@@ -325,7 +402,8 @@ export default function DocumentsPage() {
                 <TableCell className="text-sm">{d.kindId ? kindMap[d.kindId] || "-" : "-"}</TableCell>
                 <TableCell className="text-sm">{d.categoryId ? categoryMap[d.categoryId] || "-" : "-"}</TableCell>
                 <TableCell className="text-sm">{d.typeId ? typeMap[d.typeId] || "-" : "-"}</TableCell>
-                <TableCell><Badge variant="outline" className="text-xs">{d.accessLevel}</Badge></TableCell>
+                {/* <TableCell><Badge variant="outline" className="text-xs">{d.accessLevel}</Badge></TableCell> */}
+                <TableCell className="text-sm">{d.publishedAt ? format(new Date(d.publishedAt), "dd MMM yyyy HH:mm") : "-"}</TableCell>
                 <TableCell><Badge variant={d.status === "published" ? "default" : "secondary"} className="text-xs">{d.status}</Badge></TableCell>
                 <TableCell>
                   <div className="flex items-center justify-end gap-1">

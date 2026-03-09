@@ -187,12 +187,12 @@ export default function NewsFormPage() {
 
                 <div className="flex flex-col gap-2">
                   <Label>Tanggal Publikasi</Label>
-                  <Input type="date" {...register("publishedAt")} />
+                  <Input type="datetime-local" {...register("publishedAt")} />
                 </div>
 
                 <div className="flex flex-col gap-2">
                   <Label>Tanggal Kegiatan</Label>
-                  <Input type="date" {...register("eventAt")} />
+                  <Input type="datetime-local" {...register("eventAt")} />
                 </div>
 
                 <div className="flex flex-col gap-2">

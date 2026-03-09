@@ -15,6 +15,7 @@ import { Plus, Edit, Trash2, Menu, ChevronRight } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useForm, Controller } from "react-hook-form";
+import QuillEditor from "@/components/quill-editor";
 
 export default function MenusPage() {
   const { toast } = useToast();
@@ -30,9 +31,17 @@ export default function MenusPage() {
     defaultValues: { name: "", location: "mobile", isActive: true },
   });
 
-  const { register: ri, handleSubmit: hi, control: ci, reset: reseti } = useForm({
+  const {
+    register: ri,
+    handleSubmit: hi,
+    control: ci,
+    reset: reseti,
+    watch: watchi,
+  } = useForm({
     defaultValues: { menuId: "", title: "", type: "url", value: "", requiresAuth: false, sortOrder: 0 },
   });
+  
+  const watchedType = watchi("type");
 
   const menuMutation = useMutation({
     mutationFn: async (data: any) => {
@@ -143,13 +152,32 @@ export default function MenusPage() {
               )} />
             </div>
             <div className="flex flex-col gap-2">
-              <Label>Value (URL/Route)</Label>
-              <Input {...ri("value")} placeholder="/beranda atau https://..." />
+              <Label>{watchedType === "page" ? "Konten Halaman" : "Value (URL/Route)"}</Label>
+
+              {watchedType === "page" ? (
+                <Controller
+                  name="value"
+                  control={ci}
+                  render={({ field }) => (
+                    <QuillEditor
+                      value={field.value || ""}
+                      onChange={field.onChange}
+                      placeholder="Tulis konten halaman..."
+                      minHeight={280}
+                    />
+                  )}
+                />
+              ) : (
+                <Input
+                  {...ri("value")}
+                  placeholder={watchedType === "route" ? "/beranda" : "https://..."}
+                />
+              )}
             </div>
-            <div className="flex flex-col gap-2">
+            {/* <div className="flex flex-col gap-2">
               <Label>Sort Order</Label>
               <Input type="number" {...ri("sortOrder")} />
-            </div>
+            </div> */}
             <div className="flex items-center gap-3">
               <Controller name="requiresAuth" control={ci} render={({ field }) => <Switch checked={field.value} onCheckedChange={field.onChange} />} />
               <Label>Butuh Login</Label>
@@ -209,9 +237,41 @@ export default function MenusPage() {
                           <Badge variant="outline" className="text-[10px]">{item.type}</Badge>
                           <span className="text-xs text-muted-foreground">{item.value}</span>
                         </div>
-                        <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => deleteItemMutation.mutate(item.id)}>
-                          <Trash2 className="w-3 h-3 text-destructive" />
-                        </Button>
+                        <div className="flex items-center gap-1">
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-6 w-6"
+                            onClick={() => {
+                              setSelectedMenuId(menu.id);
+                              setEditItem(item);
+
+                              reseti({
+                                menuId: menu.id,
+                                title: item.title || "",
+                                type: item.type || "url",
+                                value: item.value || "",
+                                requiresAuth: !!item.requiresAuth,
+                                sortOrder: Number(item.sortOrder ?? 0),
+                              });
+
+                              setItemOpen(true);
+                            }}
+                            title="Edit item"
+                          >
+                            <Edit className="w-3 h-3" />
+                          </Button>
+
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            className="h-6 w-6"
+                            onClick={() => deleteItemMutation.mutate(item.id)}
+                            title="Hapus item"
+                          >
+                            <Trash2 className="w-3 h-3 text-destructive" />
+                          </Button>
+                        </div>
                       </div>
                     ))}
                   </div>

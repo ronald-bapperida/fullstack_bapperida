@@ -290,8 +290,8 @@ export default function BannersPage() {
             ) : banners.map(b => (
               <TableRow key={b.id} data-testid={`row-banner-${b.id}`}>
                 <TableCell>
-                  {b.imageDesktop ? (
-                    <img src={b.imageDesktop} alt={b.altText || b.title} className="w-20 aspect-video object-cover rounded" />
+                  {b.imageMobile ? (
+                    <img src={b.imageMobile} alt={b.altText || b.title} className="w-20 aspect-video object-cover rounded" />
                   ) : (
                     <div className="w-20 aspect-video bg-muted rounded flex items-center justify-center">
                       <Image className="w-4 h-4 text-muted-foreground" />

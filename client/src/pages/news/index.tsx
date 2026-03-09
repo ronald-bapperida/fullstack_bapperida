@@ -10,7 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Plus, Search, Trash2, Edit, Eye, RefreshCw, Newspaper, Globe, FileText } from "lucide-react";
+import { Plus, Search, Trash2, Edit, Eye, RefreshCw, Newspaper, Globe, FileText, ArrowUp, ArrowDown } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useLang } from "@/contexts/language";
 import { format } from "date-fns";
@@ -29,9 +29,12 @@ export default function NewsPage() {
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("all");
   const [trash, setTrash] = useState(false);
+  const [sortBy, setSortBy] = useState<"title" | "publishedAt" | "createdAt">("publishedAt");
+  const [sortDir, setSortDir] = useState<"asc" | "desc">("desc");
 
   const params = {
     page: String(page), limit: "15",
+    sortBy, sortDir,
     ...(search ? { search } : {}),
     ...(status !== "all" ? { status } : {}),
     ...(trash ? { trash: "true" } : {}),
@@ -66,6 +69,52 @@ export default function NewsPage() {
   const items = data?.items || [];
   const total = data?.total || 0;
   const totalPages = Math.ceil(total / 15);
+
+  function toggleSort(key: "title" | "publishedAt") {
+    setPage(1);
+    setSortBy(prev => {
+      if (prev !== key) {
+        setSortDir(key === "title" ? "asc" : "desc");
+        return key;
+      }
+      setSortDir(d => (d === "asc" ? "desc" : "asc"));
+      return prev;
+    });
+  }
+
+  function SortableHead({
+    label,
+    colKey,
+    sortBy,
+    sortDir,
+    onSort,
+    className,
+  }: {
+    label: React.ReactNode;
+    colKey: "title" | "publishedAt";
+    sortBy: string;
+    sortDir: "asc" | "desc";
+    onSort: (key: "title" | "publishedAt") => void;
+    className?: string;
+  }) {
+    const active = sortBy === colKey;
+    return (
+      <TableHead className={className}>
+        <button
+          type="button"
+          onClick={() => onSort(colKey)}
+          className="inline-flex items-center gap-2 select-none hover:text-foreground"
+        >
+          <span>{label}</span>
+          {active ? (
+            sortDir === "asc" ? <ArrowUp className="w-4 h-4" /> : <ArrowDown className="w-4 h-4" />
+          ) : (
+            <ArrowUp className="w-4 h-4" />
+          )}
+        </button>
+      </TableHead>
+    );
+  }
 
   return (
     <div className="flex flex-col gap-6 p-6">
@@ -126,9 +175,24 @@ export default function NewsPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>{t("tableColTitle")}</TableHead>
+              <SortableHead
+                label={t("tableColTitle")}
+                colKey="title"
+                sortBy={sortBy}
+                sortDir={sortDir}
+                onSort={toggleSort}
+              />
+              {/* <TableHead>{t("tableColTitle")}</TableHead> */}
               <TableHead className="w-36">{t("tableColStatus")}</TableHead>
-              <TableHead className="w-36">{t("tableColDate")}</TableHead>
+              {/* <TableHead className="w-36">{t("tableColDate")}</TableHead> */}
+              <SortableHead
+                label={t("tableColDate")}
+                colKey="publishedAt"
+                sortBy={sortBy}
+                sortDir={sortDir}
+                onSort={toggleSort}
+                className="w-36"
+              />
               <TableHead className="w-20 text-right">Views</TableHead>
               <TableHead className="w-28 text-right">{t("tableColAction")}</TableHead>
             </TableRow>
@@ -179,7 +243,7 @@ export default function NewsPage() {
                   </div>
                 </TableCell>
                 <TableCell className="text-sm text-muted-foreground">
-                  {format(new Date(item.createdAt), "d MMM yyyy", { locale: id })}
+                  {format(new Date(item.publishedAt || item.createdAt), "d MMM yyyy HH:mm", { locale: id })}
                 </TableCell>
                 <TableCell className="text-right text-sm">
                   <span className="flex items-center justify-end gap-1">

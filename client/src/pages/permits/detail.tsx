@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useState, useRef } from "react";
 import { useParams, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -10,6 +10,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Input } from "@/components/ui/input";
 
 import {
   Dialog,
@@ -30,6 +31,8 @@ import {
   ExternalLink,
   Eye,
   Download,
+  Upload,
+  FileUp,
 } from "lucide-react";
 
 import { useToast } from "@/hooks/use-toast";
@@ -116,12 +119,14 @@ export default function PermitDetailPage() {
   const { id: permitId } = useParams<{ id: string }>();
   const [, setLoc] = useLocation();
   const { toast } = useToast();
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [newStatus, setNewStatus] = useState("");
   const [note, setNote] = useState("");
 
-  // template picker
-  const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
+  // File template yang dipilih dari komputer
+  const [selectedFile, setSelectedFile] = useState<File | null>(null);
+  const [selectedFileName, setSelectedFileName] = useState<string>("");
 
   // preview modal
   const [previewOpen, setPreviewOpen] = useState(false);
@@ -134,21 +139,9 @@ export default function PermitDetailPage() {
     queryKey: [`/api/admin/permits/${permitId}`],
   });
 
-  const { data: templatesRaw } = useQuery<any>({
-    queryKey: ["/api/admin/letter-templates"],
-  });
+  // Hapus query templates karena kita tidak pakai template dari database
 
-  const templates = useMemo(() => {
-    const t = unwrapApi(templatesRaw);
-    return Array.isArray(t) ? t : (t?.items ?? []);
-  }, [templatesRaw]);
-
-  // auto-select first template
-  useEffect(() => {
-    if (!selectedTemplateId && templates?.length) setSelectedTemplateId(templates[0].id);
-  }, [templates, selectedTemplateId]);
-
-  const templateReady = !!selectedTemplateId;
+  const templateReady = !!selectedFile;
 
   const StatusIcon = useMemo(() => (STATUS_ICONS[permit?.status] || Clock), [permit?.status]);
 
@@ -185,94 +178,110 @@ export default function PermitDetailPage() {
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
-  // Generate HTML letter (.html) + create generatedLetters row
-  // ✅ kirim templateId agar backend pakai template terpilih
-  const generateHtmlMutation = useMutation({
+  // Generate dan download DOCX dengan file template dari komputer
+  const generateDocxMutation = useMutation({
     mutationFn: async () => {
-      if (!selectedTemplateId) throw new Error("Pilih template dulu");
-      const res = await apiRequest("POST", `/api/admin/permits/${permitId}/generate-letter`, {
-        templateId: selectedTemplateId,
+      if (!selectedFile) throw new Error("Pilih file template dulu");
+      
+      const formData = new FormData();
+      formData.append("template", selectedFile);
+      
+      const response = await fetch(`/api/admin/permits/${permitId}/generate-letter-docx`, {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+        },
+        body: formData,
       });
-      if (!res.ok) throw new Error(await res.text());
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: [`/api/admin/permits/${permitId}`] });
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/permits"] });
-      toast({ title: "Surat HTML berhasil digenerate" });
-    },
-    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
-  });
-
-  // Download DOCX (endpoint POST attachment -> fetch blob -> download)
-  // ✅ kirim templateId agar backend pakai template terpilih (dan tercatat templateId-nya)
-  const downloadDocxMutation = useMutation({
-    mutationFn: async () => {
-      if (!selectedTemplateId) throw new Error("Pilih template dulu");
-      const res = await apiRequest("POST", `/api/admin/permits/${permitId}/generate-letter-docx`, {
-        templateId: selectedTemplateId,
-      });
-      if (!res.ok) throw new Error(await res.text());
-      return res.blob();
+      
+      if (!response.ok) {
+        const errorText = await response.text();
+        throw new Error(errorText);
+      }
+      
+      return response.blob();
     },
     onSuccess: (blob) => {
       const fn = `${permit?.requestNumber || "surat-izin"}-${Date.now()}.docx`.replace(/\s+/g, "-");
       downloadBlob(blob, fn);
-      toast({ title: "DOCX terunduh" });
+      toast({ 
+        title: "Sukses", 
+        description: "Surat berhasil digenerate dan didownload" 
+      });
 
+      // Refresh data permit
       queryClient.invalidateQueries({ queryKey: [`/api/admin/permits/${permitId}`] });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/permits"] });
     },
-    onError: (e: any) => toast({ title: "Gagal download DOCX", description: e.message, variant: "destructive" }),
+    onError: (e: any) => {
+      console.error("DOCX generation error:", e);
+      toast({ 
+        title: "Gagal generate DOCX", 
+        description: e.message, 
+        variant: "destructive" 
+      });
+    },
   });
 
-  // ✅ Preview PDF: pakai endpoint yang kamu panggil di downloadPdf
-  // Endpoint yang dibutuhkan di backend:
-  // GET /api/admin/permits/:id/letter/download?format=pdf&templateId=...
-  // Untuk preview kita pakai endpoint yg sama tapi inline di iframe.
+  // Preview PDF (masih menggunakan endpoint yang sama)
   const openPreviewPdf = async () => {
-    if (!selectedTemplateId) {
-      toast({ title: "Pilih template dulu", variant: "destructive" });
+    if (!selectedFile) {
+      toast({ title: "Pilih file template dulu", variant: "destructive" });
       return;
     }
 
-    // Supaya surat sudah ada (opsional), generate html dulu jika belum ada atau template berubah
-    // NOTE: akan lebih akurat kalau backend support "preview pdf" stateless.
-    if (!permit?.generatedLetter?.fileUrl || permit?.generatedLetter?.templateId !== selectedTemplateId) {
-      await generateHtmlMutation.mutateAsync();
-    }
-
-    // ✅ preview via iframe ke endpoint pdf
-    const pdfUrl = `/api/admin/permits/${permitId}/letter/download?format=pdf&templateId=${encodeURIComponent(
-      selectedTemplateId,
-    )}`;
-
+    const pdfUrl = `/api/admin/permits/${permitId}/letter/preview-pdf`;
     setPreviewUrl(pdfUrl);
     setPreviewOpen(true);
   };
 
-  // ✅ Download PDF (harus backend support templateId)
+  // Download PDF
   const downloadPdf = () => {
-    if (!selectedTemplateId) {
-      toast({ title: "Pilih template dulu", variant: "destructive" });
+    if (!selectedFile) {
+      toast({ title: "Pilih file template dulu", variant: "destructive" });
       return;
     }
     window.open(
-      `/api/admin/permits/${permitId}/letter/download?format=pdf&templateId=${encodeURIComponent(selectedTemplateId)}`,
+      `/api/admin/permits/${permitId}/letter/download-pdf`,
       "_blank",
     );
   };
 
   const doDownload = () => {
-    if (downloadFormat === "docx") downloadDocxMutation.mutate();
-    else downloadPdf();
+    if (downloadFormat === "docx") {
+      generateDocxMutation.mutate();
+    } else {
+      downloadPdf();
+    }
   };
 
-  useEffect(() => {
-    return () => {
-      // kalau suatu saat preview pakai blob, revoke URL di sini
-    };
-  }, [previewUrl]);
+  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      if (!file.name.endsWith('.docx')) {
+        toast({
+          title: "Error",
+          description: "File harus berformat .docx",
+          variant: "destructive",
+        });
+        return;
+      }
+      setSelectedFile(file);
+      setSelectedFileName(file.name);
+    }
+  };
+
+  const triggerFileInput = () => {
+    fileInputRef.current?.click();
+  };
+
+  const clearSelectedFile = () => {
+    setSelectedFile(null);
+    setSelectedFileName("");
+    if (fileInputRef.current) {
+      fileInputRef.current.value = "";
+    }
+  };
 
   // --- UI States ---
   if (isLoading)
@@ -362,38 +371,75 @@ export default function PermitDetailPage() {
             </CardContent>
           </Card>
 
-          {/* Surat */}
+          {/* Surat - Modified to use file upload instead of template selection */}
           <Card className="border-primary/30">
             <CardHeader>
               <CardTitle className="text-base text-primary flex items-center gap-2">
-                <FileCheck className="w-4 h-4" /> Surat Izin Penelitian
+                <FileCheck className="w-4 h-4" /> Generate Surat Izin Penelitian
               </CardTitle>
             </CardHeader>
 
             <CardContent className="flex flex-col gap-4">
-              {/* Template picker */}
-              <div className="flex flex-col gap-2">
-                <Label>Pilih Template Surat</Label>
-                <Select value={selectedTemplateId} onValueChange={setSelectedTemplateId}>
-                  <SelectTrigger>
-                    <SelectValue placeholder="Pilih template..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {templates?.map((t: any) => (
-                      <SelectItem key={t.id} value={t.id}>
-                        {t.name} ({t.type})
-                      </SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
-                {!templateReady && (
-                  <div className="text-xs text-muted-foreground">Pilih template dulu untuk menampilkan aksi surat.</div>
+              {/* File upload section */}
+              <div className="flex flex-col gap-3">
+                <Label>Pilih File Template DOCX</Label>
+                
+                {/* Hidden file input */}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".docx"
+                  onChange={handleFileSelect}
+                  className="hidden"
+                />
+                
+                {/* Custom file upload button */}
+                <div className="flex items-center gap-2">
+                  <Button
+                    type="button"
+                    variant="outline"
+                    onClick={triggerFileInput}
+                    className="flex-1"
+                  >
+                    <FileUp className="w-4 h-4 mr-2" />
+                    {selectedFile ? "Ganti File" : "Pilih File Template"}
+                  </Button>
+                  
+                  {selectedFile && (
+                    <Button
+                      type="button"
+                      variant="ghost"
+                      size="icon"
+                      onClick={clearSelectedFile}
+                      title="Hapus file"
+                    >
+                      <XCircle className="w-4 h-4 text-destructive" />
+                    </Button>
+                  )}
+                </div>
+                
+                {/* Selected file info */}
+                {selectedFile && (
+                  <div className="text-sm bg-muted p-2 rounded-md flex items-center gap-2">
+                    <FileText className="w-4 h-4 text-primary shrink-0" />
+                    <span className="truncate flex-1">{selectedFileName}</span>
+                    <span className="text-xs text-muted-foreground">
+                      ({(selectedFile.size / 1024).toFixed(2)} KB)
+                    </span>
+                  </div>
+                )}
+                
+                {!selectedFile && (
+                  <div className="text-xs text-muted-foreground">
+                    Pilih file template DOCX dari komputer Anda. Template harus memiliki placeholder seperti {'{full_name}'}, {'{request_number}'}, dll.
+                  </div>
                 )}
               </div>
 
               {/* Existing stored file link (optional) */}
               {permit.generatedLetter?.fileUrl ? (
-                <div className="flex items-center gap-2">
+                <div className="flex items-center gap-2 pt-2 border-t">
+                  <span className="text-xs text-muted-foreground">File tersimpan:</span>
                   <a
                     href={permit.generatedLetter.fileUrl}
                     target="_blank"
@@ -403,23 +449,18 @@ export default function PermitDetailPage() {
                     <ExternalLink className="w-3 h-3" /> Buka file tersimpan
                   </a>
                 </div>
-              ) : (
-                <div className="text-sm text-muted-foreground">
-                  Surat belum tersedia untuk template ini. Generate dulu untuk preview & download.
-                </div>
-              )}
+              ) : null}
 
-              {/* Actions: only when template selected */}
+              {/* Actions: only when file selected */}
               {templateReady ? (
-                <div className="flex flex-wrap gap-2">
+                <div className="flex flex-wrap gap-2 pt-2">
                   <Button
                     variant="outline"
                     onClick={openPreviewPdf}
-                    disabled={generateHtmlMutation.isPending}
-                    title="Preview PDF"
+                    title="Preview PDF (menggunakan template default)"
                   >
                     <Eye className="w-4 h-4 mr-2" />
-                    {generateHtmlMutation.isPending ? "Menyiapkan..." : "Preview PDF"}
+                    Preview PDF
                   </Button>
 
                   <div className="flex items-center gap-2">
@@ -433,38 +474,35 @@ export default function PermitDetailPage() {
                       </SelectContent>
                     </Select>
 
-                    <Button onClick={doDownload} disabled={downloadDocxMutation.isPending}>
+                    <Button 
+                      onClick={doDownload} 
+                      disabled={generateDocxMutation.isPending}
+                    >
                       <Download className="w-4 h-4 mr-2" />
-                      {downloadDocxMutation.isPending ? "Memproses..." : "Download"}
+                      {generateDocxMutation.isPending ? "Memproses..." : "Download"}
                     </Button>
                   </div>
 
                   <Button
                     variant="secondary"
-                    onClick={() => generateHtmlMutation.mutate()}
-                    disabled={generateHtmlMutation.isPending}
-                    title="Generate HTML (untuk file tersimpan / audit)"
+                    onClick={() => generateDocxMutation.mutate()}
+                    disabled={generateDocxMutation.isPending}
+                    title="Generate & download DOCX dengan template yang dipilih"
                   >
                     <FileCheck className="w-4 h-4 mr-2" />
-                    {generateHtmlMutation.isPending ? "Membuat..." : "Generate HTML"}
-                  </Button>
-
-                  <Button
-                    variant="secondary"
-                    onClick={() => downloadDocxMutation.mutate()}
-                    disabled={downloadDocxMutation.isPending}
-                    title="Generate & download DOCX"
-                  >
-                    <FileCheck className="w-4 h-4 mr-2" />
-                    {downloadDocxMutation.isPending ? "Membuat DOCX..." : "Generate & Download DOCX"}
+                    {generateDocxMutation.isPending ? "Membuat DOCX..." : "Generate & Download DOCX"}
                   </Button>
                 </div>
-              ) : null}
+              ) : (
+                <div className="text-sm text-muted-foreground text-center py-4 bg-muted/30 rounded-md">
+                  Pilih file template DOCX terlebih dahulu untuk generate surat
+                </div>
+              )}
             </CardContent>
           </Card>
         </div>
 
-        {/* Right column */}
+        {/* Right column - Status and History (unchanged) */}
         <div className="flex flex-col gap-6">
           <Card>
             <CardHeader>

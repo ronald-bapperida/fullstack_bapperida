@@ -12,6 +12,10 @@ import {
   TableCell as DocxTableCell, WidthType, ImageRun, UnderlineType,
 } from "docx";
 
+import PizZip from "pizzip";
+import Docxtemplater from "docxtemplater";
+import * as xmlDom from "@xmldom/xmldom";
+
 // ─── File Upload Setup ────────────────────────────────────────────────────────
 const uploadDir = path.join(process.cwd(), "uploads");
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
@@ -36,9 +40,75 @@ function getMulter(subdir: string, maxSizeMB: number = 5) {
   });
 }
 
+function getMulterDocx(subdir: string, maxSizeMB?: number) {
+  const dir = path.join(uploadDir, subdir);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+
+  return multer({
+    storage: multer.diskStorage({
+      destination: (_, __, cb) => cb(null, dir),
+      filename: (_, file, cb) => {
+        const ext = path.extname(file.originalname).toLowerCase();
+        cb(null, `${randomUUID()}${ext}`);
+      },
+    }),
+    // "tanpa batas" di multer = jangan set limits.fileSize
+    ...(maxSizeMB ? { limits: { fileSize: maxSizeMB * 1024 * 1024 } } : {}),
+    fileFilter: (_, file, cb) => {
+      const ext = path.extname(file.originalname).toLowerCase();
+      cb(null, ext === ".docx");
+    },
+  });
+}
+
 function fileUrl(subdir: string, filename: string) {
   return `/uploads/${subdir}/${filename}`;
 }
+
+function normalizeDate(v: any) {
+  if (v === undefined) return undefined;
+  if (v === null || v === "") return null; 
+  if (v instanceof Date) return v;
+  const dt = new Date(v);
+  if (Number.isNaN(dt.getTime())) throw new Error("publishedAt invalid");
+  return dt;
+}
+
+// Fungsi untuk generate DOCX dengan docxtemplater
+async function generateDocxFromTemplate(
+  templatePath: string,
+  data: any
+): Promise<Buffer> {
+  try {
+    // Baca file template
+    const content = fs.readFileSync(templatePath, "binary");
+    
+    // Buat instance PizZip
+    const zip = new PizZip(content);
+    
+    // Inisialisasi docxtemplater
+    const doc = new Docxtemplater(zip, {
+      paragraphLoop: true,
+      linebreaks: true,
+      xmlDom: xmlDom as any,
+    });
+    
+    // Render template dengan data
+    doc.render(data);
+    
+    // Generate buffer
+    const buffer = doc.getZip().generate({
+      type: "nodebuffer",
+      compression: "DEFLATE",
+    });
+    
+    return buffer as Buffer;
+  } catch (error) {
+    console.error("Error generating DOCX:", error);
+    throw error;
+  }
+}
+
 
 export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
   // Serve uploads
@@ -152,7 +222,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/admin/news", authMiddleware, async (req: any, res) => {
     try {
       const { page = "1", limit = "10", categoryId, search, status, trash } = req.query as any;
-      const result = await db.listNews({ page: +page, limit: +limit, categoryId, search, status, trash: trash === "true" });
+      
+      const sortBy = String(req.query.sortBy || "publishedAt");
+      const sortDir = req.query.sortDir === "asc" ? "asc" : "desc";
+      const allowedSort = new Set(["title", "publishedAt", "createdAt"]);
+      const safeSortBy = allowedSort.has(sortBy) ? sortBy : "publishedAt";
+      const result = await db.listNews({ page: +page, limit: +limit, categoryId, search, status, trash: trash === "true", sortBy: safeSortBy, sortDir: sortDir });
       return res.json(result);
     } catch (e: any) { return res.status(500).json({ error: e.message }); }
   });
@@ -165,7 +240,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { return res.status(500).json({ error: e.message }); }
   });
 
-  const newsUpload = getMulter("news", 5);
+  const newsUpload = getMulter("news", 1);
   app.post("/api/admin/news", authMiddleware, requireRole("super_admin", "admin_bpp"),
     newsUpload.single("featuredImage"), async (req: any, res) => {
       try {
@@ -418,12 +493,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   app.get("/api/admin/documents", authMiddleware, async (req, res) => {
     try {
+      const sortBy = String(req.query.sortBy || "publishedAt");
+      const sortDir = req.query.sortDir === "asc" ? "asc" : "desc";
+      const allowedSort = new Set(["title", "publishedAt", "createdAt"]);
+      const safeSortBy = allowedSort.has(sortBy) ? sortBy : "publishedAt";
       const { page = "1", limit = "10", search, trash, kindId, categoryId, typeId } = req.query as any;
-      return res.json(await db.listDocuments({ page: +page, limit: +limit, search, trash: trash === "true", kindId, categoryId, typeId }));
+      return res.json(await db.listDocuments({ page: +page, limit: +limit, search, trash: trash === "true", kindId, categoryId, typeId, sortBy: safeSortBy, sortDir: sortDir }));
     } catch (e: any) { return res.status(500).json({ error: e.message }); }
   });
 
-  const docUpload = getMulter("documents", 10);
+  const docUpload = getMulter("documents", 1000);
   app.post("/api/admin/documents", authMiddleware, requireRole("super_admin", "admin_bpp"),
     docUpload.single("file"), async (req: any, res) => {
       try {
@@ -439,6 +518,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       try {
         const data = { ...req.body };
         if (req.file) data.fileUrl = fileUrl("documents", req.file.filename);
+        if ("publishedAt" in data) {
+          data.publishedAt = normalizeDate(data.publishedAt);
+        }
         return res.json(await db.updateDocument(req.params.id, data));
       } catch (e: any) { return res.status(500).json({ error: e.message }); }
     });
@@ -454,7 +536,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // ─── Research Permits ────────────────────────────────────────────────────────
-  const permitUpload = getMulter("permits", 1);
+  const permitUpload = getMulter("permits", 10);
 
   // Public: Submit permit
   app.post("/api/permits", permitUpload.fields([
@@ -462,7 +544,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     { name: "fileProposal" }, { name: "fileSocialMedia" }, { name: "fileSurvey" },
   ]), async (req: any, res) => {
     try {
-      const data = { ...req.body };
+      const data = { ...req.body, email: req.body.emailActive, };
       if (req.files?.fileIdentity?.[0]) data.fileIdentity = fileUrl("permits", req.files.fileIdentity[0].filename);
       if (req.files?.fileIntroLetter?.[0]) data.fileIntroLetter = fileUrl("permits", req.files.fileIntroLetter[0].filename);
       if (req.files?.fileProposal?.[0]) data.fileProposal = fileUrl("permits", req.files.fileProposal[0].filename);
@@ -482,6 +564,29 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (!email) return res.status(400).json({ error: "Email required" });
       return res.json(await db.getPermitByEmail(email));
     } catch (e: any) { return res.status(500).json({ error: e.message }); }
+  });
+
+  app.get("/api/permits/by-number/:number", async (req, res) => {
+    try {
+      const { number } = req.params;
+  
+      const pattern = /^BAPPERIDA-RID-\d{4}-\d{6}$/;
+
+      if (!pattern.test(number)) {
+        return res.status(400).json({ error: "Invalid request number format" });
+      }
+  
+      const permit = await db.getPermitByNumber(number);
+  
+      if (!permit) {
+        return res.status(404).json({ error: "Permit not found" });
+      }
+  
+      return res.json(permit);
+  
+    } catch (e: any) {
+      return res.status(500).json({ error: e.message });
+    }
   });
 
   app.get("/api/permits/:id", async (req, res) => {
@@ -553,240 +658,125 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const permit = await db.getPermit(req.params.id);
       if (!permit) return res.status(404).json({ error: "Not found" });
-      const templates = await db.listTemplates();
-      const template = templates[0];
-
+  
+      // Dapatkan template yang dipilih dari request body
+      const { templateId } = req.body;
+      
+      // Cari template file
+      let templateFile = null;
+      if (templateId) {
+        const templateFiles = await db.listLetterTemplateFiles(templateId);
+        templateFile = templateFiles.find(f => f.fileUrl.endsWith('.docx'));
+      }
+      
+      // Jika tidak ada template spesifik, gunakan template default
+      if (!templateFile) {
+        const templates = await db.listTemplates();
+        if (templates.length === 0) {
+          return res.status(400).json({ error: "No template found" });
+        }
+        
+        // Cari template dengan tipe research_permit
+        const researchTemplate = templates.find(t => t.type === "research_permit");
+        const defaultTemplate = researchTemplate || templates[0];
+        
+        const templateFiles = await db.listLetterTemplateFiles(defaultTemplate.id);
+        templateFile = templateFiles.find(f => f.fileUrl.endsWith('.docx'));
+        
+        if (!templateFile) {
+          return res.status(400).json({ error: "No DOCX template file found" });
+        }
+      }
+  
+      // Path ke file template
+      const templatePath = path.join(process.cwd(), templateFile.fileUrl.replace("/uploads", "uploads"));
+      
+      if (!fs.existsSync(templatePath)) {
+        return res.status(400).json({ error: "Template file not found on disk" });
+      }
+  
       const now = new Date();
-      const dateStr = now.toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" }).toUpperCase();
+      const dateStr = now.toLocaleDateString("id-ID", { 
+        day: "numeric", 
+        month: "long", 
+        year: "numeric" 
+      }).toUpperCase();
+      
       const endDate = new Date(now);
       endDate.setMonth(endDate.getMonth() + 1);
-      const endDateStr = endDate.toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" }).toUpperCase();
-
-      const logoKaltengPath = path.join(process.cwd(), "client", "public", "logo_kalteng.png");
-      const logoBapperidaPath = path.join(process.cwd(), "client", "public", "logo_bapperida.png");
-      const logoKaltengBuf = fs.existsSync(logoKaltengPath) ? fs.readFileSync(logoKaltengPath) : null;
-      const logoBapperidaBuf = fs.existsSync(logoBapperidaPath) ? fs.readFileSync(logoBapperidaPath) : null;
-
-      const cellBorder = {
-        top: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
-        bottom: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
-        left: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
-        right: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
+      const endDateStr = endDate.toLocaleDateString("id-ID", { 
+        day: "numeric", 
+        month: "long", 
+        year: "numeric" 
+      }).toUpperCase();
+  
+      // Data untuk template
+      const templateData = {
+        request_number: permit.requestNumber,
+        full_name: permit.fullName,
+        nim_nik: permit.nimNik,
+        institution: permit.institution,
+        research_title: permit.researchTitle,
+        research_location: permit.researchLocation,
+        research_duration: permit.researchDuration,
+        date: dateStr,
+        end_date: endDateStr,
+        signer_name: "Kepala BAPPERIDA Prov. Kalteng",
+        signer_position: "Kepala BADAN PERENCANAAN PEMBANGUNAN, RISET DAN INOVASI DAERAH",
+        signer_nip: "197412232000031002",
+        signer_rank: "Pembina Tk.I",
+        current_year: now.getFullYear().toString(),
+        current_month: now.toLocaleDateString("id-ID", { month: "long" }),
+        current_day: now.getDate().toString(),
+        // Tambahan data untuk template yang lebih kompleks
+        intro_letter_number: permit.introLetterNumber || "-",
+        intro_letter_date: permit.introLetterDate 
+          ? new Date(permit.introLetterDate).toLocaleDateString("id-ID", { 
+              day: "numeric", 
+              month: "long", 
+              year: "numeric" 
+            })
+          : "-",
+        birth_place: permit.birthPlace || "-",
+        phone_wa: permit.phoneWa || "-",
+        citizenship: permit.citizenship || "Indonesia",
+        work_unit: permit.workUnit || "-",
+        signer_position_detail: permit.signerPosition || "Kepala BADAN PERENCANAAN PEMBANGUNAN, RISET DAN INOVASI DAERAH",
       };
-
-      const logoKaltengCell = new DocxTableCell({
-        borders: cellBorder,
-        width: { size: 1200, type: WidthType.DXA },
-        children: [
-          new Paragraph({
-            alignment: AlignmentType.CENTER,
-            children: logoKaltengBuf
-              ? [new ImageRun({ data: logoKaltengBuf, transformation: { width: 65, height: 65 }, type: "png" })]
-              : [new TextRun("")],
-          }),
-        ],
-      });
-
-      const logoBapperidaCell = new DocxTableCell({
-        borders: cellBorder,
-        width: { size: 1800, type: WidthType.DXA },
-        children: [
-          new Paragraph({
-            alignment: AlignmentType.CENTER,
-            children: logoBapperidaBuf
-              ? [new ImageRun({ data: logoBapperidaBuf, transformation: { width: 100, height: 55 }, type: "png" })]
-              : [new TextRun("")],
-          }),
-        ],
-      });
-
-      const govTextCell = new DocxTableCell({
-        borders: cellBorder,
-        width: { size: 6000, type: WidthType.DXA },
-        children: [
-          new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "PEMERINTAH PROVINSI KALIMANTAN TENGAH", bold: true, size: 22 })] }),
-          new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "BADAN PERENCANAAN PEMBANGUNAN", bold: true, size: 26 })] }),
-          new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "RISET DAN INOVASI DAERAH", bold: true, size: 26 })] }),
-          new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "Jalan Diponegoro No. 60 Tlp/Fax (0536) 3221645", size: 17 })] }),
-          new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "Website: www.bapperida.kalteng.go.id  Email: bapperida@kalteng.go.id", size: 17 })] }),
-          new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "Palangka Raya 73111", size: 17 })] }),
-        ],
-      });
-
-      const headerTable = new DocxTable({
-        width: { size: 9000, type: WidthType.DXA },
-        borders: {
-          top: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
-          bottom: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
-          left: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
-          right: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
-          insideH: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
-          insideV: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
-        },
-        rows: [
-          new DocxTableRow({
-            children: [logoKaltengCell, govTextCell, logoBapperidaCell],
-          }),
-        ],
-      });
-
-      const HR = new Paragraph({
-        border: {
-          bottom: { style: BorderStyle.DOUBLE, size: 6, color: "000000" },
-        },
-        children: [],
-        spacing: { before: 60, after: 60 },
-      });
-
-      const tRow = (label: string, value: string) => new DocxTableRow({
-        children: [
-          new DocxTableCell({
-            borders: cellBorder,
-            width: { size: 2200, type: WidthType.DXA },
-            children: [new Paragraph({ children: [new TextRun({ text: label })] })],
-          }),
-          new DocxTableCell({
-            borders: cellBorder,
-            width: { size: 200, type: WidthType.DXA },
-            children: [new Paragraph({ children: [new TextRun(":")] })],
-          }),
-          new DocxTableCell({
-            borders: cellBorder,
-            children: [new Paragraph({ children: [new TextRun({ text: value })] })],
-          }),
-        ],
-      });
-
-      const bodyTable = new DocxTable({
-        width: { size: 9000, type: WidthType.DXA },
-        borders: {
-          top: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
-          bottom: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
-          left: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
-          right: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
-          insideH: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
-          insideV: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" },
-        },
-        rows: [
-          tRow("Membaca", `Surat dari ${permit.fullName} Nomor: - Tanggal ${dateStr}`),
-          tRow("Perihal", "Surat Izin Penelitian"),
-          tRow("Mengingat", "1.  Undang-Undang Nomor 18 Tahun 2002, Tentang Sistem Nasional Penelitian, Pengembangan dan Penerapan Ilmu Pengetahuan dan Teknologi."),
-        ],
-      });
-
-      const doc = new DocxDocument({
-        sections: [{
-          properties: {
-            page: {
-              margin: { top: 1134, right: 1134, bottom: 1134, left: 1134 },
-            },
-          },
-          children: [
-            headerTable,
-            HR,
-            new Paragraph({ text: "" }),
-
-            new Paragraph({
-              alignment: AlignmentType.CENTER,
-              children: [new TextRun({ text: "IZIN PENELITIAN", bold: true, size: 26, underline: { type: UnderlineType.SINGLE } })],
-              spacing: { before: 120, after: 60 },
-            }),
-            new Paragraph({
-              alignment: AlignmentType.CENTER,
-              children: [new TextRun({ text: `Nomor : ${permit.requestNumber}`, size: 22 })],
-              spacing: { after: 240 },
-            }),
-
-            bodyTable,
-            new Paragraph({ text: "" }),
-            new Paragraph({ children: [new TextRun({ text: "2.  Peraturan Menteri Dalam Negeri Nomor 17 Tahun 2016 Tentang Pedoman Penyelenggaraan Penelitian dan Pengembangan di Lingkungan Departemen Dalam Negeri dan Pemerintah Daerah.", size: 21, indent: { left: 600 } })] }),
-            new Paragraph({ children: [new TextRun({ text: "3.  Peraturan Gubernur Kalimantan Tengah Nomor 12 Tahun 2015 Tentang Perubahan Atas Peraturan Gubernur Kalimantan Tengah Nomor 59 Tahun 2008 Tentang Tata Cara Pemberian Izin Penelitian / Pendataan.", size: 21, indent: { left: 600 } })] }),
-            new Paragraph({ text: "" }),
-
-            new DocxTable({
-              width: { size: 9000, type: WidthType.DXA },
-              borders: { top: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" }, bottom: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" }, left: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" }, right: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" }, insideH: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" }, insideV: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" } },
-              rows: [
-                tRow("Memberikan Izin Kepada", permit.fullName),
-                tRow("NIM", permit.nimNik),
-                tRow("Tim Survey / Peneliti dari", permit.institution),
-                tRow("Akan melaksanakan Penelitian yang berjudul", permit.researchTitle),
-                tRow("Lokasi", permit.researchLocation),
-              ],
-            }),
-
-            new Paragraph({ text: "" }),
-            new Paragraph({ children: [new TextRun({ text: "Dengan ketentuan sebagai berikut :", bold: true })] }),
-            new Paragraph({ spacing: { before: 60 }, children: [new TextRun("a.  Setibanya peneliti di tempat lokasi penelitian harus melaporkan diri kepada Pejabat yang berwenang setempat.")] }),
-            new Paragraph({ children: [new TextRun("b.  Hasil Penelitian ini supaya disampaikan kepada :")] }),
-            new Paragraph({ children: [new TextRun({ text: `1).  Kepala BAPPERIDA Provinsi Kalimantan Tengah berupa Soft Copy.`, indent: { left: 720 } })] }),
-            new Paragraph({ children: [new TextRun({ text: `2).  ${permit.researchLocation} Sebanyak 1 (Satu) eksemplar.`, indent: { left: 720 } })] }),
-            new Paragraph({ children: [new TextRun("c.  Surat Izin Penelitian ini agar tidak disalahgunakan untuk tujuan tertentu yang dapat mengganggu kestabilan Pemerintah; tetapi hanya digunakan untuk keperluan ilmiah;")] }),
-            new Paragraph({ children: [new TextRun("d.  Surat Izin Penelitian ini dapat dibatalkan sewaktu-waktu apabila peneliti tidak memenuhi ketentuan-ketentuan pada butir a, b dan c tersebut diatas;")] }),
-            new Paragraph({ children: [new TextRun(`e.  Surat Izin penelitian ini berlaku sejak diterbitkan dan berakhir pada tanggal ${endDateStr}`)] }),
-
-            new Paragraph({ text: "" }),
-            new Paragraph({ children: [new TextRun("Demikian Surat izin penelitian ini diberikan agar dapat dipergunakan sebagaimana mestinya.")] }),
-            new Paragraph({ text: "" }),
-            new Paragraph({ text: "" }),
-
-            new DocxTable({
-              width: { size: 9000, type: WidthType.DXA },
-              borders: { top: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" }, bottom: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" }, left: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" }, right: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" }, insideH: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" }, insideV: { style: BorderStyle.NONE, size: 0, color: "FFFFFF" } },
-              rows: [
-                new DocxTableRow({
-                  children: [
-                    new DocxTableCell({
-                      borders: cellBorder,
-                      width: { size: 4500, type: WidthType.DXA },
-                      children: [new Paragraph({ children: [new TextRun("DIKELUARKAN DI    :  PALANGKA RAYA")] }), new Paragraph({ children: [new TextRun(`PADA TANGGAL ${dateStr}`)] })],
-                    }),
-                    new DocxTableCell({
-                      borders: cellBorder,
-                      width: { size: 4500, type: WidthType.DXA },
-                      children: [
-                        new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun("An.KEPALA BADAN PERENCANAAN PEMBANGUNAN,")] }),
-                        new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun("RISET DAN INOVASI DAERAH")] }),
-                        new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun("PROVINSI KALIMANTAN TENGAH,")] }),
-                        new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun("KABID RIDA")] }),
-                        new Paragraph({ text: "" }),
-                        new Paragraph({ text: "" }),
-                        new Paragraph({ text: "" }),
-                        new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun({ text: "Endy, ST, MT", bold: true, underline: { type: UnderlineType.SINGLE } })] }),
-                        new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun("Pembina Tk.I")] }),
-                        new Paragraph({ alignment: AlignmentType.CENTER, children: [new TextRun("NIP. 197412232000031002")] }),
-                      ],
-                    }),
-                  ],
-                }),
-              ],
-            }),
-
-            new Paragraph({ text: "" }),
-            new Paragraph({ border: { top: { style: BorderStyle.SINGLE, size: 4, color: "000000" } }, children: [new TextRun({ text: "Tembusan disampaikan kepada Yth. :", bold: true })] }),
-            new Paragraph({ children: [new TextRun("1.  Gubernur Kalimantan Tengah Sebagai Laporan;")] }),
-            new Paragraph({ children: [new TextRun("2.  Kepala Badan Kesbang Dan Politik Provinsi Kalimantan Tengah;")] }),
-            new Paragraph({ children: [new TextRun("3.  Kepala Dinas Pendidikan Provinsi Kalimantan Tengah;")] }),
-            new Paragraph({ children: [new TextRun(`4.  ${permit.fullName}.`)] }),
-          ],
-        }],
-      });
-
-      const buffer = await Packer.toBuffer(doc);
+  
+      // Generate DOCX dengan template
+      const buffer = await generateDocxFromTemplate(templatePath, templateData);
+  
+      // Simpan file yang digenerate
       const letterDir = path.join(uploadDir, "letters");
       if (!fs.existsSync(letterDir)) fs.mkdirSync(letterDir, { recursive: true });
+      
       const fileName = `${permit.requestNumber.replace(/\//g, "-")}-${Date.now()}.docx`;
-      fs.writeFileSync(path.join(letterDir, fileName), buffer);
+      const filePath = path.join(letterDir, fileName);
+      fs.writeFileSync(filePath, buffer);
+      
       const fileUrl2 = `/uploads/letters/${fileName}`;
-      if (template) {
-        await db.createGeneratedLetter({ permitId: permit.id, templateId: template.id, fileUrl: fileUrl2 });
+  
+      // Simpan ke database
+      if (templateFile.templateId) {
+        await db.createGeneratedLetter({ 
+          permitId: permit.id, 
+          templateId: templateFile.templateId, 
+          fileUrl: fileUrl2 
+        });
       }
+  
       await db.updatePermitStatus(permit.id, "generated_letter", "Surat izin DOCX berhasil digenerate", req.user.id);
+  
+      // Kirim file sebagai response
       res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
       res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
       return res.send(buffer);
-    } catch (e: any) { return res.status(500).json({ error: e.message }); }
-  });
+    } catch (e: any) {
+      console.error("DOCX generation error:", e);
+      return res.status(500).json({ error: e.message });
+    }
+  });  
 
   function fillTemplate(html: string, permit: any) {
     const dateStr = new Date().toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" });
@@ -975,6 +965,47 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     },
   );
 
+  const templateUpload = getMulterDocx("letter-templates");
+
+  app.post(
+    "/api/admin/letter-templates/upload-docx",
+    authMiddleware,
+    requireRole("super_admin", "admin_bpp", "admin_rida"),
+    getMulterDocx("letter-templates").single("file"),
+    async (req: any, res) => {
+      try {
+        if (!req.file) return res.status(400).json({ error: "No file" });
+  
+        const { name, type, isActive } = req.body;
+  
+        // Buat template record dulu
+        const template = await db.createTemplate({
+          name: name || "Template Surat Izin Penelitian",
+          content: ""
+        });
+        // Simpan file template
+        const url = fileUrl("letter-templates", req.file.filename);
+        const path = `letter-templates/${req.file.filename}`;
+
+        const templateFile = await db.createLetterTemplateFile({
+          templateId: template.id,
+          fileUrl: url,
+          filePath: path,
+          fileName: req.file.originalname,
+          fileSize: req.file.size,
+          mimeType: req.file.mimetype,
+        });
+  
+        return res.json({ 
+          success: true, 
+          data: { ...template, file: templateFile }
+        });
+      } catch (e: any) {
+        return res.status(500).json({ error: e.message });
+      }
+    }
+  );
+
   app.post("/api/admin/letter-templates", authMiddleware, requireRole("super_admin", "admin_rida"), async (req, res) => {
     try { return res.json(await db.createTemplate(req.body)); }
     catch (e: any) { return res.status(500).json({ error: e.message }); }
@@ -998,6 +1029,59 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return res.status(500).json({ error: e.message });
       }
     },
+  );
+
+  app.post(
+    "/api/admin/letter-templates/:id/test",
+    authMiddleware,
+    requireRole("super_admin", "admin_rida"),
+    async (req: any, res) => {
+      try {
+        const { id } = req.params;
+        const { testData } = req.body;
+  
+        // Cari template file
+        const templateFiles = await db.listLetterTemplateFiles(id);
+        const templateFile = templateFiles.find(f => f.fileUrl.endsWith('.docx'));
+        
+        if (!templateFile) {
+          return res.status(400).json({ error: "No DOCX template file found" });
+        }
+  
+        const templatePath = path.join(process.cwd(), templateFile.fileUrl.replace("/uploads", "uploads"));
+        
+        if (!fs.existsSync(templatePath)) {
+          return res.status(400).json({ error: "Template file not found on disk" });
+        }
+  
+        // Data test default
+        const defaultTestData = {
+          request_number: "BAPPERIDA-RID-2024-000001",
+          full_name: "John Doe",
+          nim_nik: "1234567890",
+          institution: "Universitas Contoh",
+          research_title: "Penelitian Contoh",
+          research_location: "Palangka Raya",
+          research_duration: "3 bulan",
+          date: new Date().toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" }).toUpperCase(),
+          end_date: new Date(Date.now() + 30*24*60*60*1000).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" }).toUpperCase(),
+          signer_name: "Kepala BAPPERIDA Prov. Kalteng",
+        };
+  
+        const dataToUse = testData || defaultTestData;
+        
+        // Generate DOCX dengan data test
+        const buffer = await generateDocxFromTemplate(templatePath, dataToUse);
+  
+        // Kirim file sebagai response untuk preview
+        res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+        res.setHeader("Content-Disposition", `attachment; filename="test-template-${id}.docx"`);
+        return res.send(buffer);
+      } catch (e: any) {
+        console.error("Template test error:", e);
+        return res.status(500).json({ error: e.message });
+      }
+    }
   );
 
   // ─── Surveys ─────────────────────────────────────────────────────────────────
