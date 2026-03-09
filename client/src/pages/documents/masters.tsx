@@ -15,20 +15,38 @@ import { useForm } from "react-hook-form";
 import { format } from "date-fns";
 import { id } from "date-fns/locale";
 
-interface Master { id: string; name: string; extension?: string; createdAt: string; }
+interface Master { 
+  id: string; 
+  name: string; 
+  level?: number; // Tambahkan level (optional karena hanya categories yang punya)
+  extension?: string; 
+  createdAt: string; 
+}
 
 function MasterForm({
-  item, apiBase, hasExtension, onDone
-}: { item?: Master; apiBase: string; hasExtension?: boolean; onDone: () => void }) {
+  item, apiBase, hasExtension, hasLevel, onDone // Tambah prop hasLevel
+}: { 
+  item?: Master; 
+  apiBase: string; 
+  hasExtension?: boolean;
+  hasLevel?: boolean; // Prop baru untuk nambahin level
+  onDone: () => void;
+}) {
   const { toast } = useToast();
   const { register, handleSubmit, formState: { errors } } = useForm({
-    defaultValues: { name: item?.name || "", extension: item?.extension || "" },
+    defaultValues: { 
+      name: item?.name || "", 
+      level: item?.level || 1,
+      extension: item?.extension || "" 
+    },
   });
 
   const mutation = useMutation({
     mutationFn: async (data: any) => {
       const payload: any = { name: data.name };
       if (hasExtension) payload.extension = data.extension;
+      if (hasLevel) payload.level = parseInt(data.level); // Tambah level ke payload
+      
       const res = item
         ? await apiRequest("PATCH", `${apiBase}/${item.id}`, payload)
         : await apiRequest("POST", apiBase, payload);
@@ -51,6 +69,30 @@ function MasterForm({
         <Input {...register("name", { required: "Nama wajib diisi" })} placeholder="Nama..." data-testid="input-master-name" />
         {errors.name && <p className="text-xs text-destructive">{errors.name.message as string}</p>}
       </div>
+      
+      {/* Tambah field level kalau hasLevel true */}
+      {hasLevel && (
+        <div className="flex flex-col gap-2">
+          <Label>Level / Prioritas *</Label>
+          <Input 
+            type="number"
+            min="1"
+            step="1"
+            {...register("level", { 
+              required: "Level wajib diisi",
+              min: { value: 1, message: "Level minimal 1" },
+              valueAsNumber: true
+            })} 
+            placeholder="1"
+            data-testid="input-category-level" 
+          />
+          <p className="text-xs text-muted-foreground">
+            Level 1 = prioritas tertinggi (tampil pertama)
+          </p>
+          {errors.level && <p className="text-xs text-destructive">{errors.level.message as string}</p>}
+        </div>
+      )}
+      
       {hasExtension && (
         <div className="flex flex-col gap-2">
           <Label>Ekstensi File</Label>
@@ -66,7 +108,7 @@ function MasterForm({
 }
 
 function MasterPage({
-  title, description, icon: Icon, apiBase, queryKey, hasExtension
+  title, description, icon: Icon, apiBase, queryKey, hasExtension, hasLevel // Tambah prop hasLevel
 }: {
   title: string;
   description: string;
@@ -74,12 +116,22 @@ function MasterPage({
   apiBase: string;
   queryKey: string;
   hasExtension?: boolean;
+  hasLevel?: boolean; // Prop baru
 }) {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [editItem, setEditItem] = useState<Master | undefined>();
 
-  const { data: items = [], isLoading } = useQuery<Master[]>({ queryKey: [queryKey] });
+  // Sort by level kalau ada hasLevel
+  const { data: items = [], isLoading } = useQuery<Master[]>({ 
+    queryKey: [queryKey],
+    select: (data) => {
+      if (hasLevel) {
+        return [...data].sort((a, b) => (a.level || 0) - (b.level || 0));
+      }
+      return data;
+    }
+  });
 
   const deleteMutation = useMutation({
     mutationFn: async (id: string) => {
@@ -117,6 +169,7 @@ function MasterPage({
             item={editItem}
             apiBase={apiBase}
             hasExtension={hasExtension}
+            hasLevel={hasLevel} // Pass hasLevel
             onDone={() => { setOpen(false); setEditItem(undefined); }}
           />
         </DialogContent>
@@ -126,6 +179,8 @@ function MasterPage({
         <Table>
           <TableHeader>
             <TableRow>
+              {/* Tambah kolom Level kalau hasLevel true */}
+              {hasLevel && <TableHead className="w-20">Level</TableHead>}
               <TableHead>Nama</TableHead>
               {hasExtension && <TableHead className="w-40">Ekstensi</TableHead>}
               <TableHead className="w-36">Ditambahkan</TableHead>
@@ -134,15 +189,29 @@ function MasterPage({
           </TableHeader>
           <TableBody>
             {isLoading ? Array.from({ length: 4 }).map((_, i) => (
-              <TableRow key={i}>{Array.from({ length: hasExtension ? 4 : 3 }).map((_, j) => <TableCell key={j}><Skeleton className="h-5 w-full" /></TableCell>)}</TableRow>
+              <TableRow key={i}>
+                {hasLevel && <TableCell><Skeleton className="h-5 w-12" /></TableCell>}
+                <TableCell><Skeleton className="h-5 w-full" /></TableCell>
+                {hasExtension && <TableCell><Skeleton className="h-5 w-24" /></TableCell>}
+                <TableCell><Skeleton className="h-5 w-20" /></TableCell>
+                <TableCell><Skeleton className="h-5 w-16" /></TableCell>
+              </TableRow>
             )) : items.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={hasExtension ? 4 : 3} className="text-center py-12 text-muted-foreground">
+                <TableCell colSpan={hasExtension ? (hasLevel ? 5 : 4) : (hasLevel ? 4 : 3)} className="text-center py-12 text-muted-foreground">
                   Belum ada data {title}
                 </TableCell>
               </TableRow>
             ) : items.map(item => (
               <TableRow key={item.id} data-testid={`row-master-${item.id}`}>
+                {/* Tampilkan level kalau hasLevel true */}
+                {hasLevel && (
+                  <TableCell>
+                    <span className="font-mono text-sm bg-primary/10 px-2 py-1 rounded">
+                      Level {item.level}
+                    </span>
+                  </TableCell>
+                )}
                 <TableCell className="font-medium">{item.name}</TableCell>
                 {hasExtension && (
                   <TableCell>
@@ -203,10 +272,11 @@ export function DocCategoriesPage() {
   return (
     <MasterPage
       title="Kategori Dokumen"
-      description="Kelola kategori dokumen PPID"
+      description="Kelola kategori dokumen PPID dengan level prioritas (Level 1 = tertinggi)"
       icon={Tag}
       apiBase="/api/admin/document-categories"
       queryKey="/api/document-categories"
+      hasLevel={true} // Tambah hasLevel
     />
   );
 }

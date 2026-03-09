@@ -237,10 +237,7 @@ export const documentCategories = mysqlTable("document_categories", {
   level: int("level").notNull().unique(),
   deletedAt: timestamp("deleted_at"),
   createdAt: timestamp("created_at").defaultNow(),
-}, (table) => ({
-  levelIdx: index("idx_document_categories_level").on(table.level),
-  levelUnique: unique("uq_document_categories_level").on(table.level),
-}));
+});
 
 export const documentTypes = mysqlTable("document_types", {
   id: varchar("id", { length: 36 }).primaryKey().default(uuidDefault),
