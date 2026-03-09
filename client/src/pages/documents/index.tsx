@@ -15,10 +15,11 @@ import { Plus, Edit, Trash2, FileText, ExternalLink, RefreshCw, Search, Filter, 
 import { useToast } from "@/hooks/use-toast";
 import { useForm, Controller } from "react-hook-form";
 import { format } from "date-fns";
+import QuillEditor from "@/components/quill-editor";
 
 interface DocMaster { id: string; name: string; }
 interface Doc {
-  id: string; title: string; accessLevel: string; status: string; publishedAt: string | null;
+  id: string; title: string; accessLevel: string; status: string; publishedAt: string | null; content: string | null;
   fileUrl: string | null; createdAt: string; deletedAt: string | null;
   kindId: string | null; categoryId: string | null; typeId: string | null;
 }
@@ -39,6 +40,7 @@ function DocForm({ doc, kinds, categories, types, onDone }: {
       kindId: doc?.kindId || "",
       categoryId: doc?.categoryId || "",
       typeId: doc?.typeId || "",
+      content: doc?.content || "",
       accessLevel: doc?.accessLevel || "terbuka",
       status: doc?.status || "draft",
       publishedAt: doc?.publishedAt
@@ -123,6 +125,25 @@ function DocForm({ doc, kinds, categories, types, onDone }: {
           )} />
           {errors.typeId && <p className="text-xs text-destructive">{errors.typeId.message as string}</p>}
         </div>
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <Label>Konten Dokumen</Label>
+        <Controller
+          name="content"
+          control={control}
+          render={({ field }) => (
+            <QuillEditor
+              value={field.value || ""}
+              onChange={field.onChange}
+              placeholder="Tulis konten dokumen di sini... Bisa kosong jika hanya upload file."
+              minHeight={280}
+            />
+          )}
+        />
+        <p className="text-xs text-muted-foreground">
+          Konten opsional. Bisa diisi dengan ringkasan atau penjelasan dokumen.
+        </p>
       </div>
 
       <div className="grid gap-4">

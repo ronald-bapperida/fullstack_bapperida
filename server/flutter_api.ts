@@ -535,6 +535,57 @@ export function registerFlutterApiRoutes(app: express.Express) {
     }
   });
 
+  flutterRouter.post("/v1/documents-request", async (req: Request, res: Response) => {
+    try {
+      const { documentId, userId, name, email, phone, purpose } = req.body;
+  
+      if (!documentId || !name || !email || !phone || !purpose) {
+        return res.status(400).json({
+          success: false,
+          message: "Incomplete request data"
+        });
+      }
+  
+      const document = await db.getDocumentById(documentId);
+  
+      if (!document) {
+        return res.status(404).json({
+          success: false,
+          message: "Document not found"
+        });
+      }
+  
+      await db.createDocumentRequest({
+        documentId,
+        userId,
+        name,
+        email,
+        phone,
+        purpose
+      });
+  
+      await db.incrementDocumentDownload(documentId);
+  
+      const updatedDoc = await db.getDocumentById(documentId);
+  
+      return res.json({
+        success: true,
+        data: {
+          downloaded_count: updatedDoc?.downloadedCount || 0,
+          file_url: document.fileUrl
+        },
+        message: "Document request recorded"
+      });
+  
+    } catch (error: any) {
+      return res.status(500).json({
+        success: false,
+        message: "Failed to process document request",
+        error: error.message
+      });
+    }
+  });
+
   // ==================== AUTH API (Public) ====================
 
   /**
