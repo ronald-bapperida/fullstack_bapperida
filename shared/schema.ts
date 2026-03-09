@@ -247,6 +247,29 @@ export const documentTypes = mysqlTable("document_types", {
   createdAt: timestamp("created_at").defaultNow(),
 });
 
+export const documentRequests = mysqlTable("document_requests", {
+  id: varchar("id", { length: 36 }).primaryKey().default(uuidDefault),
+  userId: varchar("user_id", { length: 36 }).notNull().references(() => users.id),
+  documentId: varchar("document_id", { length: 36 }).notNull().references(() => documents.id),
+  name: text("name").notNull(),
+  email: text("email").notNull(),
+  phone: text("phone").notNull(),
+  purpose: text("purpose").notNull(),
+  deletedAt: timestamp("deleted_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+export const insertDocumentRequestSchema = createInsertSchema(
+  documentRequests
+).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+  deletedAt: true,
+});
+export type InsertDocumentRequest = z.infer<typeof insertDocumentRequestSchema>;
+export type DocumentRequest = typeof documentRequests.$inferSelect;
+
 // ─── Documents (PPID) ─────────────────────────────────────────────────────────
 export const documents = mysqlTable("documents", {
   id: varchar("id", { length: 36 }).primaryKey().default(uuidDefault),

@@ -7,6 +7,8 @@ import type {
   MenuItem, InsertMenuItem, Document, InsertDocument,
   ResearchPermit, InsertResearchPermit, Survey, InsertSurvey,
   FinalReport, InsertFinalReport, Suggestion, InsertSuggestion,
+  DocumentRequest,
+  InsertDocumentRequest,
 } from "@shared/schema";
 import { randomUUID } from "crypto";
 import { format } from "date-fns";
@@ -106,6 +108,7 @@ export interface IStorage {
   updateNews(id: string, data: Partial<InsertNews>): Promise<News>;
   deleteNews(id: string, hard?: boolean): Promise<void>;
   restoreNews(id: string): Promise<void>;
+  toggleNewsStatus(id: string): Promise<News>;
 
   // News Media
   listNewsMedia(newsId: string): Promise<NewsMedia[]>;
@@ -158,7 +161,8 @@ export interface IStorage {
   updateDocument(id: string, data: Partial<InsertDocument>): Promise<Document>;
   deleteDocument(id: string): Promise<void>;
   restoreDocument(id: string): Promise<void>;
-  toggleNewsStatus(id: string): Promise<News>;
+  
+  createDocumentRequest(data: schema.InsertDocumentRequest): Promise<DocumentRequest>;
 
   // Research Permits
   listPermits(opts?: { page?: number; limit?: number; status?: string; search?: string }): Promise<{ items: ResearchPermit[]; total: number }>;
@@ -595,6 +599,10 @@ export class DatabaseStorage implements IStorage {
         updatedAt: new Date()
       })
       .where(eq(schema.documents.id, id));
+  }
+
+  async createDocumentRequest(data: InsertDocumentRequest) {
+    return insertAndGet<DocumentRequest>(schema.documentRequests, schema.documentRequests.id, data);
   }
 
   async createDocument(data: InsertDocument) {
