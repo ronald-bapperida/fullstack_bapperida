@@ -100,7 +100,7 @@ export default function MenusPage() {
       </div>
 
       <Dialog open={menuOpen} onOpenChange={setMenuOpen}>
-        <DialogContent>
+        <DialogContent className="max-h-[90vh] flex flex-col">
           <DialogHeader><DialogTitle>{editMenu ? "Edit Menu" : "Tambah Menu"}</DialogTitle></DialogHeader>
           <form onSubmit={hm(d => menuMutation.mutate(d))} className="flex flex-col gap-4 pt-2">
             <div className="flex flex-col gap-2">
@@ -130,7 +130,7 @@ export default function MenusPage() {
       </Dialog>
 
       <Dialog open={itemOpen} onOpenChange={setItemOpen}>
-        <DialogContent>
+        <DialogContent className="max-h-[90vh] flex flex-col">
           <DialogHeader><DialogTitle>{editItem ? "Edit Item" : "Tambah Item"}</DialogTitle></DialogHeader>
           <form onSubmit={hi(d => itemMutation.mutate(d))} className="flex flex-col gap-4 pt-2">
             <div className="flex flex-col gap-2">
