@@ -307,6 +307,14 @@ export class DatabaseStorage implements IStorage {
     return r;
   }
 
+  async getNewsById(slug: string) {
+    const [r] = await db
+      .select()
+      .from(schema.news)
+      .where(and(eq(schema.news.id, id), isNull(schema.news.deletedAt)));
+    return r;
+  }
+
   async createNews(data: InsertNews) {
     const slug = (data as any).slug || generateSlug((data as any).title);
     return insertAndGet<News>(schema.news, schema.news.id, { ...data, slug });

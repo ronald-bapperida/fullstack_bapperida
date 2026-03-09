@@ -264,11 +264,11 @@ export function registerFlutterApiRoutes(app: express.Express) {
    * @desc    Track news view (alternative endpoint)
    * @access  Public
    */
-  flutterRouter.post("/v1/news/:slug/view", async (req: Request, res: Response) => {
+  flutterRouter.post("/v1/news/:id/view", async (req: Request, res: Response) => {
     try {
-      const { slug } = req.params;
+      const { id } = req.params;
       
-      const news = await db.getNewsBySlug(slug);
+      const news = await db.getNewsById(id);
       if (!news) {
         return res.status(404).json({
           success: false,
