@@ -188,8 +188,11 @@ export function registerFlutterApiRoutes(app: express.Express) {
    */
   flutterRouter.get("/v1/news/:id", async (req: Request, res: Response) => {
     try {
-      const { id } = req.params;
-      
+      const idParam = req.params.id;
+      const id = typeof idParam === "string" ? idParam : idParam?.[0] ?? "";
+
+      console.log(id);
+
       const news = await db.getNewsById(id);
       if (!news) {
         return res.status(404).json({
@@ -264,35 +267,35 @@ export function registerFlutterApiRoutes(app: express.Express) {
    * @desc    Track news view (alternative endpoint)
    * @access  Public
    */
-  flutterRouter.post("/v1/news/:id/view", async (req: Request, res: Response) => {
-    try {
-      const { id } = req.params;
+  // flutterRouter.post("/v1/news/:id/view", async (req: Request, res: Response) => {
+  //   try {
+  //     const { id } = req.params;
       
-      const news = await db.getNewsById(id);
-      if (!news) {
-        return res.status(404).json({
-          success: false,
-          message: "News not found"
-        });
-      }
+  //     const news = await db.getNewsById(id);
+  //     if (!news) {
+  //       return res.status(404).json({
+  //         success: false,
+  //         message: "News not found"
+  //       });
+  //     }
       
-      await db.updateNews(news.id, { viewCount: (news.viewCount || 0) + 1 });
+  //     await db.updateNews(news.id, { viewCount: (news.viewCount || 0) + 1 });
       
-      const updatedNews = await db.getNews(news.id);
+  //     const updatedNews = await db.getNews(news.id);
       
-      return res.json({
-        success: true,
-        data: { view_count: updatedNews?.viewCount || 0 },
-        message: "View tracked successfully"
-      });
-    } catch (error: any) {
-      return res.status(500).json({
-        success: false,
-        message: "Failed to track view",
-        error: error.message
-      });
-    }
-  });
+  //     return res.json({
+  //       success: true,
+  //       data: { view_count: updatedNews?.viewCount || 0 },
+  //       message: "View tracked successfully"
+  //     });
+  //   } catch (error: any) {
+  //     return res.status(500).json({
+  //       success: false,
+  //       message: "Failed to track view",
+  //       error: error.message
+  //     });
+  //   }
+  // });
 
   /**
    * @route   GET /api/flutter/v1/news-categories
@@ -441,9 +444,10 @@ export function registerFlutterApiRoutes(app: express.Express) {
    * @access  Public
    */
   flutterRouter.get("/v1/documents/:id", async (req: Request, res: Response) => {
-    try {
-      const { id } = req.params;
-      
+    try {      
+      const idParam = req.params.id;
+      const id = typeof idParam === "string" ? idParam : idParam?.[0] ?? "";
+
       const document = await db.getDocument(id);
       if (!document) {
         return res.status(404).json({
@@ -503,7 +507,8 @@ export function registerFlutterApiRoutes(app: express.Express) {
 
   flutterRouter.post("/v1/documents/:id/download", async (req: Request, res: Response) => {
     try {
-      const { id } = req.params;
+      const idParam = req.params.id;
+      const id = typeof idParam === "string" ? idParam : idParam?.[0] ?? "";
       
       const document = await db.getDocumentById(id);
       if (!document) {

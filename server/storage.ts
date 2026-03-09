@@ -105,7 +105,7 @@ export interface IStorage {
   getNews(id: string): Promise<News | undefined>;
   getNewsBySlug(slug: string): Promise<News | undefined>;
   createNews(data: InsertNews): Promise<News>;
-  updateNews(id: string, data: Partial<InsertNews>): Promise<News>;
+  updateNews(id: string, data: Partial<InsertNews> & { viewCount?: number }): Promise<News>;
   deleteNews(id: string, hard?: boolean): Promise<void>;
   restoreNews(id: string): Promise<void>;
   toggleNewsStatus(id: string): Promise<News>;
@@ -320,7 +320,7 @@ export class DatabaseStorage implements IStorage {
     return insertAndGet<News>(schema.news, schema.news.id, { ...data, slug });
   }
 
-  async updateNews(id: string, data: Partial<InsertNews>) {
+  async updateNews(id: string, data: Partial<InsertNews> & { viewCount?: number }) {
     return updateAndGet<News>(schema.news, schema.news.id, id, { ...data, updatedAt: new Date() });
   }
 
