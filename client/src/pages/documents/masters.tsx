@@ -45,7 +45,12 @@ function MasterForm({
     mutationFn: async (data: any) => {
       const payload: any = { name: data.name };
       if (hasExtension) payload.extension = data.extension;
-      if (hasLevel) payload.level = parseInt(data.level); // Tambah level ke payload
+      if (hasLevel && item?.level !== data.level) {
+        const confirmChange = window.confirm(
+          `Level ${data.level} sudah memiliki prioritas. Jika digunakan, kategori lama akan dipindahkan ke level 0. Lanjutkan?`
+        );
+        if (!confirmChange) return;
+      }
       
       const res = item
         ? await apiRequest("PATCH", `${apiBase}/${item.id}`, payload)

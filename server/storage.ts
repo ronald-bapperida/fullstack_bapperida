@@ -447,27 +447,52 @@ export class DatabaseStorage implements IStorage {
     if (data.level < 1) {
       throw new Error("Level harus minimal 1");
     }
-    
+  
     const existing = await this.getDocumentCategoryByLevel(data.level);
+  
     if (existing) {
-      throw new Error(`Level ${data.level} sudah digunakan oleh kategori "${existing.name}"`);
+      await updateAndGet<any>(
+        schema.documentCategories,
+        schema.documentCategories.id,
+        existing.id,
+        { level: 0 }
+      );
     }
-    
-    return insertAndGet<any>(schema.documentCategories, schema.documentCategories.id, data);
+  
+    return insertAndGet<any>(
+      schema.documentCategories,
+      schema.documentCategories.id,
+      data
+    );
   }
-  async updateDocumentCategory(id: string, data: { name?: string; level?: number }) {
+  
+  async updateDocumentCategory(
+    id: string,
+    data: { name?: string; level?: number }
+  ) {
     if (data.level !== undefined) {
       if (data.level < 1) {
         throw new Error("Level harus minimal 1");
       }
-      
+  
       const existing = await this.getDocumentCategoryByLevel(data.level);
+  
       if (existing && existing.id !== id) {
-        throw new Error(`Level ${data.level} sudah digunakan oleh kategori "${existing.name}"`);
+        await updateAndGet<any>(
+          schema.documentCategories,
+          schema.documentCategories.id,
+          existing.id,
+          { level: 0 }
+        );
       }
     }
-    
-    return updateAndGet<any>(schema.documentCategories, schema.documentCategories.id, id, data);
+  
+    return updateAndGet<any>(
+      schema.documentCategories,
+      schema.documentCategories.id,
+      id,
+      data
+    );
   }
   async deleteDocumentCategory(id: string) {
     await db.update(schema.documentCategories).set({ deletedAt: new Date() }).where(eq(schema.documentCategories.id, id));
