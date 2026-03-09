@@ -450,20 +450,74 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   app.get("/api/document-categories", async (_req, res) => {
-    try { return res.json(await db.listDocumentCategories()); }
-    catch (e: any) { return res.status(500).json({ error: e.message }); }
+    try { 
+      return res.json(await db.listDocumentCategories()); 
+    }
+    catch (e: any) { 
+      return res.status(500).json({ error: e.message }); 
+    }
   });
   app.post("/api/admin/document-categories", authMiddleware, requireRole("super_admin", "admin_bpp"), async (req, res) => {
-    try { return res.json(await db.createDocumentCategory(req.body)); }
-    catch (e: any) { return res.status(500).json({ error: e.message }); }
+    try { 
+      const { name, level } = req.body;
+      
+      if (!name) {
+        return res.status(400).json({ error: "Nama kategori wajib diisi" });
+      }
+      
+      if (!level || level < 1) {
+        return res.status(400).json({ error: "Level harus diisi dengan angka minimal 1" });
+      }
+      
+      return res.json(await db.createDocumentCategory({ name, level: parseInt(level) })); 
+    }
+    catch (e: any) { 
+      if (e.message.includes("sudah digunakan")) {
+        return res.status(400).json({ error: e.message });
+      }
+      return res.status(500).json({ error: e.message }); 
+    }
   });
   app.patch("/api/admin/document-categories/:id", authMiddleware, requireRole("super_admin", "admin_bpp"), async (req, res) => {
-    try { return res.json(await db.updateDocumentCategory(req.params.id, req.body)); }
-    catch (e: any) { return res.status(500).json({ error: e.message }); }
+    try { 
+      const data: any = {};
+      
+      if (req.body.name) data.name = req.body.name;
+      if (req.body.level) {
+        const level = parseInt(req.body.level);
+        if (level < 1) {
+          return res.status(400).json({ error: "Level harus minimal 1" });
+        }
+        data.level = level;
+      }
+      
+      return res.json(await db.updateDocumentCategory(req.params.id, data)); 
+    }
+    catch (e: any) { 
+      if (e.message.includes("sudah digunakan")) {
+        return res.status(400).json({ error: e.message });
+      }
+      return res.status(500).json({ error: e.message }); 
+    }
   });
   app.delete("/api/admin/document-categories/:id", authMiddleware, requireRole("super_admin", "admin_bpp"), async (req, res) => {
     try { await db.deleteDocumentCategory(req.params.id); return res.json({ ok: true }); }
     catch (e: any) { return res.status(500).json({ error: e.message }); }
+  });
+  app.post("/api/admin/document-categories/reorder", authMiddleware, requireRole("super_admin", "admin_bpp"), async (req, res) => {
+    try {
+      const { updates } = req.body;
+      
+      if (!Array.isArray(updates)) {
+        return res.status(400).json({ error: "Format data tidak valid" });
+      }
+      
+      await db.reorderDocumentCategories(updates);
+      return res.json({ ok: true });
+    }
+    catch (e: any) {
+      return res.status(500).json({ error: e.message });
+    }
   });
 
   app.get("/api/document-types", async (_req, res) => {

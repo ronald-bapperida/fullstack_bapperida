@@ -135,9 +135,11 @@ export interface IStorage {
   updateDocumentKind(id: string, data: { name: string }): Promise<any>;
   deleteDocumentKind(id: string): Promise<void>;
   listDocumentCategories(): Promise<any[]>;
-  createDocumentCategory(data: { name: string }): Promise<any>;
-  updateDocumentCategory(id: string, data: { name: string }): Promise<any>;
+  createDocumentCategory(data: { name: string; level: number }): Promise<any>;
+  updateDocumentCategory(id: string, data: { name?: string; level?: number }): Promise<any>;
   deleteDocumentCategory(id: string): Promise<void>;
+  getDocumentCategoryByLevel(level: number): Promise<any>;
+  reorderDocumentCategories(updates: { id: string; level: number }[]): Promise<void>;
   listDocumentTypes(): Promise<any[]>;
   createDocumentType(data: { name: string; extension?: string }): Promise<any>;
   updateDocumentType(id: string, data: { name: string; extension?: string }): Promise<any>;
@@ -439,16 +441,56 @@ export class DatabaseStorage implements IStorage {
   }
 
   async listDocumentCategories() {
-    return db.select().from(schema.documentCategories).where(isNull(schema.documentCategories.deletedAt)).orderBy(schema.documentCategories.name);
+    return db.select().from(schema.documentCategories).where(isNull(schema.documentCategories.deletedAt)).orderBy(schema.documentCategories.level);
   }
-  async createDocumentCategory(data: { name: string }) {
-    return insertAndGet<any>(schema.documentCategories, schema.documentCategories.id, { name: data.name });
+  async createDocumentCategory(data: { name: string; level: number }) {
+    if (data.level < 1) {
+      throw new Error("Level harus minimal 1");
+    }
+    
+    const existing = await this.getDocumentCategoryByLevel(data.level);
+    if (existing) {
+      throw new Error(`Level ${data.level} sudah digunakan oleh kategori "${existing.name}"`);
+    }
+    
+    return insertAndGet<any>(schema.documentCategories, schema.documentCategories.id, data);
   }
-  async updateDocumentCategory(id: string, data: { name: string }) {
-    return updateAndGet<any>(schema.documentCategories, schema.documentCategories.id, id, { name: data.name });
+  async updateDocumentCategory(id: string, data: { name?: string; level?: number }) {
+    if (data.level !== undefined) {
+      if (data.level < 1) {
+        throw new Error("Level harus minimal 1");
+      }
+      
+      const existing = await this.getDocumentCategoryByLevel(data.level);
+      if (existing && existing.id !== id) {
+        throw new Error(`Level ${data.level} sudah digunakan oleh kategori "${existing.name}"`);
+      }
+    }
+    
+    return updateAndGet<any>(schema.documentCategories, schema.documentCategories.id, id, data);
   }
   async deleteDocumentCategory(id: string) {
     await db.update(schema.documentCategories).set({ deletedAt: new Date() }).where(eq(schema.documentCategories.id, id));
+  }
+  async getDocumentCategoryByLevel(level: number) {
+    const [item] = await db
+      .select()
+      .from(schema.documentCategories)
+      .where(and(
+        eq(schema.documentCategories.level, level),
+        isNull(schema.documentCategories.deletedAt)
+      ));
+    return item;
+  }
+  async reorderDocumentCategories(updates: { id: string; level: number }[]) {
+    await db.transaction(async (tx) => {
+      for (const update of updates) {
+        await tx
+          .update(schema.documentCategories)
+          .set({ level: update.level })
+          .where(eq(schema.documentCategories.id, update.id));
+      }
+    });
   }
 
   async listDocumentTypes() {

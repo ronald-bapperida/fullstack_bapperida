@@ -336,7 +336,7 @@ export function registerFlutterApiRoutes(app: express.Express) {
       return res.json({
         success: true,
         data: {
-          categories: categories.map(c => ({ id: c.id, name: c.name })),
+          categories: categories.map(c => ({ id: c.id, name: c.name, level: c.level })),
           kinds: kinds.map(k => ({ id: k.id, name: k.name })),
           types: types.map(t => ({ id: t.id, name: t.name, extension: t.extension })),
         },
