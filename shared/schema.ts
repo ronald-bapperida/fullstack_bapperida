@@ -259,6 +259,7 @@ export const documents = mysqlTable("documents", {
   content: text("content"),
   fileUrl: text("file_url"),
   filePath: text("file_path"),
+  downloadedCount: int("downloaded_count").notNull().default(0),
   accessLevel: accessLevel("access_level").notNull().default("terbuka"),
   publishedAt: timestamp("published_at"),
   status: newsStatus("status").notNull().default("draft"),
@@ -272,6 +273,7 @@ export const insertDocumentSchema = createInsertSchema(documents).omit({
   createdAt: true,
   updatedAt: true,
   deletedAt: true,
+  downloadedCount: true
 });
 export type InsertDocument = z.infer<typeof insertDocumentSchema>;
 export type Document = typeof documents.$inferSelect;

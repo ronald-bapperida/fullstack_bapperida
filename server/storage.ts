@@ -9,6 +9,10 @@ import type {
   FinalReport, InsertFinalReport, Suggestion, InsertSuggestion,
 } from "@shared/schema";
 import { randomUUID } from "crypto";
+import { format } from "date-fns";
+import { id } from "date-fns/locale";
+
+const MONTHS_ID = ["Januari", "Februari", "Maret", "April", "Mei", "Juni", "Juli", "Agustus", "September", "Oktober", "November", "Desember"];
 
 // ─── Helper: case-insensitive LIKE (MySQL-safe) ───────────────────────────────
 function ciLike(column: any, term: string) {
@@ -134,6 +138,8 @@ export interface IStorage {
   createDocumentKind(data: { name: string }): Promise<any>;
   updateDocumentKind(id: string, data: { name: string }): Promise<any>;
   deleteDocumentKind(id: string): Promise<void>;
+  getDocumentById(id: string): Promise<Document | undefined>;
+  incrementDocumentDownload(id: string): Promise<void>;
   listDocumentCategories(): Promise<any[]>;
   createDocumentCategory(data: { name: string; level: number }): Promise<any>;
   updateDocumentCategory(id: string, data: { name?: string; level?: number }): Promise<any>;
@@ -199,6 +205,12 @@ export interface IStorage {
 
   // Dashboard stats
   getDashboardStats(): Promise<any>;
+  
+   // Dashboard stats tambahan
+   getNewsViewsStats(year?: number, month?: string): Promise<any>;
+   getDocumentDownloadsStats(year?: number, month?: string): Promise<any>;
+   getPermitOriginStats(year?: number): Promise<any[]>;
+   getSurveySatisfactionStats(year?: number): Promise<any>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -568,6 +580,23 @@ export class DatabaseStorage implements IStorage {
     return r;
   }
 
+  async getDocumentById(id: string) {
+    const [doc] = await db
+      .select()
+      .from(schema.documents)
+      .where(eq(schema.documents.id, id));
+    return doc;
+  }
+  
+  async incrementDocumentDownload(id: string) {
+    await db.update(schema.documents)
+      .set({ 
+        downloadedCount: sql`${schema.documents.downloadedCount} + 1`,
+        updatedAt: new Date()
+      })
+      .where(eq(schema.documents.id, id));
+  }
+
   async createDocument(data: InsertDocument) {
     return insertAndGet<Document>(schema.documents, schema.documents.id, data);
   }
@@ -867,6 +896,215 @@ export class DatabaseStorage implements IStorage {
       documents: Number(docCount.count),
     };
   }
+
+  async getNewsViewsStats(year?: number) {
+    const targetYear = year || new Date().getFullYear();
+    
+    // Ambil data per bulan
+    const monthlyStats = await Promise.all(
+      MONTHS_ID.map(async (monthName, index) => {
+        const monthNumber = index + 1;
+        const startDate = new Date(targetYear, monthNumber - 1, 1);
+        const endDate = new Date(targetYear, monthNumber, 0);
+        
+        // Total views bulan ini
+        const [totalViews] = await db
+          .select({ total: sql<number>`coalesce(sum(${schema.news.viewCount}), 0)` })
+          .from(schema.news)
+          .where(
+            and(
+              isNull(schema.news.deletedAt),
+              eq(schema.news.status, "published"),
+              sql`${schema.news.publishedAt} BETWEEN ${startDate} AND ${endDate}`
+            )
+          );
+
+        // Top 5 news bulan ini
+        const topNews = await db
+          .select({
+            id: schema.news.id,
+            title: schema.news.title,
+            views: schema.news.viewCount,
+            slug: schema.news.slug,
+            month: sql<string>`${monthName}`,
+            year: sql<number>`${targetYear}`,
+          })
+          .from(schema.news)
+          .where(
+            and(
+              isNull(schema.news.deletedAt),
+              eq(schema.news.status, "published"),
+              sql`${schema.news.publishedAt} BETWEEN ${startDate} AND ${endDate}`
+            )
+          )
+          .orderBy(desc(schema.news.viewCount))
+          .limit(5);
+
+        return {
+          month: monthName,
+          month_number: monthNumber,
+          year: targetYear,
+          total_views: Number(totalViews?.total || 0),
+          top_news: topNews,
+          // Untuk chart, ambil judul dan views dari top 1
+          top_news_title: topNews[0]?.title || null,
+          top_news_views: topNews[0]?.views || 0,
+        };
+      })
+    );
+
+    return monthlyStats;
+  }
+
+  // Untuk document downloads
+  async getDocumentDownloadsStats(year?: number) {
+    const targetYear = year || new Date().getFullYear();
+    
+    const monthlyStats = await Promise.all(
+      MONTHS_ID.map(async (monthName, index) => {
+        const monthNumber = index + 1;
+        const startDate = new Date(targetYear, monthNumber - 1, 1);
+        const endDate = new Date(targetYear, monthNumber, 0);
+        
+        const [totalDownloads] = await db
+          .select({ total: sql<number>`coalesce(sum(${schema.documents.downloadedCount}), 0)` })
+          .from(schema.documents)
+          .where(
+            and(
+              isNull(schema.documents.deletedAt),
+              eq(schema.documents.status, "published"),
+              sql`${schema.documents.publishedAt} BETWEEN ${startDate} AND ${endDate}`
+            )
+          );
+
+        const topDocuments = await db
+          .select({
+            id: schema.documents.id,
+            title: schema.documents.title,
+            downloads: schema.documents.downloadedCount,
+            fileUrl: schema.documents.fileUrl,
+          })
+          .from(schema.documents)
+          .where(
+            and(
+              isNull(schema.documents.deletedAt),
+              eq(schema.documents.status, "published"),
+              sql`${schema.documents.publishedAt} BETWEEN ${startDate} AND ${endDate}`
+            )
+          )
+          .orderBy(desc(schema.documents.downloadedCount))
+          .limit(5);
+
+        return {
+          month: monthName,
+          month_number: monthNumber,
+          year: targetYear,
+          total_downloads: Number(totalDownloads?.total || 0),
+          top_documents: topDocuments,
+          top_doc_title: topDocuments[0]?.title || null,
+          top_doc_downloads: topDocuments[0]?.downloads || 0,
+        };
+      })
+    );
+
+    return monthlyStats;
+  }
+  
+  async getPermitOriginStats(year?: number) {
+    const targetYear = year || new Date().getFullYear();
+    
+    const startDate = new Date(targetYear, 0, 1);
+    const endDate = new Date(targetYear, 11, 31);
+  
+    const institutions = await db
+      .select({
+        institution: schema.researchPermitRequests.institution,
+        count: sql<number>`count(*)`,
+      })
+      .from(schema.researchPermitRequests)
+      .where(
+        and(
+          isNull(schema.researchPermitRequests.deletedAt),
+          sql`${schema.researchPermitRequests.createdAt} BETWEEN ${startDate} AND ${endDate}`
+        )
+      )
+      .groupBy(schema.researchPermitRequests.institution)
+      .orderBy(desc(sql`count(*)`));
+  
+    const total = institutions.reduce((sum, item) => sum + Number(item.count), 0);
+  
+    return institutions.map(item => ({
+      institution: item.institution || "Tidak diketahui",
+      count: Number(item.count),
+      percentage: total > 0 ? Math.round((Number(item.count) / total) * 100) : 0,
+    }));
+  }
+  
+  // async getSurveySatisfactionStats(year?: number) {
+  //   const targetYear = year || new Date().getFullYear();
+    
+  //   const startDate = new Date(targetYear, 0, 1);
+  //   const endDate = new Date(targetYear, 11, 31);
+  
+  //   const surveys = await db
+  //     .select()
+  //     .from(schema.surveys)
+  //     .where(sql`${schema.surveys.createdAt} BETWEEN ${startDate} AND ${endDate}`);
+  
+  //   const totalResponses = surveys.length;
+  
+  //   // Hitung rata-rata kepuasan (asumsi ada field rating 1-5)
+  //   let totalRating = 0;
+  //   surveys.forEach(s => {
+  //     if (s.rating) totalRating += s.rating;
+  //   });
+  //   const avgRating = totalResponses > 0 ? (totalRating / totalResponses) * 20 : 0; // Konversi ke persen
+  
+  //   // Kategori kepuasan (contoh, sesuaikan dengan struktur survey Anda)
+  //   const categories = [
+  //     { category: "Pelayanan", value: avgRating, percentage: Math.round(avgRating) },
+  //     { category: "Kecepatan", value: avgRating - 5, percentage: Math.round(avgRating - 5) },
+  //     { category: "Kejelasan", value: avgRating + 2, percentage: Math.round(avgRating + 2) },
+  //     { category: "Fasilitas", value: avgRating - 8, percentage: Math.round(avgRating - 8) },
+  //     { category: "Sikap Petugas", value: avgRating + 5, percentage: Math.round(avgRating + 5) },
+  //   ].map(c => ({
+  //     ...c,
+  //     value: Math.min(100, Math.max(0, c.value)),
+  //     percentage: Math.min(100, Math.max(0, c.percentage)),
+  //   }));
+  
+  //   // Trend bulanan
+  //   const monthlyTrend = await Promise.all(
+  //     MONTHS_ID.map(async (month, idx) => {
+  //       const monthStart = new Date(targetYear, idx, 1);
+  //       const monthEnd = new Date(targetYear, idx + 1, 0);
+        
+  //       const monthSurveys = await db
+  //         .select()
+  //         .from(schema.surveys)
+  //         .where(sql`${schema.surveys.createdAt} BETWEEN ${monthStart} AND ${monthEnd}`);
+  
+  //       let monthRating = 0;
+  //       monthSurveys.forEach(s => {
+  //         if (s.rating) monthRating += s.rating;
+  //       });
+  //       const monthAvg = monthSurveys.length > 0 ? (monthRating / monthSurveys.length) * 20 : 0;
+  
+  //       return {
+  //         month: month.substring(0, 3),
+  //         responses: monthSurveys.length,
+  //         satisfaction: Math.round(monthAvg),
+  //       };
+  //     })
+  //   );
+  
+  //   return {
+  //     total_responses: totalResponses,
+  //     satisfaction_rate: Math.round(avgRating),
+  //     categories,
+  //     monthly_trend: monthlyTrend,
+  //   };
+  // }
 }
 
 export const storage = new DatabaseStorage();

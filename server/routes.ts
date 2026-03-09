@@ -589,6 +589,59 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     catch (e: any) { return res.status(500).json({ error: e.message }); }
   });
 
+  app.get("/api/documents/:id/download", async (req, res) => {
+    try {
+      const document = await db.getDocumentById(req.params.id);
+      
+      if (!document) {
+        return res.status(404).json({ error: "Document not found" });
+      }
+  
+      if (!document.fileUrl) {
+        return res.status(400).json({ error: "Document file not available" });
+      }
+  
+      // Increment download count
+      await db.incrementDocumentDownload(document.id);
+  
+      const filePath = path.join(process.cwd(), document.fileUrl.replace("/uploads", "uploads"));
+      
+      if (!fs.existsSync(filePath)) {
+        return res.status(404).json({ error: "File not found on server" });
+      }
+  
+      const fileName = path.basename(document.fileUrl);
+      res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+      res.setHeader("Content-Type", "application/octet-stream");
+      
+      const fileStream = fs.createReadStream(filePath);
+      fileStream.pipe(res);
+    } catch (e: any) {
+      return res.status(500).json({ error: e.message });
+    }
+  });
+  
+  // Endpoint untuk tracking download saja (tanpa download file)
+  app.post("/api/documents/:id/track-download", async (req, res) => {
+    try {
+      const document = await db.getDocumentById(req.params.id);
+      
+      if (!document) {
+        return res.status(404).json({ error: "Document not found" });
+      }
+  
+      await db.incrementDocumentDownload(document.id);
+      
+      return res.json({ 
+        success: true, 
+        message: "Download tracked successfully",
+        downloadedCount: (document.downloadedCount || 0) + 1
+      });
+    } catch (e: any) {
+      return res.status(500).json({ error: e.message });
+    }
+  });
+
   // ─── Research Permits ────────────────────────────────────────────────────────
   const permitUpload = getMulter("permits", 10);
 
@@ -1180,6 +1233,79 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       return res.json(await db.listSuggestions({ page: +page, limit: +limit }));
     } catch (e: any) { return res.status(500).json({ error: e.message }); }
   });
+  
+  app.get("/api/admin/stats/news-views", authMiddleware, requireRole("super_admin", "admin_bpp"), async (req, res) => {
+    try {
+      const year = req.query.year ? parseInt(req.query.year as string) : undefined;
+      
+      const stats = await db.getNewsViewsStats(year);
+      
+      // Format untuk chart
+      const chartData = stats.map((month: any) => ({
+        month: month.month.substring(0, 3), // Jan, Feb, Mar
+        views: month.total_views,
+        topNews: month.top_news_title ? {
+          title: month.top_news_title.length > 20 
+            ? month.top_news_title.substring(0, 20) + '...' 
+            : month.top_news_title,
+          views: month.top_news_views
+        } : null
+      }));
+  
+      return res.json({
+        monthly: stats,
+        chart: chartData
+      });
+    } catch (e: any) {
+      return res.status(500).json({ error: e.message });
+    }
+  });
+  
+  app.get("/api/admin/stats/document-downloads", authMiddleware, requireRole("super_admin", "admin_bpp"), async (req, res) => {
+    try {
+      const year = req.query.year ? parseInt(req.query.year as string) : undefined;
+      
+      const stats = await db.getDocumentDownloadsStats(year);
+      
+      const chartData = stats.map((month: any) => ({
+        month: month.month.substring(0, 3),
+        downloads: month.total_downloads,
+        topDoc: month.top_doc_title ? {
+          title: month.top_doc_title.length > 20 
+            ? month.top_doc_title.substring(0, 20) + '...' 
+            : month.top_doc_title,
+          downloads: month.top_doc_downloads
+        } : null
+      }));
+  
+      return res.json({
+        monthly: stats,
+        chart: chartData
+      });
+    } catch (e: any) {
+      return res.status(500).json({ error: e.message });
+    }
+  });
+  
+  app.get("/api/admin/stats/permit-origins", authMiddleware, requireRole("super_admin", "admin_rida"), async (req, res) => {
+    try {
+      const year = req.query.year ? parseInt(req.query.year as string) : undefined;
+      const stats = await db.getPermitOriginStats(year);
+      return res.json(stats);
+    } catch (e: any) {
+      return res.status(500).json({ error: e.message });
+    }
+  });
+  
+  // app.get("/api/admin/stats/survey-satisfaction", authMiddleware, requireRole("super_admin", "admin_rida"), async (req, res) => {
+  //   try {
+  //     const year = req.query.year ? parseInt(req.query.year as string) : undefined;
+  //     const stats = await db.getSurveySatisfactionStats(year);
+  //     return res.json(stats);
+  //   } catch (e: any) {
+  //     return res.status(500).json({ error: e.message });
+  //   }
+  // });
 
   return httpServer;
 }

@@ -501,6 +501,40 @@ export function registerFlutterApiRoutes(app: express.Express) {
     }
   });
 
+  flutterRouter.post("/v1/documents/:id/download", async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      
+      const document = await db.getDocumentById(id);
+      if (!document) {
+        return res.status(404).json({
+          success: false,
+          message: "Document not found"
+        });
+      }
+      
+      // Increment download count
+      await db.incrementDocumentDownload(id);
+      
+      const updatedDoc = await db.getDocumentById(id);
+      
+      return res.json({
+        success: true,
+        data: { 
+          downloaded_count: updatedDoc?.downloadedCount || 0,
+          file_url: document.fileUrl 
+        },
+        message: "Download tracked successfully"
+      });
+    } catch (error: any) {
+      return res.status(500).json({
+        success: false,
+        message: "Failed to track download",
+        error: error.message
+      });
+    }
+  });
+
   // ==================== AUTH API (Public) ====================
 
   /**
