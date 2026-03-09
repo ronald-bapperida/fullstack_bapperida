@@ -307,7 +307,7 @@ export class DatabaseStorage implements IStorage {
     return r;
   }
 
-  async getNewsById(slug: string) {
+  async getNewsById(id: string) {
     const [r] = await db
       .select()
       .from(schema.news)
