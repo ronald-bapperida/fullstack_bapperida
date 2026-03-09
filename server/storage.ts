@@ -455,7 +455,7 @@ export class DatabaseStorage implements IStorage {
         schema.documentCategories,
         schema.documentCategories.id,
         existing.id,
-        { level: 0 }
+        { level: null }
       );
     }
   
@@ -482,7 +482,7 @@ export class DatabaseStorage implements IStorage {
           schema.documentCategories,
           schema.documentCategories.id,
           existing.id,
-          { level: 0 }
+          { level: null }
         );
       }
     }
