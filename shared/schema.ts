@@ -234,7 +234,7 @@ export const documentKinds = mysqlTable("document_kinds", {
 export const documentCategories = mysqlTable("document_categories", {
   id: varchar("id", { length: 36 }).primaryKey().default(uuidDefault),
   name: text("name").notNull(),
-  level: int("level").notNull().unique(),
+  level: int("level"),
   deletedAt: timestamp("deleted_at"),
   createdAt: timestamp("created_at").defaultNow(),
 });
