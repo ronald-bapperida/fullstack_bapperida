@@ -539,7 +539,7 @@ export function registerFlutterApiRoutes(app: express.Express) {
     try {
       const { documentId, userId, name, email, phone, purpose } = req.body;
   
-      if (!documentId || !name || !email || !purpose) {
+      if (!documentId || !name || !email || !phone || !purpose) {
         return res.status(400).json({
           success: false,
           message: "Incomplete request data"
