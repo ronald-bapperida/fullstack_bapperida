@@ -6,6 +6,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useToast } from "@/hooks/use-toast";
 
 interface QuillEditorProps {
   value: string;
@@ -35,13 +36,34 @@ export default function QuillEditor({
   const [caption, setCaption] = useState("");
   const [uploading, setUploading] = useState(false);
 
+  const { toast } = useToast();
+
   const uploadFile = async (file: File): Promise<string> => {
-    const fd = new FormData();
-    fd.append("image", file);
-    const res = await apiRequest("POST", "/api/admin/news/upload-image", fd);
-    if (!res.ok) throw new Error("Upload gagal");
-    const data = await res.json();
-    return data.url || data.fileUrl;
+    try {
+      const fd = new FormData();
+      fd.append("image", file);
+
+      const res = await apiRequest("POST", "/api/admin/news/upload-image", fd);
+
+      const data = await res.json();
+
+      if (!res.ok) throw new Error(data.message);
+
+      toast({
+        title: "Upload berhasil",
+        description: file.name,
+      });
+
+      return data.url || data.fileUrl;
+    } catch (err: any) {
+      toast({
+        title: "Upload gagal",
+        description: err.message || "Terjadi kesalahan saat upload",
+        variant: "destructive",
+      });
+
+      throw err;
+    }
   };
 
   const insertImageWithCaption = useCallback(async (file: File, cap: string) => {

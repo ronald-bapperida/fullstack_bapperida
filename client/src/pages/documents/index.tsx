@@ -20,7 +20,7 @@ import QuillEditor from "@/components/quill-editor";
 interface DocMaster { id: string; name: string; }
 interface Doc {
   id: string; title: string; accessLevel: string; status: string; publishedAt: string | null; content: string | null;
-  fileUrl: string | null; createdAt: string; deletedAt: string | null;
+  fileUrl: string | null; createdAt: string; deletedAt: string | null; docNo: string; publisher: string | null;
   kindId: string | null; categoryId: string | null; typeId: string | null;
 }
 
@@ -41,6 +41,8 @@ function DocForm({ doc, kinds, categories, types, onDone }: {
       categoryId: doc?.categoryId || "",
       typeId: doc?.typeId || "",
       content: doc?.content || "",
+      docNo: doc?.docNo || "",
+      publisher: doc?.publisher || "",
       accessLevel: doc?.accessLevel || "terbuka",
       status: doc?.status || "draft",
       publishedAt: doc?.publishedAt
@@ -84,6 +86,12 @@ function DocForm({ doc, kinds, categories, types, onDone }: {
         <Label>Judul Dokumen *</Label>
         <Input {...register("title", { required: "Judul wajib diisi" })} placeholder="Judul dokumen..." data-testid="input-doc-title" />
         {errors.title && <p className="text-xs text-destructive">{errors.title.message as string}</p>}
+      </div>
+
+      <div className="flex flex-col gap-2">
+        <Label>Nomor Dokumen *</Label>
+        <Input {...register("docNo", { required: "Nomor wajib diisi" })} placeholder="Nomor dokumen..." data-testid="input-doc-no" />
+        {errors.docNo && <p className="text-xs text-destructive">{errors.docNo.message as string}</p>}
       </div>
 
       <div className="grid grid-cols-1 gap-4">
@@ -174,9 +182,15 @@ function DocForm({ doc, kinds, categories, types, onDone }: {
         </div>
       </div>
 
-      <div className="flex flex-col gap-2">
-        <Label>Tanggal Publikasi</Label>
-        <Input type="datetime-local" {...register("publishedAt")} />
+      <div className="grid grid-cols-2 gap-4">
+        <div className="flex flex-col gap-2">
+          <Label>Tanggal Publikasi</Label>
+          <Input type="date" {...register("publishedAt")} />
+        </div>
+        <div className="flex flex-col gap-2">
+          <Label>Publisher</Label>
+          <Input {...register("publisher")} placeholder="Publisher..."/>
+        </div>
       </div>
 
       <div className="flex flex-col gap-2">
@@ -424,7 +438,7 @@ export default function DocumentsPage() {
                 <TableCell className="text-sm">{d.categoryId ? categoryMap[d.categoryId] || "-" : "-"}</TableCell>
                 <TableCell className="text-sm">{d.typeId ? typeMap[d.typeId] || "-" : "-"}</TableCell>
                 {/* <TableCell><Badge variant="outline" className="text-xs">{d.accessLevel}</Badge></TableCell> */}
-                <TableCell className="text-sm">{d.publishedAt ? format(new Date(d.publishedAt), "dd MMM yyyy HH:mm") : "-"}</TableCell>
+                <TableCell className="text-sm">{d.publishedAt ? format(new Date(d.publishedAt), "dd MMM yyyy") : "-"}</TableCell>
                 <TableCell><Badge variant={d.status === "published" ? "default" : "secondary"} className="text-xs">{d.status}</Badge></TableCell>
                 <TableCell>
                   <div className="flex items-center justify-end gap-1">

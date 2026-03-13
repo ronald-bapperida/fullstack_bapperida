@@ -143,8 +143,8 @@ export function AppSidebar() {
                   <NavItem href="/categories" icon={Tag} label={t("categories")} />
                   <NavItem href="/banners" icon={Image} label={t("banners")} />
                   <NavItem href="/menus" icon={Menu} label={t("menus")} />
-                  <CollapsibleNav icon={FileText} label={t("documents")} basePath="/documents">
-                    <SubNavItem href="/documents" label="Daftar Dokumen" />
+                  <CollapsibleNav icon={FileText} label="PPID" basePath="/documents">
+                    <SubNavItem href="/documents" label="Daftar PPID" />
                     <SubNavItem href="/documents/kinds" label={t("docKinds")} />
                     <SubNavItem href="/documents/categories" label={t("docCategories")} />
                     <SubNavItem href="/documents/types" label={t("docTypes")} />
@@ -163,7 +163,7 @@ export function AppSidebar() {
                   <NavItem href="/surveys" icon={BarChart2} label={t("surveys")} />
                   <NavItem href="/final-reports" icon={Upload} label={t("reports")} />
                   <NavItem href="/suggestions" icon={MessageSquare} label={t("suggestions")} />
-                  {/* <NavItem href="/letter-templates" icon={FileEdit} label={t("templates")} /> */}
+                  <NavItem href="/letter-templates" icon={FileEdit} label={t("templates")} />
                 </SidebarMenu>
               </SidebarGroupContent>
             </SidebarGroup>

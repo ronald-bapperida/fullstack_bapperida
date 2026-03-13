@@ -179,6 +179,7 @@ export interface IStorage {
   getTemplate(id: string): Promise<any>;
   createTemplate(data: { name: string; content: string }): Promise<any>;
   updateTemplate(id: string, data: any): Promise<any>;
+  deleteTemplate(id: string): Promise<void>;
   createLetterTemplateFile(data: {
     templateId: string;
     fileUrl: string;
@@ -415,6 +416,14 @@ export class DatabaseStorage implements IStorage {
 
   async getMenu(id: string) {
     const [r] = await db.select().from(schema.menus).where(eq(schema.menus.id, id));
+    return r;
+  }
+
+  async getMenuItem(id: string) {
+    const [r] = await db
+      .select()
+      .from(schema.menuItems)
+      .where(and(eq(schema.menuItems.id, id), isNull(schema.menuItems.deletedAt)));
     return r;
   }
 
@@ -798,6 +807,15 @@ export class DatabaseStorage implements IStorage {
 
   async updateTemplate(id: string, data: any) {
     return updateAndGet<any>(schema.letterTemplates, schema.letterTemplates.id, id, { ...data, updatedAt: new Date() });
+  }
+
+  async deleteTemplate(id: string) {
+    await db
+      .delete(schema.letterTemplateFiles)
+      .where(eq(schema.letterTemplateFiles.templateId, id));
+    await db
+      .delete(schema.letterTemplates)
+      .where(eq(schema.letterTemplates.id, id));
   }
 
   async createLetterTemplateFile(data: {

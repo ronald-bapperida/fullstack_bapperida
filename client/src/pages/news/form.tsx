@@ -246,7 +246,7 @@ export default function NewsFormPage() {
                   <span className="text-sm text-muted-foreground">
                     {featuredImageFile ? featuredImageFile.name : "Klik untuk upload gambar"}
                   </span>
-                  <span className="text-xs text-muted-foreground">JPG, PNG, WEBP max 5MB</span>
+                  <span className="text-xs text-muted-foreground">JPG, PNG, WEBP max 1MB</span>
                 </Label>
                 <input
                   id="featured-image-input"

@@ -591,6 +591,153 @@ export function registerFlutterApiRoutes(app: express.Express) {
     }
   });
 
+  /**
+   * @route   GET /api/flutter/v1/menus
+   * @desc    Get all active menus dengan items-nya
+   * @access  Public
+   */
+  flutterRouter.get("/v1/menus", async (req: Request, res: Response) => {
+    try {
+      const menus = await db.listMenus();
+      const activeMenus = menus.filter((m) => m.isActive);
+  
+      const result = await Promise.all(
+        activeMenus.map(async (menu) => {
+          const allItems = await db.listMenuItems(menu.id);
+          // Bangun hierarki: root items + children
+          const roots = allItems.filter((i) => !i.parentId);
+          const buildTree = (parent: typeof allItems[0]) => {
+            const children = allItems
+              .filter((i) => i.parentId === parent.id)
+              .sort((a, b) => a.sortOrder - b.sortOrder)
+              .map((child) => ({
+                ...formatMenuItem(child),
+                children: buildTree(child),
+              }));
+            return children;
+          };
+  
+          return {
+            id: menu.id,
+            name: menu.name,
+            location: menu.location,
+            is_active: menu.isActive,
+            items: roots
+              .sort((a, b) => a.sortOrder - b.sortOrder)
+              .map((item) => ({
+                ...formatMenuItem(item),
+                children: buildTree(item),
+              })),
+          };
+        })
+      );
+  
+      return res.json({ success: true, data: result, message: "Menus retrieved successfully" });
+    } catch (error: any) {
+      return res.status(500).json({ success: false, message: "Failed to retrieve menus", error: error.message });
+    }
+  });
+  
+  /**
+   * @route   GET /api/flutter/v1/menus/by-name/:name
+   * @desc    Get menu items by menu name (case-insensitive)
+   *          Contoh: /menus/by-name/Beranda  atau  /menus/by-name/Profil
+   * @access  Public
+   */
+  flutterRouter.get("/v1/menus/by-name/:name", async (req: Request, res: Response) => {
+    try {
+      const { name } = req.params;
+  
+      const menus = await db.listMenus();
+      const menu = menus.find(
+        (m) => m.name.toLowerCase() === name.toLowerCase() && m.isActive
+      );
+  
+      if (!menu) {
+        return res.status(404).json({
+          success: false,
+          message: `Menu "${name}" tidak ditemukan atau tidak aktif`,
+        });
+      }
+  
+      const allItems = await db.listMenuItems(menu.id);
+  
+      const buildTree = (parentId: string | null): any[] => {
+        return allItems
+          .filter((i) => (parentId ? i.parentId === parentId : !i.parentId))
+          .sort((a, b) => a.sortOrder - b.sortOrder)
+          .map((item) => ({
+            ...formatMenuItem(item),
+            children: buildTree(item.id),
+          }));
+      };
+  
+      return res.json({
+        success: true,
+        data: {
+          id: menu.id,
+          name: menu.name,
+          location: menu.location,
+          is_active: menu.isActive,
+          items: buildTree(null),
+        },
+        message: "Menu items retrieved successfully",
+      });
+    } catch (error: any) {
+      return res.status(500).json({
+        success: false,
+        message: "Failed to retrieve menu",
+        error: error.message,
+      });
+    }
+  });
+  
+  /**
+   * @route   GET /api/flutter/v1/menus/item/:id
+   * @desc    Get single menu item by ID (termasuk value/HTML-nya)
+   * @access  Public
+   */
+  flutterRouter.get("/v1/menus/item/:id", async (req: Request, res: Response) => {
+    try {
+      const { id } = req.params;
+      const item = await db.getMenuItem(id);
+  
+      if (!item) {
+        return res.status(404).json({ success: false, message: "Menu item tidak ditemukan" });
+      }
+  
+      return res.json({
+        success: true,
+        data: formatMenuItem(item),
+        message: "Menu item retrieved successfully",
+      });
+    } catch (error: any) {
+      return res.status(500).json({
+        success: false,
+        message: "Failed to retrieve menu item",
+        error: error.message,
+      });
+    }
+  });
+  
+  // ─── Helper ──────────────────────────────────────────────────────────────────
+  
+  function formatMenuItem(item: any) {
+    return {
+      id: item.id,
+      menu_id: item.menuId,
+      parent_id: item.parentId ?? null,
+      title: item.title,
+      type: item.type,           // "url" | "page" | "html" | "news" | "ppid_documents" | ...
+      value: item.value ?? null, // HTML content, URL, route, dsb.
+      icon: item.icon ?? null,
+      target: item.target ?? "_self",
+      requires_auth: item.requiresAuth ?? false,
+      sort_order: item.sortOrder ?? 0,
+      is_active: true,           // sudah difilter isNull(deletedAt) di listMenuItems
+    };
+  }
+
   // ==================== AUTH API (Public) ====================
 
   /**

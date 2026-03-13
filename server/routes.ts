@@ -74,39 +74,85 @@ function normalizeDate(v: any) {
   return dt;
 }
 
-// Fungsi untuk generate DOCX dengan docxtemplater
-async function generateDocxFromTemplate(
-  templatePath: string,
-  data: any
-): Promise<Buffer> {
-  try {
-    // Baca file template
-    const content = fs.readFileSync(templatePath, "binary");
-    
-    // Buat instance PizZip
-    const zip = new PizZip(content);
-    
-    // Inisialisasi docxtemplater
-    const doc = new Docxtemplater(zip, {
-      paragraphLoop: true,
-      linebreaks: true,
-      xmlDom: xmlDom as any,
-    });
-    
-    // Render template dengan data
-    doc.render(data);
-    
-    // Generate buffer
-    const buffer = doc.getZip().generate({
-      type: "nodebuffer",
-      compression: "DEFLATE",
-    });
-    
-    return buffer as Buffer;
-  } catch (error) {
-    console.error("Error generating DOCX:", error);
-    throw error;
+/**
+ * Escape string untuk aman dimasukkan ke XML
+ */
+function escapeXml(str: string): string {
+  if (!str) return "";
+  return str
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;")
+    .replace(/"/g, "&quot;")
+    .replace(/'/g, "&apos;");
+}
+
+/**
+ * Generate DOCX dari template dengan raw XML replacement.
+ * Mendukung format <<PLACEHOLDER>> yang disimpan sebagai &lt;&lt;PLACEHOLDER&gt;&gt; di XML.
+ * 
+ * @param templateBuffer  Buffer file .docx template (bisa dari disk atau upload langsung)
+ * @param replacements    Map dari nama placeholder ke nilai penggantinya
+ */
+function generateDocxFromBuffer(
+  templateBuffer: Buffer,
+  replacements: Record<string, string>
+): Buffer {
+  const zip = new PizZip(templateBuffer);
+
+  // File XML utama konten dokumen
+  const xmlTargets = [
+    "word/document.xml",
+    "word/header1.xml",
+    "word/header2.xml",
+    "word/footer1.xml",
+    "word/footer2.xml",
+  ];
+
+  for (const target of xmlTargets) {
+    if (!zip.files[target]) continue;
+
+    let xml = zip.files[target].asText();
+
+    for (const [placeholder, value] of Object.entries(replacements)) {
+      const safeValue = escapeXml(value);
+      // Format XML-escaped: &lt;&lt;PLACEHOLDER&gt;&gt;
+      const xmlEscaped = `&lt;&lt;${placeholder}&gt;&gt;`;
+      xml = xml.split(xmlEscaped).join(safeValue);
+    }
+
+    zip.file(target, xml);
   }
+
+  return zip.generate({
+    type: "nodebuffer",
+    compression: "DEFLATE",
+  }) as Buffer;
+}
+
+/**
+ * Buat mapping data dari permit ke placeholder template
+ */
+function buildLetterReplacements(permit: any): Record<string, string> {
+  const formatDate = (d: any): string => {
+    if (!d) return "-";
+    return new Date(d).toLocaleDateString("id-ID", {
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    }).toUpperCase();
+  };
+
+  return {
+    "NAMA":               permit.fullName       ?? "-",
+    "NIM":                permit.nimNik          ?? "-",
+    "TIM SURVEY/PENELITI": permit.institution   ?? "-",
+    "JUDUL PENELITIAN":   permit.researchTitle   ?? "-",
+    "LOKASI PENELITIAN":  permit.researchLocation ?? "-",
+    "NOMOR SURAT":        permit.introLetterNumber ?? "-",
+    "TANGGAL SURAT":      formatDate(permit.introLetterDate),
+    "TANDA TANGAN":       permit.workUnit || permit.institution || "-",
+  };
 }
 
 
@@ -441,7 +487,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     catch (e: any) { return res.status(500).json({ error: e.message }); }
   });
   app.patch("/api/admin/document-kinds/:id", authMiddleware, requireRole("super_admin", "admin_bpp"), async (req, res) => {
-    try { return res.json(await db.updateDocumentKind(req.params.id, req.body)); }
+    try {
+      const id = typeof req.params.id === "string" ? req.params.id : req.params.id?.[0] ?? "";
+      return res.json(await db.updateDocumentKind(id, req.body));
+    }
     catch (e: any) { return res.status(500).json({ error: e.message }); }
   });
   app.delete("/api/admin/document-kinds/:id", authMiddleware, requireRole("super_admin", "admin_bpp"), async (req, res) => {
@@ -760,130 +809,226 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { return res.status(500).json({ error: e.message }); }
   });
 
-  // Generate letter as DOCX - format resmi surat pemerintah
-  app.post("/api/admin/permits/:id/generate-letter-docx", authMiddleware, requireRole("super_admin", "admin_rida"), async (req: any, res) => {
-    try {
-      const permit = await db.getPermit(req.params.id);
-      if (!permit) return res.status(404).json({ error: "Not found" });
-  
-      // Dapatkan template yang dipilih dari request body
-      const { templateId } = req.body;
-      
-      // Cari template file
-      let templateFile = null;
-      if (templateId) {
-        const templateFiles = await db.listLetterTemplateFiles(templateId);
-        templateFile = templateFiles.find(f => f.fileUrl.endsWith('.docx'));
-      }
-      
-      // Jika tidak ada template spesifik, gunakan template default
-      if (!templateFile) {
-        const templates = await db.listTemplates();
-        if (templates.length === 0) {
-          return res.status(400).json({ error: "No template found" });
+  // Multer untuk menerima template DOCX langsung dari frontend
+  const tempTemplateUpload = getMulterDocx("temp-templates");
+
+  app.post(
+    "/api/admin/permits/:id/generate-letter-docx",
+    authMiddleware,
+    requireRole("super_admin", "admin_rida"),
+    tempTemplateUpload.single("template"), // field name dari FormData frontend
+    async (req: any, res) => {
+      try {
+        const permit = await db.getPermit(req.params.id);
+        if (!permit) return res.status(404).json({ error: "Permit tidak ditemukan" });
+
+        let templateBuffer: Buffer;
+        let templateSourceName: string;
+
+        if (req.file) {
+          // --- Opsi A: Template dikirim langsung dari frontend ---
+          templateBuffer = fs.readFileSync(req.file.path);
+          templateSourceName = req.file.originalname;
+
+          // Hapus file temp setelah dibaca
+          fs.unlinkSync(req.file.path);
+
+        } else if (req.body.templateId) {
+          // --- Opsi B: Gunakan template tersimpan di DB ---
+          const templateFiles = await db.listLetterTemplateFiles(req.body.templateId);
+          const templateFile = templateFiles.find((f) => f.fileUrl.endsWith(".docx"));
+          if (!templateFile) {
+            return res.status(400).json({ error: "Template DOCX tidak ditemukan di database" });
+          }
+          const templatePath = path.join(
+            process.cwd(),
+            templateFile.fileUrl.replace("/uploads", "uploads")
+          );
+          if (!fs.existsSync(templatePath)) {
+            return res.status(400).json({ error: "File template tidak ada di disk" });
+          }
+          templateBuffer = fs.readFileSync(templatePath);
+          templateSourceName = templateFile.fileName;
+
+        } else {
+          return res.status(400).json({
+            error: "Kirim file template (.docx) atau sertakan templateId",
+          });
         }
-        
-        // Cari template dengan tipe research_permit
-        const researchTemplate = templates.find(t => t.type === "research_permit");
-        const defaultTemplate = researchTemplate || templates[0];
-        
-        const templateFiles = await db.listLetterTemplateFiles(defaultTemplate.id);
-        templateFile = templateFiles.find(f => f.fileUrl.endsWith('.docx'));
-        
-        if (!templateFile) {
-          return res.status(400).json({ error: "No DOCX template file found" });
-        }
-      }
-  
-      // Path ke file template
-      const templatePath = path.join(process.cwd(), templateFile.fileUrl.replace("/uploads", "uploads"));
-      
-      if (!fs.existsSync(templatePath)) {
-        return res.status(400).json({ error: "Template file not found on disk" });
-      }
-  
-      const now = new Date();
-      const dateStr = now.toLocaleDateString("id-ID", { 
-        day: "numeric", 
-        month: "long", 
-        year: "numeric" 
-      }).toUpperCase();
-      
-      const endDate = new Date(now);
-      endDate.setMonth(endDate.getMonth() + 1);
-      const endDateStr = endDate.toLocaleDateString("id-ID", { 
-        day: "numeric", 
-        month: "long", 
-        year: "numeric" 
-      }).toUpperCase();
-  
-      // Data untuk template
-      const templateData = {
-        request_number: permit.requestNumber,
-        full_name: permit.fullName,
-        nim_nik: permit.nimNik,
-        institution: permit.institution,
-        research_title: permit.researchTitle,
-        research_location: permit.researchLocation,
-        research_duration: permit.researchDuration,
-        date: dateStr,
-        end_date: endDateStr,
-        signer_name: "Kepala BAPPERIDA Prov. Kalteng",
-        signer_position: "Kepala BADAN PERENCANAAN PEMBANGUNAN, RISET DAN INOVASI DAERAH",
-        signer_nip: "197412232000031002",
-        signer_rank: "Pembina Tk.I",
-        current_year: now.getFullYear().toString(),
-        current_month: now.toLocaleDateString("id-ID", { month: "long" }),
-        current_day: now.getDate().toString(),
-        // Tambahan data untuk template yang lebih kompleks
-        intro_letter_number: permit.introLetterNumber || "-",
-        intro_letter_date: permit.introLetterDate 
-          ? new Date(permit.introLetterDate).toLocaleDateString("id-ID", { 
-              day: "numeric", 
-              month: "long", 
-              year: "numeric" 
-            })
-          : "-",
-        birth_place: permit.birthPlace || "-",
-        phone_wa: permit.phoneWa || "-",
-        citizenship: permit.citizenship || "Indonesia",
-        work_unit: permit.workUnit || "-",
-        signer_position_detail: permit.signerPosition || "Kepala BADAN PERENCANAAN PEMBANGUNAN, RISET DAN INOVASI DAERAH",
-      };
-  
-      // Generate DOCX dengan template
-      const buffer = await generateDocxFromTemplate(templatePath, templateData);
-  
-      // Simpan file yang digenerate
-      const letterDir = path.join(uploadDir, "letters");
-      if (!fs.existsSync(letterDir)) fs.mkdirSync(letterDir, { recursive: true });
-      
-      const fileName = `${permit.requestNumber.replace(/\//g, "-")}-${Date.now()}.docx`;
-      const filePath = path.join(letterDir, fileName);
-      fs.writeFileSync(filePath, buffer);
-      
-      const fileUrl2 = `/uploads/letters/${fileName}`;
-  
-      // Simpan ke database
-      if (templateFile.templateId) {
-        await db.createGeneratedLetter({ 
-          permitId: permit.id, 
-          templateId: templateFile.templateId, 
-          fileUrl: fileUrl2 
+
+        // Build replacements dari data permit
+        const replacements = buildLetterReplacements(permit);
+
+        // Generate DOCX
+        const outputBuffer = generateDocxFromBuffer(templateBuffer, replacements);
+
+        // Simpan file hasil generate
+        const letterDir = path.join(uploadDir, "letters");
+        if (!fs.existsSync(letterDir)) fs.mkdirSync(letterDir, { recursive: true });
+
+        const fileName = `${permit.requestNumber.replace(/[\\/]/g, "-")}-${Date.now()}.docx`;
+        const filePath = path.join(letterDir, fileName);
+        fs.writeFileSync(filePath, outputBuffer);
+
+        const generatedFileUrl = `/uploads/letters/${fileName}`;
+
+        // Simpan record ke generated_letters
+        await db.createGeneratedLetter({
+          permitId: permit.id,
+          templateId: req.body.templateId ?? undefined,
+          fileUrl: generatedFileUrl,
         });
+
+        // Update status permit
+        await db.updatePermitStatus(
+          permit.id,
+          "generated_letter",
+          "Surat izin berhasil digenerate",
+          req.user.id
+        );
+
+        // Kirim file ke browser sebagai download
+        res.setHeader(
+          "Content-Type",
+          "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
+        );
+        res.setHeader(
+          "Content-Disposition",
+          `attachment; filename="${fileName}"`
+        );
+        return res.send(outputBuffer);
+
+      } catch (e: any) {
+        console.error("DOCX generation error:", e);
+        return res.status(500).json({ error: e.message });
       }
-  
-      await db.updatePermitStatus(permit.id, "generated_letter", "Surat izin DOCX berhasil digenerate", req.user.id);
-  
-      // Kirim file sebagai response
-      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
-      res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
-      return res.send(buffer);
-    } catch (e: any) {
-      console.error("DOCX generation error:", e);
-      return res.status(500).json({ error: e.message });
     }
-  });  
+  );
+
+  // Generate letter as DOCX - format resmi surat pemerintah
+  // app.post("/api/admin/permits/:id/generate-letter-docx", authMiddleware, requireRole("super_admin", "admin_rida"), async (req: any, res) => {
+  //   try {
+  //     const permit = await db.getPermit(req.params.id);
+  //     if (!permit) return res.status(404).json({ error: "Not found" });
+  
+  //     // Dapatkan template yang dipilih dari request body
+  //     const { templateId } = req.body;
+      
+  //     // Cari template file
+  //     let templateFile = null;
+  //     if (templateId) {
+  //       const templateFiles = await db.listLetterTemplateFiles(templateId);
+  //       templateFile = templateFiles.find(f => f.fileUrl.endsWith('.docx'));
+  //     }
+      
+  //     // Jika tidak ada template spesifik, gunakan template default
+  //     if (!templateFile) {
+  //       const templates = await db.listTemplates();
+  //       if (templates.length === 0) {
+  //         return res.status(400).json({ error: "No template found" });
+  //       }
+        
+  //       // Cari template dengan tipe research_permit
+  //       const researchTemplate = templates.find(t => t.type === "research_permit");
+  //       const defaultTemplate = researchTemplate || templates[0];
+        
+  //       const templateFiles = await db.listLetterTemplateFiles(defaultTemplate.id);
+  //       templateFile = templateFiles.find(f => f.fileUrl.endsWith('.docx'));
+        
+  //       if (!templateFile) {
+  //         return res.status(400).json({ error: "No DOCX template file found" });
+  //       }
+  //     }
+  
+  //     // Path ke file template
+  //     const templatePath = path.join(process.cwd(), templateFile.fileUrl.replace("/uploads", "uploads"));
+      
+  //     if (!fs.existsSync(templatePath)) {
+  //       return res.status(400).json({ error: "Template file not found on disk" });
+  //     }
+  
+  //     const now = new Date();
+  //     const dateStr = now.toLocaleDateString("id-ID", { 
+  //       day: "numeric", 
+  //       month: "long", 
+  //       year: "numeric" 
+  //     }).toUpperCase();
+      
+  //     const endDate = new Date(now);
+  //     endDate.setMonth(endDate.getMonth() + 1);
+  //     const endDateStr = endDate.toLocaleDateString("id-ID", { 
+  //       day: "numeric", 
+  //       month: "long", 
+  //       year: "numeric" 
+  //     }).toUpperCase();
+  
+  //     // Data untuk template
+  //     const templateData = {
+  //       request_number: permit.requestNumber,
+  //       full_name: permit.fullName,
+  //       nim_nik: permit.nimNik,
+  //       institution: permit.institution,
+  //       research_title: permit.researchTitle,
+  //       research_location: permit.researchLocation,
+  //       research_duration: permit.researchDuration,
+  //       date: dateStr,
+  //       end_date: endDateStr,
+  //       signer_name: "Kepala BAPPERIDA Prov. Kalteng",
+  //       signer_position: "Kepala BADAN PERENCANAAN PEMBANGUNAN, RISET DAN INOVASI DAERAH",
+  //       signer_nip: "197412232000031002",
+  //       signer_rank: "Pembina Tk.I",
+  //       current_year: now.getFullYear().toString(),
+  //       current_month: now.toLocaleDateString("id-ID", { month: "long" }),
+  //       current_day: now.getDate().toString(),
+  //       // Tambahan data untuk template yang lebih kompleks
+  //       intro_letter_number: permit.introLetterNumber || "-",
+  //       intro_letter_date: permit.introLetterDate 
+  //         ? new Date(permit.introLetterDate).toLocaleDateString("id-ID", { 
+  //             day: "numeric", 
+  //             month: "long", 
+  //             year: "numeric" 
+  //           })
+  //         : "-",
+  //       birth_place: permit.birthPlace || "-",
+  //       phone_wa: permit.phoneWa || "-",
+  //       citizenship: permit.citizenship || "Indonesia",
+  //       work_unit: permit.workUnit || "-",
+  //       signer_position_detail: permit.signerPosition || "Kepala BADAN PERENCANAAN PEMBANGUNAN, RISET DAN INOVASI DAERAH",
+  //     };
+  
+  //     // Generate DOCX dengan template
+  //     const buffer = await generateDocxFromTemplate(templatePath, templateData);
+  
+  //     // Simpan file yang digenerate
+  //     const letterDir = path.join(uploadDir, "letters");
+  //     if (!fs.existsSync(letterDir)) fs.mkdirSync(letterDir, { recursive: true });
+      
+  //     const fileName = `${permit.requestNumber.replace(/\//g, "-")}-${Date.now()}.docx`;
+  //     const filePath = path.join(letterDir, fileName);
+  //     fs.writeFileSync(filePath, buffer);
+      
+  //     const fileUrl2 = `/uploads/letters/${fileName}`;
+  
+  //     // Simpan ke database
+  //     if (templateFile.templateId) {
+  //       await db.createGeneratedLetter({ 
+  //         permitId: permit.id, 
+  //         templateId: templateFile.templateId, 
+  //         fileUrl: fileUrl2 
+  //       });
+  //     }
+  
+  //     await db.updatePermitStatus(permit.id, "generated_letter", "Surat izin DOCX berhasil digenerate", req.user.id);
+  
+  //     // Kirim file sebagai response
+  //     res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+  //     res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+  //     return res.send(buffer);
+  //   } catch (e: any) {
+  //     console.error("DOCX generation error:", e);
+  //     return res.status(500).json({ error: e.message });
+  //   }
+  // });  
 
   function fillTemplate(html: string, permit: any) {
     const dateStr = new Date().toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" });
@@ -1072,8 +1217,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     },
   );
 
-  const templateUpload = getMulterDocx("letter-templates");
-
   app.post(
     "/api/admin/letter-templates/upload-docx",
     authMiddleware,
@@ -1083,29 +1226,44 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       try {
         if (!req.file) return res.status(400).json({ error: "No file" });
   
-        const { name, type, isActive } = req.body;
+        const { name } = req.body;
   
-        // Buat template record dulu
+        // Baca isi XML untuk extract placeholder otomatis
+        const zip = new PizZip(fs.readFileSync(req.file.path));
+        const docXml = zip.files["word/document.xml"]?.asText() ?? "";
+        const foundPlaceholders = [...new Set(
+          [...docXml.matchAll(/&lt;&lt;([^&]+?)&gt;&gt;/g)].map((m) => `<<${m[1]}>>`)
+        )];
+  
+        // Buat template record
         const template = await db.createTemplate({
-          name: name || "Template Surat Izin Penelitian",
-          content: ""
+          name: name || req.file.originalname.replace(".docx", ""),
+          content: "", // Tidak pakai HTML editor, template dari file
         });
-        // Simpan file template
+  
+        // Simpan file
         const url = fileUrl("letter-templates", req.file.filename);
-        const path = `letter-templates/${req.file.filename}`;
-
         const templateFile = await db.createLetterTemplateFile({
           templateId: template.id,
           fileUrl: url,
-          filePath: path,
+          filePath: `letter-templates/${req.file.filename}`,
           fileName: req.file.originalname,
           fileSize: req.file.size,
           mimeType: req.file.mimetype,
         });
   
-        return res.json({ 
-          success: true, 
-          data: { ...template, file: templateFile }
+        // Update placeholders yang ditemukan ke record template
+        await db.updateTemplate(template.id, {
+          placeholders: JSON.stringify(foundPlaceholders),
+        });
+  
+        return res.json({
+          success: true,
+          data: {
+            ...template,
+            placeholders: foundPlaceholders,
+            file: templateFile,
+          },
         });
       } catch (e: any) {
         return res.status(500).json({ error: e.message });
@@ -1123,6 +1281,46 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     catch (e: any) { return res.status(500).json({ error: e.message }); }
   });
 
+  // 1. GET files untuk satu template (dipakai PreviewModal)
+  app.get(
+    "/api/admin/letter-templates/:id/files",
+    authMiddleware,
+    requireRole("super_admin", "admin_rida", "admin_bpp"),
+    async (req, res) => {
+      try {
+        const files = await db.listLetterTemplateFiles(req.params.id);
+        return res.json(files);
+      } catch (e: any) {
+        return res.status(500).json({ error: e.message });
+      }
+    }
+  );
+ 
+  // 2. DELETE template (dipakai tombol hapus di list)
+  app.delete(
+    "/api/admin/letter-templates/:id",
+    authMiddleware,
+    requireRole("super_admin", "admin_rida"),
+    async (req, res) => {
+      try {
+        // Hapus file fisik terlebih dahulu
+        const files = await db.listLetterTemplateFiles(req.params.id);
+        for (const f of files) {
+          const abs = path.join(
+            process.cwd(),
+            f.fileUrl.replace("/uploads", "uploads")
+          );
+          if (fs.existsSync(abs)) fs.unlinkSync(abs);
+        }
+        // Hapus record (pastikan ada method ini di DatabaseStorage)
+        await db.deleteTemplate(req.params.id);
+        return res.json({ ok: true });
+      } catch (e: any) {
+        return res.status(500).json({ error: e.message });
+      }
+    }
+  );
+
   app.get(
     "/api/admin/letter-templates/:id",
     authMiddleware,
@@ -1136,59 +1334,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return res.status(500).json({ error: e.message });
       }
     },
-  );
-
-  app.post(
-    "/api/admin/letter-templates/:id/test",
-    authMiddleware,
-    requireRole("super_admin", "admin_rida"),
-    async (req: any, res) => {
-      try {
-        const { id } = req.params;
-        const { testData } = req.body;
-  
-        // Cari template file
-        const templateFiles = await db.listLetterTemplateFiles(id);
-        const templateFile = templateFiles.find(f => f.fileUrl.endsWith('.docx'));
-        
-        if (!templateFile) {
-          return res.status(400).json({ error: "No DOCX template file found" });
-        }
-  
-        const templatePath = path.join(process.cwd(), templateFile.fileUrl.replace("/uploads", "uploads"));
-        
-        if (!fs.existsSync(templatePath)) {
-          return res.status(400).json({ error: "Template file not found on disk" });
-        }
-  
-        // Data test default
-        const defaultTestData = {
-          request_number: "BAPPERIDA-RID-2024-000001",
-          full_name: "John Doe",
-          nim_nik: "1234567890",
-          institution: "Universitas Contoh",
-          research_title: "Penelitian Contoh",
-          research_location: "Palangka Raya",
-          research_duration: "3 bulan",
-          date: new Date().toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" }).toUpperCase(),
-          end_date: new Date(Date.now() + 30*24*60*60*1000).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" }).toUpperCase(),
-          signer_name: "Kepala BAPPERIDA Prov. Kalteng",
-        };
-  
-        const dataToUse = testData || defaultTestData;
-        
-        // Generate DOCX dengan data test
-        const buffer = await generateDocxFromTemplate(templatePath, dataToUse);
-  
-        // Kirim file sebagai response untuk preview
-        res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
-        res.setHeader("Content-Disposition", `attachment; filename="test-template-${id}.docx"`);
-        return res.send(buffer);
-      } catch (e: any) {
-        console.error("Template test error:", e);
-        return res.status(500).json({ error: e.message });
-      }
-    }
   );
 
   // ─── Surveys ─────────────────────────────────────────────────────────────────

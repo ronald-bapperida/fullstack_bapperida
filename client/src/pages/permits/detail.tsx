@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState, useRef } from "react";
+import { useMemo, useState, useCallback, useRef } from "react";
 import { useParams, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import * as mammoth from "mammoth";
 
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -9,15 +10,20 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Input } from "@/components/ui/input";
-
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import {
   Dialog,
   DialogContent,
   DialogHeader,
   DialogTitle,
   DialogFooter,
+  DialogDescription,
 } from "@/components/ui/dialog";
 
 import {
@@ -31,13 +37,37 @@ import {
   ExternalLink,
   Eye,
   Download,
-  Upload,
-  FileUp,
+  Loader2,
+  BookOpen,
+  AlertCircle,
+  FileDown,
 } from "lucide-react";
 
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { id as localeId } from "date-fns/locale";
+
+// ─── Types ────────────────────────────────────────────────────────────────────
+
+interface LetterTemplate {
+  id: string;
+  name: string;
+  type: string | null;
+  isActive: boolean;
+  placeholders: string | null; // JSON: ["<<NAMA>>", ...]
+  createdAt: string;
+}
+
+interface TemplateFile {
+  id: string;
+  templateId: string;
+  fileUrl: string;
+  fileName: string;
+  fileSize: number;
+  mimeType: string;
+}
+
+// ─── Constants ────────────────────────────────────────────────────────────────
 
 const STATUS_LABELS: Record<string, string> = {
   submitted: "Diajukan",
@@ -69,6 +99,89 @@ const STATUS_COLORS: Record<string, string> = {
   rejected: "text-destructive",
 };
 
+// ─── Helpers ──────────────────────────────────────────────────────────────────
+
+function parsePlaceholders(raw: string | null | undefined): string[] {
+  if (!raw) return [];
+  try {
+    const arr = JSON.parse(raw);
+    return Array.isArray(arr) ? arr : [];
+  } catch {
+    return [];
+  }
+}
+
+function downloadBlob(blob: Blob, filename: string) {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+/**
+ * Buat map replacement dari data permit ke placeholder template.
+ * Placeholder di XML: &lt;&lt;NAMA&gt;&gt; → setelah mammoth jadi teks: <<NAMA>>
+ */
+function buildReplacementsFromPermit(permit: any): Record<string, string> {
+  const formatDate = (d: any): string => {
+    if (!d) return "-";
+    return new Date(d)
+      .toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" })
+      .toUpperCase();
+  };
+
+  return {
+    "NAMA": permit.fullName ?? "-",
+    "NIM": permit.nimNik ?? "-",
+    "TIM SURVEY/PENELITI": permit.institution ?? "-",
+    "JUDUL PENELITIAN": permit.researchTitle ?? "-",
+    "LOKASI PENELITIAN": permit.researchLocation ?? "-",
+    "NOMOR SURAT": permit.introLetterNumber ?? "-",
+    "TANGGAL SURAT": formatDate(permit.introLetterDate),
+    "TANDA TANGAN": permit.workUnit || permit.institution || "-",
+  };
+}
+
+/**
+ * Apply replacements ke HTML hasil mammoth.
+ * Placeholder muncul sebagai teks literal <<NAMA>> setelah konversi.
+ */
+function applyReplacementsToHtml(
+  html: string,
+  replacements: Record<string, string>
+): string {
+  let out = html;
+  for (const [key, value] of Object.entries(replacements)) {
+    // Ganti placeholder dengan highlight biru (data nyata)
+    const escaped = value.replace(/</g, "&lt;").replace(/>/g, "&gt;");
+    out = out.replace(
+      new RegExp(`<<${key}>>`, "gi"),
+      `<mark style="background:#dbeafe;color:#1e40af;border-radius:2px;padding:0 2px;font-weight:600;">${escaped}</mark>`
+    );
+  }
+  // Highlight sisa placeholder yang belum terpetakan (kuning)
+  out = out.replace(
+    /<<([^>]+)>>/g,
+    `<mark style="background:#fef9c3;color:#713f12;border-radius:2px;padding:0 2px;">&lt;&lt;$1&gt;&gt;</mark>`
+  );
+  return out;
+}
+
+/** Fetch DOCX dari URL → convert via mammoth → return raw HTML */
+async function docxUrlToHtml(fileUrl: string): Promise<string> {
+  const resp = await fetch(fileUrl);
+  if (!resp.ok) throw new Error(`Gagal mengambil file template: ${resp.statusText}`);
+  const arrayBuffer = await resp.arrayBuffer();
+  const result = await mammoth.convertToHtml({ arrayBuffer });
+  return result.value;
+}
+
+// ─── Sub-components ───────────────────────────────────────────────────────────
+
 function InfoRow({ label, value }: { label: string; value: string | null | undefined }) {
   return (
     <div className="grid grid-cols-3 gap-2 py-2 border-b last:border-0">
@@ -88,7 +201,7 @@ function FileLink({ label, url }: { label: string; url: string | null | undefine
           href={url}
           target="_blank"
           rel="noopener noreferrer"
-          className="text-sm text-primary flex items-center gap-1 hover-elevate"
+          className="text-sm text-primary flex items-center gap-1 hover:underline"
         >
           <ExternalLink className="w-3 h-3" /> Lihat File
         </a>
@@ -97,58 +210,422 @@ function FileLink({ label, url }: { label: string; url: string | null | undefine
   );
 }
 
-function downloadBlob(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
+// ─── Preview Modal ────────────────────────────────────────────────────────────
+
+interface PreviewModalProps {
+  open: boolean;
+  onClose: () => void;
+  permit: any;
+  templateId: string | null;
 }
 
-function unwrapApi(json: any) {
-  if (!json) return json;
-  if (json.data) return json.data;
-  if (json.success && json.data) return json.data;
-  return json;
+function PreviewModal({ open, onClose, permit, templateId }: PreviewModalProps) {
+  const [html, setHtml] = useState<string | null>(null);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const loadedFor = useRef<string | null>(null);
+
+  // Fetch files dari template yang dipilih
+  const { data: files = [] } = useQuery<TemplateFile[]>({
+    queryKey: [`/api/admin/letter-templates/${templateId}/files`],
+    enabled: open && !!templateId,
+    queryFn: async () => {
+      const res = await apiRequest("GET", `/api/admin/letter-templates/${templateId}/files`);
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+  });
+
+  const docxFile = files.find((f) => f.fileUrl.endsWith(".docx"));
+
+  const loadPreview = useCallback(
+    async (fileUrl: string) => {
+      if (loadedFor.current === fileUrl) return;
+      loadedFor.current = fileUrl;
+      setLoading(true);
+      setError(null);
+      setHtml(null);
+      try {
+        const rawHtml = await docxUrlToHtml(fileUrl);
+        const replacements = buildReplacementsFromPermit(permit);
+        const applied = applyReplacementsToHtml(rawHtml, replacements);
+        setHtml(applied);
+      } catch (e: any) {
+        setError(e.message || "Gagal merender dokumen");
+        loadedFor.current = null;
+      } finally {
+        setLoading(false);
+      }
+    },
+    [permit]
+  );
+
+  // Trigger load saat file tersedia
+  if (open && docxFile && loadedFor.current !== docxFile.fileUrl) {
+    loadPreview(docxFile.fileUrl);
+  }
+  if (!open && loadedFor.current !== null) {
+    loadedFor.current = null;
+    // reset state hanya sekali lewat effect di bawah
+  }
+
+  return (
+    <Dialog
+      open={open}
+      onOpenChange={(v) => {
+        if (!v) {
+          setHtml(null);
+          setError(null);
+          loadedFor.current = null;
+          onClose();
+        }
+      }}
+    >
+      <DialogContent className="max-w-5xl max-h-[92vh] flex flex-col gap-0 p-0">
+        {/* Header */}
+        <div className="px-6 pt-6 pb-4 border-b shrink-0">
+          <DialogTitle className="flex items-center gap-2 text-base">
+            <BookOpen className="w-4 h-4 text-primary" />
+            Preview Surat Izin — {permit?.requestNumber}
+          </DialogTitle>
+          <DialogDescription className="mt-1 text-xs">
+            Data permit sudah dimasukkan ke dalam template.{" "}
+            <span className="inline-block bg-blue-100 text-blue-700 rounded px-1 font-mono">
+              Highlight biru
+            </span>{" "}
+            = data real.{" "}
+            <span className="inline-block bg-yellow-100 text-yellow-700 rounded px-1 font-mono">
+              Highlight kuning
+            </span>{" "}
+            = placeholder belum terpetakan.
+          </DialogDescription>
+        </div>
+
+        {/* Body */}
+        <div className="flex-1 min-h-0 overflow-auto bg-gray-100">
+          {!docxFile && !loading ? (
+            <div className="flex flex-col items-center justify-center h-64 gap-3 text-muted-foreground text-sm">
+              <FileText className="w-8 h-8 opacity-30" />
+              <span>File DOCX tidak ditemukan untuk template ini</span>
+            </div>
+          ) : loading ? (
+            <div className="flex flex-col items-center justify-center h-64 gap-3 text-muted-foreground">
+              <Loader2 className="w-6 h-6 animate-spin" />
+              <span className="text-sm">Merender dokumen dengan data permit...</span>
+            </div>
+          ) : error ? (
+            <div className="flex flex-col items-center justify-center h-64 gap-3 text-destructive text-sm">
+              <AlertCircle className="w-6 h-6" />
+              <span>{error}</span>
+              {docxFile && (
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => {
+                    loadedFor.current = null;
+                    loadPreview(docxFile.fileUrl);
+                  }}
+                >
+                  Coba Lagi
+                </Button>
+              )}
+            </div>
+          ) : html ? (
+            <div className="p-8 max-w-4xl mx-auto">
+              <div
+                className="bg-white shadow border p-12 min-h-[700px]"
+                style={{
+                  fontFamily: "'Times New Roman', Times, serif",
+                  fontSize: "12pt",
+                  lineHeight: 1.6,
+                  color: "#1a1a1a",
+                }}
+                dangerouslySetInnerHTML={{ __html: html }}
+              />
+              {/* Style for mammoth output */}
+              <style>{`
+                .bg-white p { margin: 0 0 4px; }
+                .bg-white table { width: 100%; border-collapse: collapse; margin: 6px 0; }
+                .bg-white td, .bg-white th { padding: 3px 6px; vertical-align: top; }
+                .bg-white strong, .bg-white b { font-weight: 700; }
+                .bg-white em, .bg-white i { font-style: italic; }
+                .bg-white h1, .bg-white h2 { font-weight: 700; margin: 8px 0 4px; }
+              `}</style>
+            </div>
+          ) : null}
+        </div>
+
+        {/* Footer */}
+        <div className="px-6 py-4 border-t shrink-0 flex items-center justify-between gap-3">
+          <div className="text-xs text-muted-foreground">
+            Template di-render menggunakan mammoth.js — format mungkin sedikit berbeda dari aslinya.
+          </div>
+          <div className="flex gap-2">
+            {docxFile && (
+              <Button variant="outline" size="sm" asChild>
+                <a href={docxFile.fileUrl} download={docxFile.fileName}>
+                  <FileDown className="w-4 h-4 mr-1.5" />
+                  Unduh Template Asli
+                </a>
+              </Button>
+            )}
+            <Button size="sm" onClick={onClose}>
+              Tutup
+            </Button>
+          </div>
+        </div>
+      </DialogContent>
+    </Dialog>
+  );
 }
+
+// ─── Generate Card ────────────────────────────────────────────────────────────
+
+interface GenerateCardProps {
+  permit: any;
+  permitId: string;
+}
+
+function GenerateCard({ permit, permitId }: GenerateCardProps) {
+  const { toast } = useToast();
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
+  const [previewOpen, setPreviewOpen] = useState(false);
+  const [downloadFormat, setDownloadFormat] = useState<"docx" | "pdf">("docx");
+
+  // Fetch list templates
+  const { data: templates = [], isLoading: templatesLoading } = useQuery<LetterTemplate[]>({
+    queryKey: ["/api/admin/letter-templates"],
+    queryFn: async () => {
+      const res = await apiRequest("GET", "/api/admin/letter-templates");
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+  });
+
+  const activeTemplates = templates.filter((t) => t.isActive);
+  const selectedTemplate = templates.find((t) => t.id === selectedTemplateId) ?? null;
+
+  // Generate DOCX mutation
+  const generateMutation = useMutation({
+    mutationFn: async (format: "docx" | "pdf") => {
+      if (!selectedTemplateId) throw new Error("Pilih template terlebih dahulu");
+
+      const res = await fetch(
+        `/api/admin/permits/${permitId}/generate-letter-docx`,
+        {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${localStorage.getItem("token")}`,
+          },
+          body: JSON.stringify({ templateId: selectedTemplateId }),
+        }
+      );
+
+      if (!res.ok) {
+        const text = await res.text();
+        throw new Error(text);
+      }
+
+      return { blob: await res.blob(), format };
+    },
+    onSuccess: ({ blob, format }) => {
+      const safeName = (permit?.requestNumber ?? "surat-izin")
+        .replace(/[/\\]/g, "-")
+        .replace(/\s+/g, "-");
+      const ext = format === "pdf" ? "pdf" : "docx";
+      downloadBlob(blob, `${safeName}.${ext}`);
+
+      toast({
+        title: "Surat berhasil digenerate",
+        description: "File sudah didownload ke komputer Anda",
+      });
+
+      queryClient.invalidateQueries({ queryKey: [`/api/admin/permits/${permitId}`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/permits"] });
+    },
+    onError: (e: any) =>
+      toast({ title: "Gagal generate", description: e.message, variant: "destructive" }),
+  });
+
+  const placeholders = parsePlaceholders(selectedTemplate?.placeholders);
+
+  return (
+    <>
+      <Card className="border-primary/30">
+        <CardHeader className="pb-3">
+          <CardTitle className="text-base text-primary flex items-center gap-2">
+            <FileCheck className="w-4 h-4" />
+            Generate Surat Izin Penelitian
+          </CardTitle>
+        </CardHeader>
+
+        <CardContent className="flex flex-col gap-5">
+          {/* Template selector */}
+          <div className="flex flex-col gap-2">
+            <Label htmlFor="template-select">Pilih Template Surat</Label>
+
+            {templatesLoading ? (
+              <Skeleton className="h-10 w-full" />
+            ) : activeTemplates.length === 0 ? (
+              <div className="flex items-center gap-2 text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded-md px-3 py-2.5">
+                <AlertCircle className="w-4 h-4 shrink-0" />
+                Belum ada template aktif. Upload template di halaman{" "}
+                <a href="/letter-templates" className="underline font-medium">
+                  Template Surat
+                </a>
+                .
+              </div>
+            ) : (
+              <Select
+                value={selectedTemplateId}
+                onValueChange={setSelectedTemplateId}
+              >
+                <SelectTrigger id="template-select">
+                  <SelectValue placeholder="-- Pilih template --" />
+                </SelectTrigger>
+                <SelectContent>
+                  {activeTemplates.map((t) => (
+                    <SelectItem key={t.id} value={t.id}>
+                      {t.name}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            )}
+          </div>
+
+          {/* Selected template info */}
+          {selectedTemplate && (
+            <div className="rounded-md border bg-muted/40 px-4 py-3 flex flex-col gap-2">
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-sm font-medium">{selectedTemplate.name}</span>
+                <Badge variant={selectedTemplate.isActive ? "default" : "secondary"} className="text-xs">
+                  {selectedTemplate.isActive ? "Aktif" : "Nonaktif"}
+                </Badge>
+              </div>
+              {placeholders.length > 0 ? (
+                <div className="flex flex-wrap gap-1.5">
+                  {placeholders.map((p) => (
+                    <Badge key={p} variant="secondary" className="text-xs font-mono">
+                      {p}
+                    </Badge>
+                  ))}
+                </div>
+              ) : (
+                <p className="text-xs text-muted-foreground">
+                  Placeholder tidak terdeteksi di template ini.
+                </p>
+              )}
+            </div>
+          )}
+
+          {/* Generated letter link (jika sudah ada) */}
+          {permit?.generatedLetter?.fileUrl && (
+            <div className="flex items-center gap-2 rounded-md bg-green-50 border border-green-200 px-3 py-2.5">
+              <CheckCircle className="w-4 h-4 text-green-600 shrink-0" />
+              <span className="text-xs text-green-700 font-medium">Surat sudah pernah digenerate:</span>
+              <a
+                href={permit.generatedLetter.fileUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="text-xs text-primary flex items-center gap-1 hover:underline ml-auto"
+              >
+                <ExternalLink className="w-3 h-3" />
+                Buka file tersimpan
+              </a>
+            </div>
+          )}
+
+          {/* Actions */}
+          {selectedTemplateId ? (
+            <div className="flex flex-wrap items-center gap-2 pt-1 border-t">
+              {/* Preview */}
+              <Button
+                variant="outline"
+                onClick={() => setPreviewOpen(true)}
+                className="gap-2"
+              >
+                <Eye className="w-4 h-4" />
+                Preview Surat
+              </Button>
+
+              {/* Download */}
+              <div className="flex items-center gap-1.5 ml-auto">
+                <Select
+                  value={downloadFormat}
+                  onValueChange={(v: any) => setDownloadFormat(v)}
+                >
+                  <SelectTrigger className="w-[110px] h-9">
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="docx">DOCX</SelectItem>
+                    <SelectItem value="pdf">PDF</SelectItem>
+                  </SelectContent>
+                </Select>
+
+                <Button
+                  onClick={() => generateMutation.mutate(downloadFormat)}
+                  disabled={generateMutation.isPending}
+                  className="gap-2"
+                >
+                  {generateMutation.isPending ? (
+                    <>
+                      <Loader2 className="w-4 h-4 animate-spin" />
+                      Memproses...
+                    </>
+                  ) : (
+                    <>
+                      <Download className="w-4 h-4" />
+                      Generate &amp; Download
+                    </>
+                  )}
+                </Button>
+              </div>
+            </div>
+          ) : (
+            <div className="text-sm text-muted-foreground text-center py-3 bg-muted/30 rounded-md">
+              Pilih template terlebih dahulu untuk melanjutkan
+            </div>
+          )}
+        </CardContent>
+      </Card>
+
+      {/* Preview modal */}
+      <PreviewModal
+        open={previewOpen}
+        onClose={() => setPreviewOpen(false)}
+        permit={permit}
+        templateId={selectedTemplateId || null}
+      />
+    </>
+  );
+}
+
+// ─── Main Page ────────────────────────────────────────────────────────────────
 
 export default function PermitDetailPage() {
   const { id: permitId } = useParams<{ id: string }>();
   const [, setLoc] = useLocation();
   const { toast } = useToast();
-  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [newStatus, setNewStatus] = useState("");
   const [note, setNote] = useState("");
-
-  // File template yang dipilih dari komputer
-  const [selectedFile, setSelectedFile] = useState<File | null>(null);
-  const [selectedFileName, setSelectedFileName] = useState<string>("");
-
-  // preview modal
-  const [previewOpen, setPreviewOpen] = useState(false);
-  const [previewUrl, setPreviewUrl] = useState<string | null>(null);
-
-  // download format
-  const [downloadFormat, setDownloadFormat] = useState<"pdf" | "docx">("pdf");
 
   const { data: permit, isLoading } = useQuery<any>({
     queryKey: [`/api/admin/permits/${permitId}`],
   });
 
-  // Hapus query templates karena kita tidak pakai template dari database
+  const StatusIcon = useMemo(
+    () => STATUS_ICONS[permit?.status] || Clock,
+    [permit?.status]
+  );
 
-  const templateReady = !!selectedFile;
-
-  const StatusIcon = useMemo(() => (STATUS_ICONS[permit?.status] || Clock), [permit?.status]);
-
-  const nextStatuses = useMemo(() => {
+  const nextStatuses = useMemo<string[]>(() => {
     if (!permit?.status) return [];
     return (
-      {
+      ({
         submitted: ["in_review", "rejected"],
         in_review: ["revision_requested", "approved", "rejected"],
         revision_requested: ["in_review", "rejected"],
@@ -156,15 +633,17 @@ export default function PermitDetailPage() {
         generated_letter: ["sent"],
         sent: [],
         rejected: [],
-      }[permit.status] || []
+      } as Record<string, string[]>)[permit.status] ?? []
     );
   }, [permit?.status]);
 
-  // --- Mutations ---
-
   const statusMutation = useMutation({
     mutationFn: async (data: { status: string; note: string }) => {
-      const res = await apiRequest("PATCH", `/api/admin/permits/${permitId}/status`, data);
+      const res = await apiRequest(
+        "PATCH",
+        `/api/admin/permits/${permitId}/status`,
+        data
+      );
       if (!res.ok) throw new Error(await res.text());
       return res.json();
     },
@@ -175,115 +654,11 @@ export default function PermitDetailPage() {
       setNewStatus("");
       setNote("");
     },
-    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+    onError: (e: any) =>
+      toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
-  // Generate dan download DOCX dengan file template dari komputer
-  const generateDocxMutation = useMutation({
-    mutationFn: async () => {
-      if (!selectedFile) throw new Error("Pilih file template dulu");
-      
-      const formData = new FormData();
-      formData.append("template", selectedFile);
-      
-      const response = await fetch(`/api/admin/permits/${permitId}/generate-letter-docx`, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${localStorage.getItem("token")}`,
-        },
-        body: formData,
-      });
-      
-      if (!response.ok) {
-        const errorText = await response.text();
-        throw new Error(errorText);
-      }
-      
-      return response.blob();
-    },
-    onSuccess: (blob) => {
-      const fn = `${permit?.requestNumber || "surat-izin"}-${Date.now()}.docx`.replace(/\s+/g, "-");
-      downloadBlob(blob, fn);
-      toast({ 
-        title: "Sukses", 
-        description: "Surat berhasil digenerate dan didownload" 
-      });
-
-      // Refresh data permit
-      queryClient.invalidateQueries({ queryKey: [`/api/admin/permits/${permitId}`] });
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/permits"] });
-    },
-    onError: (e: any) => {
-      console.error("DOCX generation error:", e);
-      toast({ 
-        title: "Gagal generate DOCX", 
-        description: e.message, 
-        variant: "destructive" 
-      });
-    },
-  });
-
-  // Preview PDF (masih menggunakan endpoint yang sama)
-  const openPreviewPdf = async () => {
-    if (!selectedFile) {
-      toast({ title: "Pilih file template dulu", variant: "destructive" });
-      return;
-    }
-
-    const pdfUrl = `/api/admin/permits/${permitId}/letter/preview-pdf`;
-    setPreviewUrl(pdfUrl);
-    setPreviewOpen(true);
-  };
-
-  // Download PDF
-  const downloadPdf = () => {
-    if (!selectedFile) {
-      toast({ title: "Pilih file template dulu", variant: "destructive" });
-      return;
-    }
-    window.open(
-      `/api/admin/permits/${permitId}/letter/download-pdf`,
-      "_blank",
-    );
-  };
-
-  const doDownload = () => {
-    if (downloadFormat === "docx") {
-      generateDocxMutation.mutate();
-    } else {
-      downloadPdf();
-    }
-  };
-
-  const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (file) {
-      if (!file.name.endsWith('.docx')) {
-        toast({
-          title: "Error",
-          description: "File harus berformat .docx",
-          variant: "destructive",
-        });
-        return;
-      }
-      setSelectedFile(file);
-      setSelectedFileName(file.name);
-    }
-  };
-
-  const triggerFileInput = () => {
-    fileInputRef.current?.click();
-  };
-
-  const clearSelectedFile = () => {
-    setSelectedFile(null);
-    setSelectedFileName("");
-    if (fileInputRef.current) {
-      fileInputRef.current.value = "";
-    }
-  };
-
-  // --- UI States ---
+  // ── Loading / not found ──────────────────────────────────────────────────────
   if (isLoading)
     return (
       <div className="flex flex-col gap-6 p-6">
@@ -297,12 +672,21 @@ export default function PermitDetailPage() {
       </div>
     );
 
-  if (!permit) return <div className="p-6 text-muted-foreground">Permohonan tidak ditemukan</div>;
+  if (!permit)
+    return (
+      <div className="p-6 text-muted-foreground">Permohonan tidak ditemukan</div>
+    );
 
   return (
     <div className="flex flex-col gap-6 p-6">
+      {/* Page header */}
       <div className="flex items-center gap-3">
-        <Button size="icon" variant="ghost" onClick={() => setLoc("/permits")} data-testid="button-back">
+        <Button
+          size="icon"
+          variant="ghost"
+          onClick={() => setLoc("/permits")}
+          data-testid="button-back"
+        >
           <ArrowLeft className="w-4 h-4" />
         </Button>
         <div>
@@ -313,14 +697,18 @@ export default function PermitDetailPage() {
         </div>
         <div className="ml-auto">
           <Badge variant="outline" className="gap-1.5">
-            <StatusIcon className={`w-3.5 h-3.5 ${STATUS_COLORS[permit.status]}`} />
+            <StatusIcon
+              className={`w-3.5 h-3.5 ${STATUS_COLORS[permit.status] ?? "text-muted-foreground"}`}
+            />
             {STATUS_LABELS[permit.status] || permit.status}
           </Badge>
         </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        {/* ── Left / main column ────────────────────────────────────────────── */}
         <div className="lg:col-span-2 flex flex-col gap-6">
+          {/* Data Pemohon */}
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Data Pemohon</CardTitle>
@@ -337,6 +725,7 @@ export default function PermitDetailPage() {
             </CardContent>
           </Card>
 
+          {/* Data Penelitian */}
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Data Penelitian</CardTitle>
@@ -351,13 +740,16 @@ export default function PermitDetailPage() {
                 label="Tanggal Surat"
                 value={
                   permit.introLetterDate
-                    ? format(new Date(permit.introLetterDate), "d MMMM yyyy", { locale: localeId })
+                    ? format(new Date(permit.introLetterDate), "d MMMM yyyy", {
+                        locale: localeId,
+                      })
                     : "-"
                 }
               />
             </CardContent>
           </Card>
 
+          {/* Dokumen Lampiran */}
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Dokumen Lampiran</CardTitle>
@@ -371,139 +763,13 @@ export default function PermitDetailPage() {
             </CardContent>
           </Card>
 
-          {/* Surat - Modified to use file upload instead of template selection */}
-          <Card className="border-primary/30">
-            <CardHeader>
-              <CardTitle className="text-base text-primary flex items-center gap-2">
-                <FileCheck className="w-4 h-4" /> Generate Surat Izin Penelitian
-              </CardTitle>
-            </CardHeader>
-
-            <CardContent className="flex flex-col gap-4">
-              {/* File upload section */}
-              <div className="flex flex-col gap-3">
-                <Label>Pilih File Template DOCX</Label>
-                
-                {/* Hidden file input */}
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  accept=".docx"
-                  onChange={handleFileSelect}
-                  className="hidden"
-                />
-                
-                {/* Custom file upload button */}
-                <div className="flex items-center gap-2">
-                  <Button
-                    type="button"
-                    variant="outline"
-                    onClick={triggerFileInput}
-                    className="flex-1"
-                  >
-                    <FileUp className="w-4 h-4 mr-2" />
-                    {selectedFile ? "Ganti File" : "Pilih File Template"}
-                  </Button>
-                  
-                  {selectedFile && (
-                    <Button
-                      type="button"
-                      variant="ghost"
-                      size="icon"
-                      onClick={clearSelectedFile}
-                      title="Hapus file"
-                    >
-                      <XCircle className="w-4 h-4 text-destructive" />
-                    </Button>
-                  )}
-                </div>
-                
-                {/* Selected file info */}
-                {selectedFile && (
-                  <div className="text-sm bg-muted p-2 rounded-md flex items-center gap-2">
-                    <FileText className="w-4 h-4 text-primary shrink-0" />
-                    <span className="truncate flex-1">{selectedFileName}</span>
-                    <span className="text-xs text-muted-foreground">
-                      ({(selectedFile.size / 1024).toFixed(2)} KB)
-                    </span>
-                  </div>
-                )}
-                
-                {!selectedFile && (
-                  <div className="text-xs text-muted-foreground">
-                    Pilih file template DOCX dari komputer Anda. Template harus memiliki placeholder seperti {'{full_name}'}, {'{request_number}'}, dll.
-                  </div>
-                )}
-              </div>
-
-              {/* Existing stored file link (optional) */}
-              {permit.generatedLetter?.fileUrl ? (
-                <div className="flex items-center gap-2 pt-2 border-t">
-                  <span className="text-xs text-muted-foreground">File tersimpan:</span>
-                  <a
-                    href={permit.generatedLetter.fileUrl}
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="text-sm text-primary flex items-center gap-1 hover-elevate"
-                  >
-                    <ExternalLink className="w-3 h-3" /> Buka file tersimpan
-                  </a>
-                </div>
-              ) : null}
-
-              {/* Actions: only when file selected */}
-              {templateReady ? (
-                <div className="flex flex-wrap gap-2 pt-2">
-                  <Button
-                    variant="outline"
-                    onClick={openPreviewPdf}
-                    title="Preview PDF (menggunakan template default)"
-                  >
-                    <Eye className="w-4 h-4 mr-2" />
-                    Preview PDF
-                  </Button>
-
-                  <div className="flex items-center gap-2">
-                    <Select value={downloadFormat} onValueChange={(v: any) => setDownloadFormat(v)}>
-                      <SelectTrigger className="w-[140px]">
-                        <SelectValue />
-                      </SelectTrigger>
-                      <SelectContent>
-                        <SelectItem value="pdf">PDF</SelectItem>
-                        <SelectItem value="docx">DOCX</SelectItem>
-                      </SelectContent>
-                    </Select>
-
-                    <Button 
-                      onClick={doDownload} 
-                      disabled={generateDocxMutation.isPending}
-                    >
-                      <Download className="w-4 h-4 mr-2" />
-                      {generateDocxMutation.isPending ? "Memproses..." : "Download"}
-                    </Button>
-                  </div>
-
-                  <Button
-                    variant="secondary"
-                    onClick={() => generateDocxMutation.mutate()}
-                    disabled={generateDocxMutation.isPending}
-                    title="Generate & download DOCX dengan template yang dipilih"
-                  >
-                    <FileCheck className="w-4 h-4 mr-2" />
-                    {generateDocxMutation.isPending ? "Membuat DOCX..." : "Generate & Download DOCX"}
-                  </Button>
-                </div>
-              ) : (
-                <div className="text-sm text-muted-foreground text-center py-4 bg-muted/30 rounded-md">
-                  Pilih file template DOCX terlebih dahulu untuk generate surat
-                </div>
-              )}
-            </CardContent>
-          </Card>
+          {/* Generate Surat — pilih dari DB template */}
+          <GenerateCard permit={permit} permitId={permitId} />
         </div>
 
-        {/* Right column - Status and History (unchanged) */}
+        {/* ── Right column ─────────────────────────────────────────────────── */}
         <div className="flex flex-col gap-6">
+          {/* Update Status */}
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Update Status</CardTitle>
@@ -518,7 +784,7 @@ export default function PermitDetailPage() {
                         <SelectValue placeholder="Pilih status..." />
                       </SelectTrigger>
                       <SelectContent>
-                        {nextStatuses.map((s: string) => (
+                        {nextStatuses.map((s) => (
                           <SelectItem key={s} value={s}>
                             {STATUS_LABELS[s] || s}
                           </SelectItem>
@@ -537,7 +803,9 @@ export default function PermitDetailPage() {
                   </div>
 
                   <Button
-                    onClick={() => statusMutation.mutate({ status: newStatus, note })}
+                    onClick={() =>
+                      statusMutation.mutate({ status: newStatus, note })
+                    }
                     disabled={!newStatus || statusMutation.isPending}
                     data-testid="button-update-status"
                   >
@@ -545,11 +813,14 @@ export default function PermitDetailPage() {
                   </Button>
                 </>
               ) : (
-                <p className="text-sm text-muted-foreground text-center py-4">Status sudah final</p>
+                <p className="text-sm text-muted-foreground text-center py-4">
+                  Status sudah final
+                </p>
               )}
             </CardContent>
           </Card>
 
+          {/* Riwayat Status */}
           <Card>
             <CardHeader>
               <CardTitle className="text-base">Riwayat Status</CardTitle>
@@ -561,12 +832,24 @@ export default function PermitDetailPage() {
                     const Icon = STATUS_ICONS[h.toStatus] || Clock;
                     return (
                       <div key={i} className="flex gap-3">
-                        <Icon className={`w-4 h-4 mt-0.5 shrink-0 ${STATUS_COLORS[h.toStatus] || "text-muted-foreground"}`} />
+                        <Icon
+                          className={`w-4 h-4 mt-0.5 shrink-0 ${
+                            STATUS_COLORS[h.toStatus] || "text-muted-foreground"
+                          }`}
+                        />
                         <div className="flex flex-col gap-0.5">
-                          <span className="text-sm font-medium">{STATUS_LABELS[h.toStatus] || h.toStatus}</span>
-                          {h.note && <span className="text-xs text-muted-foreground">{h.note}</span>}
+                          <span className="text-sm font-medium">
+                            {STATUS_LABELS[h.toStatus] || h.toStatus}
+                          </span>
+                          {h.note && (
+                            <span className="text-xs text-muted-foreground">
+                              {h.note}
+                            </span>
+                          )}
                           <span className="text-xs text-muted-foreground">
-                            {format(new Date(h.createdAt), "d MMM yyyy HH:mm", { locale: localeId })}
+                            {format(new Date(h.createdAt), "d MMM yyyy HH:mm", {
+                              locale: localeId,
+                            })}
                           </span>
                         </div>
                       </div>
@@ -574,41 +857,14 @@ export default function PermitDetailPage() {
                   })}
                 </div>
               ) : (
-                <p className="text-sm text-muted-foreground">Belum ada riwayat</p>
+                <p className="text-sm text-muted-foreground">
+                  Belum ada riwayat
+                </p>
               )}
             </CardContent>
           </Card>
         </div>
       </div>
-
-      {/* Preview Modal */}
-      <Dialog
-        open={previewOpen}
-        onOpenChange={(o) => {
-          setPreviewOpen(o);
-          if (!o) setPreviewUrl(null);
-        }}
-      >
-        <DialogContent className="max-w-5xl">
-          <DialogHeader>
-            <DialogTitle>Preview Surat (PDF)</DialogTitle>
-          </DialogHeader>
-
-          <div className="h-[80vh] w-full rounded border bg-muted overflow-hidden">
-            {previewUrl ? (
-              <iframe src={previewUrl} className="w-full h-full" />
-            ) : (
-              <div className="p-6 text-muted-foreground">Tidak ada preview</div>
-            )}
-          </div>
-
-          <DialogFooter>
-            <Button variant="outline" onClick={() => setPreviewOpen(false)}>
-              Tutup
-            </Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }

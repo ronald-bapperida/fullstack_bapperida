@@ -159,12 +159,14 @@ export default function MenusPage() {
                   name="value"
                   control={ci}
                   render={({ field }) => (
-                    <QuillEditor
-                      value={field.value || ""}
-                      onChange={field.onChange}
-                      placeholder="Tulis konten halaman..."
-                      minHeight={280}
-                    />
+                    <div className="max-h-[320px] overflow-y-auto border rounded-md">
+                      <QuillEditor
+                        value={field.value || ""}
+                        onChange={field.onChange}
+                        placeholder="Tulis konten halaman..."
+                        minHeight={280}
+                      />
+                    </div>
                   )}
                 />
               ) : (
@@ -235,7 +237,7 @@ export default function MenusPage() {
                           <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />
                           <span className="text-sm font-medium">{item.title}</span>
                           <Badge variant="outline" className="text-[10px]">{item.type}</Badge>
-                          <span className="text-xs text-muted-foreground">{item.value}</span>
+                          {/* <span className="text-xs text-muted-foreground">{item.value}</span> */}
                         </div>
                         <div className="flex items-center gap-1">
                           <Button

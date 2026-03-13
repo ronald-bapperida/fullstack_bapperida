@@ -350,7 +350,7 @@ export default function Dashboard() {
       )}
 
       {/* Filter Tahun dan Bulan */}
-      <div className="flex flex-wrap gap-4 items-center justify-between">
+      {/* <div className="flex flex-wrap gap-4 items-center justify-between">
         <div className="flex gap-2">
           <Select value={selectedYear.toString()} onValueChange={(v) => setSelectedYear(parseInt(v))}>
             <SelectTrigger className="w-32">
@@ -374,7 +374,7 @@ export default function Dashboard() {
             </SelectContent>
           </Select>
         </div>
-      </div>
+      </div> */}
 
       {/* Charts Section */}
       <Tabs defaultValue="news" className="space-y-4">
