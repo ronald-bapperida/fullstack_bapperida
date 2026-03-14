@@ -480,6 +480,7 @@ export function registerFlutterApiRoutes(app: express.Express) {
         id: document.id,
         title: document.title,
         doc_no: document.docNo,
+        downloaded_count: document.downloadedCount,
         category: category ? { id: category.id, name: category.name } : null,
         kind: kind ? { id: kind.id, name: kind.name } : null,
         type: type ? { id: type.id, name: type.name, extension: type.extension } : null,
@@ -810,9 +811,9 @@ export function registerFlutterApiRoutes(app: express.Express) {
    */
   flutterRouter.post("/v1/auth/register", async (req: Request, res: Response) => {
     try {
-      const { name, email, password, username } = req.body;
+      const { name, email, password, username, phone } = req.body;
       
-      if (!name || !email || !password) {
+      if (!name || !email || !password || !phone) {
         return res.status(400).json({
           success: false,
           message: "Name, email and password are required"
@@ -852,6 +853,7 @@ export function registerFlutterApiRoutes(app: express.Express) {
         fullName: name,
         role: "user",
         isActive: true,
+        phone: phone
       });
       
       const { password: _, ...userWithoutPassword } = newUser;
@@ -1002,12 +1004,13 @@ export function registerFlutterApiRoutes(app: express.Express) {
    */
   flutterRouter.put("/v1/profile", authMiddleware, async (req: any, res: Response) => {
     try {
-      const { name, email, username } = req.body;
+      const { name, email, username, phone } = req.body;
       
       const updateData: any = {};
       if (name) updateData.fullName = name;
       if (email) updateData.email = email;
       if (username) updateData.username = username;
+      if (phone) updateData.phone = phone;
       
       const updatedUser = await db.updateUser(req.user.id, updateData);
       
@@ -1020,6 +1023,7 @@ export function registerFlutterApiRoutes(app: express.Express) {
           name: userWithoutPassword.fullName,
           email: userWithoutPassword.email,
           username: userWithoutPassword.username,
+          phone: userWithoutPassword.phone
         },
         message: "Profile updated successfully"
       });

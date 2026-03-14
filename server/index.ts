@@ -3,6 +3,7 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { registerFlutterApiRoutes } from "./flutter_api";
+import cors from "cors";
 
 const app = express();
 const httpServer = createServer(app);
@@ -12,6 +13,12 @@ declare module "http" {
     rawBody: unknown;
   }
 }
+
+app.use(cors({
+  origin: "http://localhost:8080",
+  methods: ["GET","POST","PUT","DELETE","OPTIONS"],
+  allowedHeaders: ["Content-Type","Authorization"]
+}));
 
 app.use(
   express.json({
