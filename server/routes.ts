@@ -61,6 +61,22 @@ function getMulterDocx(subdir: string, maxSizeMB?: number) {
   });
 }
 
+/** Multer tanpa batas ukuran dan tanpa filter tipe file — untuk dokumen PPID */
+function getMulterUnlimited(subdir: string) {
+  const dir = path.join(uploadDir, subdir);
+  if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+  return multer({
+    storage: multer.diskStorage({
+      destination: (_, __, cb) => cb(null, dir),
+      filename: (_, file, cb) => {
+        const ext = path.extname(file.originalname);
+        cb(null, `${randomUUID()}${ext}`);
+      },
+    }),
+    // Tidak ada limits.fileSize = unlimited
+  });
+}
+
 function fileUrl(subdir: string, filename: string) {
   return `/uploads/${subdir}/${filename}`;
 }
@@ -605,7 +621,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { return res.status(500).json({ error: e.message }); }
   });
 
-  const docUpload = getMulter("documents", 1000);
+  const docUpload = getMulterUnlimited("documents");
   app.post("/api/admin/documents", authMiddleware, requireRole("super_admin", "admin_bpp"),
     docUpload.single("file"), async (req: any, res) => {
       try {
@@ -887,6 +903,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           req.user.id
         );
 
+        // Jika saveOnly=true, kembalikan JSON (tidak download)
+        if (req.body.saveOnly === "true" || req.body.saveOnly === true) {
+          return res.json({ fileUrl: generatedFileUrl, fileName });
+        }
+
         // Kirim file ke browser sebagai download
         res.setHeader(
           "Content-Type",
@@ -900,6 +921,31 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
       } catch (e: any) {
         console.error("DOCX generation error:", e);
+        return res.status(500).json({ error: e.message });
+      }
+    }
+  );
+
+  // Upload / overwrite generated letter file (max 5MB)
+  const generatedLetterUpload = getMulter("letters", 5);
+  app.post(
+    "/api/admin/permits/:id/upload-generated-letter",
+    authMiddleware,
+    requireRole("super_admin", "admin_rida"),
+    generatedLetterUpload.single("file"),
+    async (req: any, res) => {
+      try {
+        if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+        const permit = await db.getPermit(req.params.id);
+        if (!permit) return res.status(404).json({ error: "Permit tidak ditemukan" });
+        const newUrl = fileUrl("letters", req.file.filename);
+        await db.updateGeneratedLetterFile(permit.id, newUrl);
+        // Pastikan status tetap generated_letter
+        if (permit.status !== "generated_letter" && permit.status !== "sent") {
+          await db.updatePermitStatus(permit.id, "generated_letter", "Surat diupload manual", req.user.id);
+        }
+        return res.json({ fileUrl: newUrl });
+      } catch (e: any) {
         return res.status(500).json({ error: e.message });
       }
     }
@@ -1181,7 +1227,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     catch (e: any) { return res.status(500).json({ error: e.message }); }
   });
 
-  const letterTemplateUpload = getMulter("letter-templates", 10);
+  const letterTemplateUpload = getMulter("letter-templates", 5);
 
   app.post(
     "/api/admin/letter-templates/upload",

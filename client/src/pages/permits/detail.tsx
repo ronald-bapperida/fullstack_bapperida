@@ -1,4 +1,4 @@
-import { useMemo, useState, useCallback, useRef } from "react";
+import { useMemo, useState, useRef } from "react";
 import { useParams, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -10,6 +10,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import {
   Select,
   SelectContent,
@@ -22,7 +23,6 @@ import {
   DialogContent,
   DialogHeader,
   DialogTitle,
-  DialogFooter,
   DialogDescription,
 } from "@/components/ui/dialog";
 
@@ -38,9 +38,9 @@ import {
   Eye,
   Download,
   Loader2,
-  BookOpen,
   AlertCircle,
-  FileDown,
+  Upload,
+  RefreshCw,
 } from "lucide-react";
 
 import { useToast } from "@/hooks/use-toast";
@@ -54,7 +54,7 @@ interface LetterTemplate {
   name: string;
   type: string | null;
   isActive: boolean;
-  placeholders: string | null; // JSON: ["<<NAMA>>", ...]
+  placeholders: string | null;
   createdAt: string;
 }
 
@@ -122,10 +122,6 @@ function downloadBlob(blob: Blob, filename: string) {
   URL.revokeObjectURL(url);
 }
 
-/**
- * Buat map replacement dari data permit ke placeholder template.
- * Placeholder di XML: &lt;&lt;NAMA&gt;&gt; → setelah mammoth jadi teks: <<NAMA>>
- */
 function buildReplacementsFromPermit(permit: any): Record<string, string> {
   const formatDate = (d: any): string => {
     if (!d) return "-";
@@ -146,24 +142,18 @@ function buildReplacementsFromPermit(permit: any): Record<string, string> {
   };
 }
 
-/**
- * Apply replacements ke HTML hasil mammoth.
- * Placeholder muncul sebagai teks literal <<NAMA>> setelah konversi.
- */
 function applyReplacementsToHtml(
   html: string,
   replacements: Record<string, string>
 ): string {
   let out = html;
   for (const [key, value] of Object.entries(replacements)) {
-    // Ganti placeholder dengan highlight biru (data nyata)
     const escaped = value.replace(/</g, "&lt;").replace(/>/g, "&gt;");
     out = out.replace(
       new RegExp(`<<${key}>>`, "gi"),
       `<mark style="background:#dbeafe;color:#1e40af;border-radius:2px;padding:0 2px;font-weight:600;">${escaped}</mark>`
     );
   }
-  // Highlight sisa placeholder yang belum terpetakan (kuning)
   out = out.replace(
     /<<([^>]+)>>/g,
     `<mark style="background:#fef9c3;color:#713f12;border-radius:2px;padding:0 2px;">&lt;&lt;$1&gt;&gt;</mark>`
@@ -171,13 +161,87 @@ function applyReplacementsToHtml(
   return out;
 }
 
-/** Fetch DOCX dari URL → convert via mammoth → return raw HTML */
 async function docxUrlToHtml(fileUrl: string): Promise<string> {
   const resp = await fetch(fileUrl);
   if (!resp.ok) throw new Error(`Gagal mengambil file template: ${resp.statusText}`);
   const arrayBuffer = await resp.arrayBuffer();
   const result = await mammoth.convertToHtml({ arrayBuffer });
   return result.value;
+}
+
+async function openPreviewInNewTab(permit: any, templateId: string) {
+  // Fetch template files
+  const res = await apiRequest("GET", `/api/admin/letter-templates/${templateId}/files`);
+  if (!res.ok) throw new Error("Gagal mengambil file template");
+  const files: TemplateFile[] = await res.json();
+  const docxFile = files.find((f) => f.fileUrl.endsWith(".docx"));
+  if (!docxFile) throw new Error("File DOCX tidak ditemukan untuk template ini");
+
+  const rawHtml = await docxUrlToHtml(docxFile.fileUrl);
+  const replacements = buildReplacementsFromPermit(permit);
+  const filledHtml = applyReplacementsToHtml(rawHtml, replacements);
+
+  const win = window.open("", "_blank");
+  if (!win) throw new Error("Browser memblokir popup. Izinkan popup untuk halaman ini.");
+
+  win.document.write(`<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8"/>
+  <title>Preview Surat — ${permit.requestNumber}</title>
+  <style>
+    * { box-sizing: border-box; }
+    body {
+      font-family: 'Times New Roman', Times, serif;
+      font-size: 12pt;
+      line-height: 1.6;
+      color: #1a1a1a;
+      background: #e5e7eb;
+      margin: 0;
+      padding: 24px 16px;
+    }
+    .legend {
+      max-width: 21cm;
+      margin: 0 auto 12px;
+      font-family: Arial, sans-serif;
+      font-size: 11px;
+      display: flex;
+      gap: 16px;
+      align-items: center;
+    }
+    .legend span { display: inline-flex; align-items: center; gap: 4px; }
+    .paper {
+      background: white;
+      max-width: 21cm;
+      margin: 0 auto;
+      padding: 2.5cm 3cm;
+      box-shadow: 0 4px 24px rgba(0,0,0,0.15);
+      min-height: 29.7cm;
+    }
+    p { margin: 0 0 4px; }
+    table { width: 100%; border-collapse: collapse; margin: 6px 0; }
+    td, th { padding: 3px 6px; vertical-align: top; }
+    strong, b { font-weight: 700; }
+    em, i { font-style: italic; }
+    h1, h2, h3 { font-weight: 700; margin: 8px 0 4px; }
+    @media print {
+      body { background: white; padding: 0; }
+      .legend { display: none; }
+      .paper { box-shadow: none; padding: 0; max-width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <div class="legend">
+    <strong>Keterangan:</strong>
+    <span><mark style="background:#dbeafe;color:#1e40af;padding:0 4px;border-radius:2px;">Biru</mark> = Data pemohon</span>
+    <span><mark style="background:#fef9c3;color:#713f12;padding:0 4px;border-radius:2px;">Kuning</mark> = Placeholder belum terpetakan</span>
+    <button onclick="window.print()" style="margin-left:auto;padding:4px 12px;cursor:pointer;border:1px solid #d1d5db;border-radius:4px;background:#f9fafb;font-family:Arial,sans-serif;">Cetak / Print</button>
+  </div>
+  <div class="paper">${filledHtml}</div>
+</body>
+</html>`);
+  win.document.close();
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -210,175 +274,6 @@ function FileLink({ label, url }: { label: string; url: string | null | undefine
   );
 }
 
-// ─── Preview Modal ────────────────────────────────────────────────────────────
-
-interface PreviewModalProps {
-  open: boolean;
-  onClose: () => void;
-  permit: any;
-  templateId: string | null;
-}
-
-function PreviewModal({ open, onClose, permit, templateId }: PreviewModalProps) {
-  const [html, setHtml] = useState<string | null>(null);
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const loadedFor = useRef<string | null>(null);
-
-  // Fetch files dari template yang dipilih
-  const { data: files = [] } = useQuery<TemplateFile[]>({
-    queryKey: [`/api/admin/letter-templates/${templateId}/files`],
-    enabled: open && !!templateId,
-    queryFn: async () => {
-      const res = await apiRequest("GET", `/api/admin/letter-templates/${templateId}/files`);
-      if (!res.ok) throw new Error(await res.text());
-      return res.json();
-    },
-  });
-
-  const docxFile = files.find((f) => f.fileUrl.endsWith(".docx"));
-
-  const loadPreview = useCallback(
-    async (fileUrl: string) => {
-      if (loadedFor.current === fileUrl) return;
-      loadedFor.current = fileUrl;
-      setLoading(true);
-      setError(null);
-      setHtml(null);
-      try {
-        const rawHtml = await docxUrlToHtml(fileUrl);
-        const replacements = buildReplacementsFromPermit(permit);
-        const applied = applyReplacementsToHtml(rawHtml, replacements);
-        setHtml(applied);
-      } catch (e: any) {
-        setError(e.message || "Gagal merender dokumen");
-        loadedFor.current = null;
-      } finally {
-        setLoading(false);
-      }
-    },
-    [permit]
-  );
-
-  // Trigger load saat file tersedia
-  if (open && docxFile && loadedFor.current !== docxFile.fileUrl) {
-    loadPreview(docxFile.fileUrl);
-  }
-  if (!open && loadedFor.current !== null) {
-    loadedFor.current = null;
-    // reset state hanya sekali lewat effect di bawah
-  }
-
-  return (
-    <Dialog
-      open={open}
-      onOpenChange={(v) => {
-        if (!v) {
-          setHtml(null);
-          setError(null);
-          loadedFor.current = null;
-          onClose();
-        }
-      }}
-    >
-      <DialogContent className="max-w-5xl max-h-[92vh] flex flex-col gap-0 p-0">
-        {/* Header */}
-        <div className="px-6 pt-6 pb-4 border-b shrink-0">
-          <DialogTitle className="flex items-center gap-2 text-base">
-            <BookOpen className="w-4 h-4 text-primary" />
-            Preview Surat Izin — {permit?.requestNumber}
-          </DialogTitle>
-          <DialogDescription className="mt-1 text-xs">
-            Data permit sudah dimasukkan ke dalam template.{" "}
-            <span className="inline-block bg-blue-100 text-blue-700 rounded px-1 font-mono">
-              Highlight biru
-            </span>{" "}
-            = data real.{" "}
-            <span className="inline-block bg-yellow-100 text-yellow-700 rounded px-1 font-mono">
-              Highlight kuning
-            </span>{" "}
-            = placeholder belum terpetakan.
-          </DialogDescription>
-        </div>
-
-        {/* Body */}
-        <div className="flex-1 min-h-0 overflow-auto bg-gray-100">
-          {!docxFile && !loading ? (
-            <div className="flex flex-col items-center justify-center h-64 gap-3 text-muted-foreground text-sm">
-              <FileText className="w-8 h-8 opacity-30" />
-              <span>File DOCX tidak ditemukan untuk template ini</span>
-            </div>
-          ) : loading ? (
-            <div className="flex flex-col items-center justify-center h-64 gap-3 text-muted-foreground">
-              <Loader2 className="w-6 h-6 animate-spin" />
-              <span className="text-sm">Merender dokumen dengan data permit...</span>
-            </div>
-          ) : error ? (
-            <div className="flex flex-col items-center justify-center h-64 gap-3 text-destructive text-sm">
-              <AlertCircle className="w-6 h-6" />
-              <span>{error}</span>
-              {docxFile && (
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => {
-                    loadedFor.current = null;
-                    loadPreview(docxFile.fileUrl);
-                  }}
-                >
-                  Coba Lagi
-                </Button>
-              )}
-            </div>
-          ) : html ? (
-            <div className="p-8 max-w-4xl mx-auto">
-              <div
-                className="bg-white shadow border p-12 min-h-[700px]"
-                style={{
-                  fontFamily: "'Times New Roman', Times, serif",
-                  fontSize: "12pt",
-                  lineHeight: 1.6,
-                  color: "#1a1a1a",
-                }}
-                dangerouslySetInnerHTML={{ __html: html }}
-              />
-              {/* Style for mammoth output */}
-              <style>{`
-                .bg-white p { margin: 0 0 4px; }
-                .bg-white table { width: 100%; border-collapse: collapse; margin: 6px 0; }
-                .bg-white td, .bg-white th { padding: 3px 6px; vertical-align: top; }
-                .bg-white strong, .bg-white b { font-weight: 700; }
-                .bg-white em, .bg-white i { font-style: italic; }
-                .bg-white h1, .bg-white h2 { font-weight: 700; margin: 8px 0 4px; }
-              `}</style>
-            </div>
-          ) : null}
-        </div>
-
-        {/* Footer */}
-        <div className="px-6 py-4 border-t shrink-0 flex items-center justify-between gap-3">
-          <div className="text-xs text-muted-foreground">
-            Template di-render menggunakan mammoth.js — format mungkin sedikit berbeda dari aslinya.
-          </div>
-          <div className="flex gap-2">
-            {docxFile && (
-              <Button variant="outline" size="sm" asChild>
-                <a href={docxFile.fileUrl} download={docxFile.fileName}>
-                  <FileDown className="w-4 h-4 mr-1.5" />
-                  Unduh Template Asli
-                </a>
-              </Button>
-            )}
-            <Button size="sm" onClick={onClose}>
-              Tutup
-            </Button>
-          </div>
-        </div>
-      </DialogContent>
-    </Dialog>
-  );
-}
-
 // ─── Generate Card ────────────────────────────────────────────────────────────
 
 interface GenerateCardProps {
@@ -389,10 +284,11 @@ interface GenerateCardProps {
 function GenerateCard({ permit, permitId }: GenerateCardProps) {
   const { toast } = useToast();
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
-  const [previewOpen, setPreviewOpen] = useState(false);
-  const [downloadFormat, setDownloadFormat] = useState<"docx" | "pdf">("docx");
+  const [previewLoading, setPreviewLoading] = useState(false);
+  const [overwriteFile, setOverwriteFile] = useState<File | null>(null);
 
-  // Fetch list templates
+  const hasLetter = !!permit?.generatedLetter?.fileUrl;
+
   const { data: templates = [], isLoading: templatesLoading } = useQuery<LetterTemplate[]>({
     queryKey: ["/api/admin/letter-templates"],
     queryFn: async () => {
@@ -404,43 +300,25 @@ function GenerateCard({ permit, permitId }: GenerateCardProps) {
 
   const activeTemplates = templates.filter((t) => t.isActive);
   const selectedTemplate = templates.find((t) => t.id === selectedTemplateId) ?? null;
+  const placeholders = parsePlaceholders(selectedTemplate?.placeholders);
 
-  // Generate DOCX mutation
+  // Generate + Save (no download)
   const generateMutation = useMutation({
-    mutationFn: async (format: "docx" | "pdf") => {
+    mutationFn: async () => {
       if (!selectedTemplateId) throw new Error("Pilih template terlebih dahulu");
-
-      const res = await fetch(
-        `/api/admin/permits/${permitId}/generate-letter-docx`,
-        {
-          method: "POST",
-          headers: {
-            "Content-Type": "application/json",
-            Authorization: `Bearer ${localStorage.getItem("token")}`,
-          },
-          body: JSON.stringify({ templateId: selectedTemplateId }),
-        }
-      );
-
-      if (!res.ok) {
-        const text = await res.text();
-        throw new Error(text);
-      }
-
-      return { blob: await res.blob(), format };
-    },
-    onSuccess: ({ blob, format }) => {
-      const safeName = (permit?.requestNumber ?? "surat-izin")
-        .replace(/[/\\]/g, "-")
-        .replace(/\s+/g, "-");
-      const ext = format === "pdf" ? "pdf" : "docx";
-      downloadBlob(blob, `${safeName}.${ext}`);
-
-      toast({
-        title: "Surat berhasil digenerate",
-        description: "File sudah didownload ke komputer Anda",
+      const res = await fetch(`/api/admin/permits/${permitId}/generate-letter-docx`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+        },
+        body: JSON.stringify({ templateId: selectedTemplateId, saveOnly: "true" }),
       });
-
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Surat berhasil digenerate dan disimpan" });
       queryClient.invalidateQueries({ queryKey: [`/api/admin/permits/${permitId}`] });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/permits"] });
     },
@@ -448,158 +326,257 @@ function GenerateCard({ permit, permitId }: GenerateCardProps) {
       toast({ title: "Gagal generate", description: e.message, variant: "destructive" }),
   });
 
-  const placeholders = parsePlaceholders(selectedTemplate?.placeholders);
+  // Generate + Download
+  const downloadMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedTemplateId) throw new Error("Pilih template terlebih dahulu");
+      const res = await fetch(`/api/admin/permits/${permitId}/generate-letter-docx`, {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+          Authorization: `Bearer ${localStorage.getItem("token")}`,
+        },
+        body: JSON.stringify({ templateId: selectedTemplateId }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.blob();
+    },
+    onSuccess: (blob) => {
+      const safeName = (permit?.requestNumber ?? "surat-izin")
+        .replace(/[/\\]/g, "-")
+        .replace(/\s+/g, "-");
+      downloadBlob(blob, `${safeName}.docx`);
+      toast({ title: "Surat berhasil didownload" });
+      queryClient.invalidateQueries({ queryKey: [`/api/admin/permits/${permitId}`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/permits"] });
+    },
+    onError: (e: any) =>
+      toast({ title: "Gagal download", description: e.message, variant: "destructive" }),
+  });
+
+  // Upload overwrite
+  const overwriteMutation = useMutation({
+    mutationFn: async () => {
+      if (!overwriteFile) throw new Error("Pilih file terlebih dahulu");
+      const fd = new FormData();
+      fd.append("file", overwriteFile);
+      const res = await fetch(`/api/admin/permits/${permitId}/upload-generated-letter`, {
+        method: "POST",
+        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+        body: fd,
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Surat berhasil diperbarui" });
+      setOverwriteFile(null);
+      queryClient.invalidateQueries({ queryKey: [`/api/admin/permits/${permitId}`] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/permits"] });
+    },
+    onError: (e: any) =>
+      toast({ title: "Gagal upload", description: e.message, variant: "destructive" }),
+  });
+
+  async function handlePreview() {
+    if (!selectedTemplateId) {
+      toast({ title: "Pilih template terlebih dahulu", variant: "destructive" });
+      return;
+    }
+    setPreviewLoading(true);
+    try {
+      await openPreviewInNewTab(permit, selectedTemplateId);
+    } catch (e: any) {
+      toast({ title: "Gagal preview", description: e.message, variant: "destructive" });
+    } finally {
+      setPreviewLoading(false);
+    }
+  }
 
   return (
-    <>
-      <Card className="border-primary/30">
-        <CardHeader className="pb-3">
-          <CardTitle className="text-base text-primary flex items-center gap-2">
-            <FileCheck className="w-4 h-4" />
-            Generate Surat Izin Penelitian
-          </CardTitle>
-        </CardHeader>
+    <Card className="border-primary/30">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base text-primary flex items-center gap-2">
+          <FileCheck className="w-4 h-4" />
+          Generate Surat Izin Penelitian
+        </CardTitle>
+      </CardHeader>
 
-        <CardContent className="flex flex-col gap-5">
-          {/* Template selector */}
-          <div className="flex flex-col gap-2">
-            <Label htmlFor="template-select">Pilih Template Surat</Label>
+      <CardContent className="flex flex-col gap-5">
+        {/* Template selector */}
+        <div className="flex flex-col gap-2">
+          <Label htmlFor="template-select">
+            Pilih Template Surat <span className="text-destructive">*</span>
+          </Label>
 
-            {templatesLoading ? (
-              <Skeleton className="h-10 w-full" />
-            ) : activeTemplates.length === 0 ? (
-              <div className="flex items-center gap-2 text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded-md px-3 py-2.5">
-                <AlertCircle className="w-4 h-4 shrink-0" />
-                Belum ada template aktif. Upload template di halaman{" "}
-                <a href="/letter-templates" className="underline font-medium">
-                  Template Surat
-                </a>
-                .
-              </div>
-            ) : (
-              <Select
-                value={selectedTemplateId}
-                onValueChange={setSelectedTemplateId}
-              >
-                <SelectTrigger id="template-select">
-                  <SelectValue placeholder="-- Pilih template --" />
-                </SelectTrigger>
-                <SelectContent>
-                  {activeTemplates.map((t) => (
-                    <SelectItem key={t.id} value={t.id}>
-                      {t.name}
-                    </SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-            )}
-          </div>
-
-          {/* Selected template info */}
-          {selectedTemplate && (
-            <div className="rounded-md border bg-muted/40 px-4 py-3 flex flex-col gap-2">
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-sm font-medium">{selectedTemplate.name}</span>
-                <Badge variant={selectedTemplate.isActive ? "default" : "secondary"} className="text-xs">
-                  {selectedTemplate.isActive ? "Aktif" : "Nonaktif"}
-                </Badge>
-              </div>
-              {placeholders.length > 0 ? (
-                <div className="flex flex-wrap gap-1.5">
-                  {placeholders.map((p) => (
-                    <Badge key={p} variant="secondary" className="text-xs font-mono">
-                      {p}
-                    </Badge>
-                  ))}
-                </div>
-              ) : (
-                <p className="text-xs text-muted-foreground">
-                  Placeholder tidak terdeteksi di template ini.
-                </p>
-              )}
-            </div>
-          )}
-
-          {/* Generated letter link (jika sudah ada) */}
-          {permit?.generatedLetter?.fileUrl && (
-            <div className="flex items-center gap-2 rounded-md bg-green-50 border border-green-200 px-3 py-2.5">
-              <CheckCircle className="w-4 h-4 text-green-600 shrink-0" />
-              <span className="text-xs text-green-700 font-medium">Surat sudah pernah digenerate:</span>
-              <a
-                href={permit.generatedLetter.fileUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="text-xs text-primary flex items-center gap-1 hover:underline ml-auto"
-              >
-                <ExternalLink className="w-3 h-3" />
-                Buka file tersimpan
+          {templatesLoading ? (
+            <Skeleton className="h-10 w-full" />
+          ) : activeTemplates.length === 0 ? (
+            <div className="flex items-center gap-2 text-sm text-amber-600 bg-amber-50 border border-amber-200 rounded-md px-3 py-2.5">
+              <AlertCircle className="w-4 h-4 shrink-0" />
+              Belum ada template aktif. Upload template di halaman{" "}
+              <a href="/letter-templates" className="underline font-medium">
+                Template Surat
               </a>
-            </div>
-          )}
-
-          {/* Actions */}
-          {selectedTemplateId ? (
-            <div className="flex flex-wrap items-center gap-2 pt-1 border-t">
-              {/* Preview */}
-              <Button
-                variant="outline"
-                onClick={() => setPreviewOpen(true)}
-                className="gap-2"
-              >
-                <Eye className="w-4 h-4" />
-                Preview Surat
-              </Button>
-
-              {/* Download */}
-              <div className="flex items-center gap-1.5 ml-auto">
-                <Select
-                  value={downloadFormat}
-                  onValueChange={(v: any) => setDownloadFormat(v)}
-                >
-                  <SelectTrigger className="w-[110px] h-9">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent>
-                    <SelectItem value="docx">DOCX</SelectItem>
-                    <SelectItem value="pdf">PDF</SelectItem>
-                  </SelectContent>
-                </Select>
-
-                <Button
-                  onClick={() => generateMutation.mutate(downloadFormat)}
-                  disabled={generateMutation.isPending}
-                  className="gap-2"
-                >
-                  {generateMutation.isPending ? (
-                    <>
-                      <Loader2 className="w-4 h-4 animate-spin" />
-                      Memproses...
-                    </>
-                  ) : (
-                    <>
-                      <Download className="w-4 h-4" />
-                      Generate &amp; Download
-                    </>
-                  )}
-                </Button>
-              </div>
+              .
             </div>
           ) : (
-            <div className="text-sm text-muted-foreground text-center py-3 bg-muted/30 rounded-md">
-              Pilih template terlebih dahulu untuk melanjutkan
-            </div>
+            <Select value={selectedTemplateId} onValueChange={setSelectedTemplateId}>
+              <SelectTrigger id="template-select">
+                <SelectValue placeholder="-- Pilih template --" />
+              </SelectTrigger>
+              <SelectContent>
+                {activeTemplates.map((t) => (
+                  <SelectItem key={t.id} value={t.id}>
+                    {t.name}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
           )}
-        </CardContent>
-      </Card>
+        </div>
 
-      {/* Preview modal */}
-      <PreviewModal
-        open={previewOpen}
-        onClose={() => setPreviewOpen(false)}
-        permit={permit}
-        templateId={selectedTemplateId || null}
-      />
-    </>
+        {/* Selected template info */}
+        {selectedTemplate && (
+          <div className="rounded-md border bg-muted/40 px-4 py-3 flex flex-col gap-2">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-sm font-medium">{selectedTemplate.name}</span>
+              <Badge variant={selectedTemplate.isActive ? "default" : "secondary"} className="text-xs">
+                {selectedTemplate.isActive ? "Aktif" : "Nonaktif"}
+              </Badge>
+            </div>
+            {placeholders.length > 0 ? (
+              <div className="flex flex-wrap gap-1.5">
+                {placeholders.map((p) => (
+                  <Badge key={p} variant="secondary" className="text-xs font-mono">
+                    {p}
+                  </Badge>
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground">Placeholder tidak terdeteksi di template ini.</p>
+            )}
+          </div>
+        )}
+
+        {/* Existing generated letter */}
+        {hasLetter && (
+          <div className="flex items-center gap-2 rounded-md bg-green-50 border border-green-200 px-3 py-2.5">
+            <CheckCircle className="w-4 h-4 text-green-600 shrink-0" />
+            <span className="text-xs text-green-700 font-medium">Surat sudah digenerate:</span>
+            <a
+              href={permit.generatedLetter.fileUrl}
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-xs text-primary flex items-center gap-1 hover:underline ml-auto"
+            >
+              <ExternalLink className="w-3 h-3" />
+              Buka file tersimpan
+            </a>
+          </div>
+        )}
+
+        {/* Action buttons */}
+        {!selectedTemplateId ? (
+          <div className="text-sm text-muted-foreground text-center py-3 bg-muted/30 rounded-md">
+            Pilih template terlebih dahulu untuk melanjutkan
+          </div>
+        ) : (
+          <div className="flex flex-wrap items-center gap-2 pt-1 border-t">
+            {/* Preview */}
+            <Button
+              variant="outline"
+              onClick={handlePreview}
+              disabled={previewLoading}
+              className="gap-2"
+            >
+              {previewLoading ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Eye className="w-4 h-4" />
+              )}
+              Preview (Tab Baru)
+            </Button>
+
+            {/* Generate (save only) */}
+            <Button
+              variant="secondary"
+              onClick={() => generateMutation.mutate()}
+              disabled={generateMutation.isPending}
+              className="gap-2"
+            >
+              {generateMutation.isPending ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <FileCheck className="w-4 h-4" />
+              )}
+              Generate & Simpan
+            </Button>
+
+            {/* Download */}
+            <Button
+              onClick={() => downloadMutation.mutate()}
+              disabled={downloadMutation.isPending}
+              className="gap-2 ml-auto"
+            >
+              {downloadMutation.isPending ? (
+                <Loader2 className="w-4 h-4 animate-spin" />
+              ) : (
+                <Download className="w-4 h-4" />
+              )}
+              Download DOCX
+            </Button>
+          </div>
+        )}
+
+        {/* Download existing (if generated) */}
+        {hasLetter && !selectedTemplateId && (
+          <div className="flex gap-2 pt-1 border-t">
+            <Button variant="outline" size="sm" asChild className="gap-2">
+              <a href={permit.generatedLetter.fileUrl} download>
+                <Download className="w-4 h-4" />
+                Download Surat Tersimpan
+              </a>
+            </Button>
+          </div>
+        )}
+
+        {/* Upload / Overwrite section (if letter already generated) */}
+        {hasLetter && (
+          <div className="flex flex-col gap-3 pt-3 border-t">
+            <div className="flex items-center gap-2">
+              <RefreshCw className="w-4 h-4 text-muted-foreground" />
+              <span className="text-sm font-medium">Upload / Timpa Surat</span>
+              <span className="text-xs text-muted-foreground">(maks. 5 MB)</span>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Upload file baru untuk mengganti surat yang sudah digenerate. Format: PDF, DOCX, JPG, PNG.
+            </p>
+            <div className="flex items-center gap-2">
+              <Input
+                type="file"
+                accept=".pdf,.docx,.jpg,.jpeg,.png"
+                onChange={(e) => setOverwriteFile(e.target.files?.[0] || null)}
+                className="flex-1"
+              />
+              <Button
+                onClick={() => overwriteMutation.mutate()}
+                disabled={!overwriteFile || overwriteMutation.isPending}
+                variant="outline"
+                className="gap-2 shrink-0"
+              >
+                {overwriteMutation.isPending ? (
+                  <Loader2 className="w-4 h-4 animate-spin" />
+                ) : (
+                  <Upload className="w-4 h-4" />
+                )}
+                Upload
+              </Button>
+            </div>
+          </div>
+        )}
+      </CardContent>
+    </Card>
   );
 }
 
@@ -658,7 +635,6 @@ export default function PermitDetailPage() {
       toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
-  // ── Loading / not found ──────────────────────────────────────────────────────
   if (isLoading)
     return (
       <div className="flex flex-col gap-6 p-6">
@@ -763,7 +739,7 @@ export default function PermitDetailPage() {
             </CardContent>
           </Card>
 
-          {/* Generate Surat — pilih dari DB template */}
+          {/* Generate Surat */}
           <GenerateCard permit={permit} permitId={permitId} />
         </div>
 

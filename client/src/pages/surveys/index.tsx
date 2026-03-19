@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { BarChart2 } from "lucide-react";
 import { format } from "date-fns";
 import { id } from "date-fns/locale";
+import { useLang } from "@/contexts/language";
 
 const SURVEY_QUESTIONS = [
   "Persyaratan Pelayanan",
@@ -33,6 +34,7 @@ function calcIKM(s: Survey) {
 }
 
 export default function SurveysPage() {
+  const { t } = useLang();
   const [page, setPage] = useState(1);
   const { data, isLoading } = useQuery<{ items: Survey[]; total: number }>({
     queryKey: ["/api/admin/surveys", { page: String(page), limit: "15" }],
@@ -48,17 +50,17 @@ export default function SurveysPage() {
   return (
     <div className="flex flex-col gap-6 p-6">
       <div>
-        <h1 className="text-2xl font-bold flex items-center gap-2"><BarChart2 className="w-6 h-6" /> Survei IKM</h1>
-        <p className="text-muted-foreground text-sm mt-1">{total} total responden</p>
+        <h1 className="text-2xl font-bold flex items-center gap-2"><BarChart2 className="w-6 h-6" /> {t("surveyTitle")}</h1>
+        <p className="text-muted-foreground text-sm mt-1">{total} {t("totalRespondents").toLowerCase()}</p>
       </div>
 
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
         <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-muted-foreground">Total Responden</CardTitle></CardHeader>
+          <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-muted-foreground">{t("totalRespondents")}</CardTitle></CardHeader>
           <CardContent><div className="text-3xl font-bold">{total}</div></CardContent>
         </Card>
         <Card>
-          <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-muted-foreground">Rata-rata IKM</CardTitle></CardHeader>
+          <CardHeader className="pb-2"><CardTitle className="text-sm font-medium text-muted-foreground">{t("avgIKM")}</CardTitle></CardHeader>
           <CardContent><div className="text-3xl font-bold text-primary">{avgIKM}{avgIKM !== "-" ? "%" : ""}</div></CardContent>
         </Card>
       </div>
@@ -67,12 +69,12 @@ export default function SurveysPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Responden</TableHead>
-              <TableHead className="w-16">Usia</TableHead>
-              <TableHead className="w-24">Gender</TableHead>
-              <TableHead>Pendidikan</TableHead>
-              <TableHead className="w-20 text-center">Skor IKM</TableHead>
-              <TableHead className="w-32">Tanggal</TableHead>
+              <TableHead>{t("surveyRespondent")}</TableHead>
+              <TableHead className="w-16">{t("surveyAge")}</TableHead>
+              <TableHead className="w-24">{t("surveyGender")}</TableHead>
+              <TableHead>{t("surveyEducation")}</TableHead>
+              <TableHead className="w-20 text-center">{t("surveyScore")}</TableHead>
+              <TableHead className="w-32">{t("date")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>

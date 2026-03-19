@@ -50,3 +50,6 @@ HOST = "0.0.0.0"
 RUN_SEED = "true"
 SEED_ADMIN_PASSWORD = "Admin@123"
 VITE_TINYMCE_API_KEY = "n6orr52fyuwpmh2yqlhh3ng0nqd9lwauyg0jowt7vr4twq5g"
+
+[agent]
+expertMode = true

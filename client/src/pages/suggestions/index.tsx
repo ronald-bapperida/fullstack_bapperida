@@ -7,12 +7,14 @@ import { Button } from "@/components/ui/button";
 import { MessageSquare } from "lucide-react";
 import { format } from "date-fns";
 import { id } from "date-fns/locale";
+import { useLang } from "@/contexts/language";
 
 interface Suggestion {
   id: string; name: string | null; email: string | null; message: string; createdAt: string;
 }
 
 export default function SuggestionsPage() {
+  const { t } = useLang();
   const [page, setPage] = useState(1);
   const { data, isLoading } = useQuery<{ items: Suggestion[]; total: number }>({
     queryKey: ["/api/admin/suggestions", { page: String(page), limit: "15" }],
@@ -24,17 +26,17 @@ export default function SuggestionsPage() {
   return (
     <div className="flex flex-col gap-6 p-6">
       <div>
-        <h1 className="text-2xl font-bold flex items-center gap-2"><MessageSquare className="w-6 h-6" /> Kotak Saran</h1>
-        <p className="text-muted-foreground text-sm mt-1">{total} saran masuk</p>
+        <h1 className="text-2xl font-bold flex items-center gap-2"><MessageSquare className="w-6 h-6" /> {t("suggestionTitle")}</h1>
+        <p className="text-muted-foreground text-sm mt-1">{total} {t("suggestionIncoming").toLowerCase()}</p>
       </div>
 
       <Card>
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Pengirim</TableHead>
-              <TableHead>Pesan</TableHead>
-              <TableHead className="w-32">Tanggal</TableHead>
+              <TableHead>{t("suggestionSender")}</TableHead>
+              <TableHead>{t("suggestionMessage")}</TableHead>
+              <TableHead className="w-32">{t("date")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>

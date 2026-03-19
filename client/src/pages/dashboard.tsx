@@ -7,6 +7,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Newspaper, ClipboardList, BarChart2, Image, FileText, Clock, CheckCircle, Trash2, TrendingUp, Download, MapPin, Users, PieChart } from "lucide-react";
 import { useAuth } from "@/contexts/auth";
 import { useToast } from "@/hooks/use-toast";
+import { useLang } from "@/contexts/language";
 import { format, subMonths, startOfYear, endOfYear } from "date-fns";
 import { id } from "date-fns/locale";
 
@@ -159,6 +160,7 @@ function ChartSkeleton() {
 export default function Dashboard() {
   const { user } = useAuth();
   const { toast } = useToast();
+  const { t } = useLang();
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [selectedMonth, setSelectedMonth] = useState(format(new Date(), "MMMM", { locale: id }));
 
@@ -237,7 +239,7 @@ export default function Dashboard() {
             Dashboard
           </h1>
           <p className="text-muted-foreground mt-2">
-            Selamat datang kembali, <span className="font-semibold text-foreground">{user?.fullName}</span>
+            {t("welcomeBack")}, <span className="font-semibold text-foreground">{user?.fullName}</span>
           </p>
           <div className="flex gap-2 mt-2">
             <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary">
@@ -267,27 +269,27 @@ export default function Dashboard() {
                 </h2>
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                   <StatCard
-                    title="Total Berita"
+                    title={t("totalNews")}
                     value={stats.news}
                     icon={Newspaper}
                     sub={stats.publishedNews}
-                    subLabel="dipublikasi"
+                    subLabel={t("publishedNews")}
                     color="text-blue-500"
                   />
                   <StatCard
-                    title="Draft Berita"
+                    title={t("draftNews")}
                     value={stats.news - stats.publishedNews}
                     icon={Clock}
                     color="text-yellow-500"
                   />
                   <StatCard
-                    title="Berita Trash"
+                    title={t("trashNews")}
                     value={stats.newsTrash}
                     icon={Trash2}
                     color="text-red-500"
                   />
                   <StatCard
-                    title="Banner Aktif"
+                    title={t("activeBanners")}
                     value={stats.banners}
                     icon={Image}
                     color="text-green-500"
@@ -297,7 +299,7 @@ export default function Dashboard() {
 
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                 <StatCard
-                  title="Dokumen PPID"
+                  title={t("ppidDocs")}
                   value={stats.documents}
                   icon={FileText}
                   color="text-purple-500"
@@ -313,27 +315,27 @@ export default function Dashboard() {
               </h2>
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                 <StatCard
-                  title="Izin Penelitian"
+                  title={t("researchPermits")}
                   value={stats.permits}
                   icon={ClipboardList}
                   sub={stats.pendingPermits}
-                  subLabel="menunggu review"
+                  subLabel={t("waitingReview")}
                   color="text-indigo-500"
                 />
                 <StatCard
-                  title="Menunggu Review"
+                  title={t("pendingReview")}
                   value={stats.pendingPermits}
                   icon={CheckCircle}
                   color="text-orange-500"
                 />
                 <StatCard
-                  title="Survei IKM"
+                  title={t("ikmSurvey")}
                   value={stats.surveys}
                   icon={BarChart2}
                   color="text-pink-500"
                 />
                 <StatCard
-                  title="Rata-rata Kepuasan"
+                  title={t("avgSatisfaction")}
                   value={surveyStats?.satisfaction_rate || 0}
                   icon={TrendingUp}
                   subLabel="dari 100"
@@ -379,9 +381,9 @@ export default function Dashboard() {
       {/* Charts Section */}
       <Tabs defaultValue="news" className="space-y-4">
         <TabsList>
-          <TabsTrigger value="news" disabled={!isBPP}>Berita & Dokumen</TabsTrigger>
-          <TabsTrigger value="permits" disabled={!isRIDA}>Izin Penelitian</TabsTrigger>
-          <TabsTrigger value="surveys" disabled={!isRIDA}>Survei Kepuasan</TabsTrigger>
+          <TabsTrigger value="news" disabled={!isBPP}>{t("newsDocTab")}</TabsTrigger>
+          <TabsTrigger value="permits" disabled={!isRIDA}>{t("permitTab")}</TabsTrigger>
+          <TabsTrigger value="surveys" disabled={!isRIDA}>{t("surveyTab")}</TabsTrigger>
         </TabsList>
 
         <TabsContent value="news" className="space-y-4">

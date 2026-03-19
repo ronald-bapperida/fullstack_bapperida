@@ -13,6 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Plus, Edit, Trash2, Image, Eye, MousePointerClick, Upload, X, Monitor, Smartphone, RefreshCw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useLang } from "@/contexts/language";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useForm, Controller } from "react-hook-form";
 
@@ -210,6 +211,7 @@ function BannerForm({ banner, onDone }: { banner?: Banner; onDone: () => void })
 
 export default function BannersPage() {
   const { toast } = useToast();
+  const { t } = useLang();
   const [open, setOpen] = useState(false);
   const [editBanner, setEditBanner] = useState<Banner | undefined>();
   const [trash, setTrash] = useState(false);
@@ -233,9 +235,9 @@ export default function BannersPage() {
     <div className="flex flex-col gap-6 p-6">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2"><Image className="w-6 h-6" /> Banner</h1>
+          <h1 className="text-2xl font-bold flex items-center gap-2"><Image className="w-6 h-6" /> {t("bannerTitle")}</h1>
           <p className="text-muted-foreground text-sm mt-1">
-            {banners.length} banner &middot; {activeBanners} aktif
+            {banners.length} banner &middot; {activeBanners} {t("active").toLowerCase()}
           </p>
         </div>
         <div className="flex items-center gap-2">
@@ -246,11 +248,11 @@ export default function BannersPage() {
             data-testid="button-toggle-trash"
           >
             <Trash2 className="w-4 h-4 mr-1" />
-            {trash ? "Keluar Trash" : "Trash"}
+            {trash ? t("exitTrash") : t("trash")}
           </Button>
           {!trash && (
             <Button size="sm" className="gap-2" onClick={() => { setEditBanner(undefined); setOpen(true); }} data-testid="button-add-banner">
-              <Plus className="w-4 h-4" /> Tambah Banner
+              <Plus className="w-4 h-4" /> {t("addBanner")}
             </Button>
           )}
         </div>
@@ -259,7 +261,7 @@ export default function BannersPage() {
       <Dialog open={open} onOpenChange={o => { setOpen(o); if (!o) setEditBanner(undefined); }}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{editBanner ? "Edit Banner" : "Tambah Banner"}</DialogTitle>
+            <DialogTitle>{editBanner ? t("editBanner") : t("addBanner")}</DialogTitle>
             <DialogDescription>Upload gambar desktop dan mobile untuk tampilan optimal.</DialogDescription>
           </DialogHeader>
           <BannerForm banner={editBanner} onDone={() => { setOpen(false); setEditBanner(undefined); }} />
@@ -270,12 +272,12 @@ export default function BannersPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead className="w-24">Gambar</TableHead>
-              <TableHead>Judul & Placement</TableHead>
-              <TableHead className="w-28">Status</TableHead>
-              <TableHead className="w-24 text-center">Views</TableHead>
-              <TableHead className="w-24 text-center">Clicks</TableHead>
-              <TableHead className="w-24 text-right">Aksi</TableHead>
+              <TableHead className="w-24">{t("bannerGambar")}</TableHead>
+              <TableHead>{t("bannerJudulPlacement")}</TableHead>
+              <TableHead className="w-28">{t("status")}</TableHead>
+              <TableHead className="w-24 text-center">{t("bannerViews")}</TableHead>
+              <TableHead className="w-24 text-center">{t("bannerClicks")}</TableHead>
+              <TableHead className="w-24 text-right">{t("action")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>

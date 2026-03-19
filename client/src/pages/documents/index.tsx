@@ -13,6 +13,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { Plus, Edit, Trash2, FileText, ExternalLink, RefreshCw, Search, Filter, ArrowUp, ArrowDown } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useLang } from "@/contexts/language";
 import { useForm, Controller } from "react-hook-form";
 import { format } from "date-fns";
 import QuillEditor from "@/components/quill-editor";
@@ -217,6 +218,7 @@ function DocForm({ doc, kinds, categories, types, onDone }: {
 
 export default function DocumentsPage() {
   const { toast } = useToast();
+  const { t } = useLang();
   const [open, setOpen] = useState(false);
   const [editDoc, setEditDoc] = useState<Doc | undefined>();
   const [page, setPage] = useState(1);
@@ -312,8 +314,8 @@ export default function DocumentsPage() {
     <div className="flex flex-col gap-6 p-6">
       <div className="flex items-center justify-between gap-4 flex-wrap">
         <div>
-          <h1 className="text-2xl font-bold flex items-center gap-2"><FileText className="w-6 h-6" /> Dokumen PPID</h1>
-          <p className="text-muted-foreground text-sm mt-1">{total} dokumen</p>
+          <h1 className="text-2xl font-bold flex items-center gap-2"><FileText className="w-6 h-6" /> {t("documentTitle")}</h1>
+          <p className="text-muted-foreground text-sm mt-1">{total} {t("documents").toLowerCase()}</p>
         </div>
         <div className="flex items-center gap-2">
           <Button
@@ -323,11 +325,11 @@ export default function DocumentsPage() {
             data-testid="button-toggle-trash"
           >
             <Trash2 className="w-4 h-4 mr-1" />
-            {trash ? "Keluar Trash" : "Trash"}
+            {trash ? t("exitTrash") : t("trash")}
           </Button>
           {!trash && (
             <Button size="sm" className="gap-2" onClick={() => { setEditDoc(undefined); setOpen(true); }} data-testid="button-add-doc">
-              <Plus className="w-4 h-4" /> Tambah Dokumen
+              <Plus className="w-4 h-4" /> {t("addDocument")}
             </Button>
           )}
         </div>
@@ -336,7 +338,7 @@ export default function DocumentsPage() {
       <Dialog open={open} onOpenChange={o => { setOpen(o); if (!o) setEditDoc(undefined); }}>
         <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>{editDoc ? "Edit Dokumen" : "Tambah Dokumen"}</DialogTitle>
+            <DialogTitle>{editDoc ? t("editDocument") : t("addDocument")}</DialogTitle>
             <DialogDescription>
               Jenis, Kategori, dan Tipe file wajib diisi.
             </DialogDescription>

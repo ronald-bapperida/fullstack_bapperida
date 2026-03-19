@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/contexts/auth";
+import { useLang } from "@/contexts/language";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
@@ -12,6 +13,7 @@ import logoBapperida from "@assets/logo_bapperida_1771921692764.png";
 export default function LoginPage() {
   const [, setLoc] = useLocation();
   const { login } = useAuth();
+  const { t } = useLang();
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [showPass, setShowPass] = useState(false);
@@ -52,8 +54,8 @@ export default function LoginPage() {
 
         <Card>
           <CardHeader className="pb-4">
-            <CardTitle className="text-lg">Masuk ke Sistem</CardTitle>
-            <CardDescription>Gunakan akun admin yang telah diberikan</CardDescription>
+            <CardTitle className="text-lg">{t("loginTitle")}</CardTitle>
+            <CardDescription>{t("loginDescription")}</CardDescription>
           </CardHeader>
           <CardContent>
             <form onSubmit={handleSubmit} className="flex flex-col gap-4">
@@ -63,7 +65,7 @@ export default function LoginPage() {
                 </Alert>
               )}
               <div className="flex flex-col gap-2">
-                <Label htmlFor="username">Username / Email</Label>
+                <Label htmlFor="username">{t("loginUsername")}</Label>
                 <Input
                   id="username"
                   data-testid="input-username"
@@ -76,7 +78,7 @@ export default function LoginPage() {
                 />
               </div>
               <div className="flex flex-col gap-2">
-                <Label htmlFor="password">Password</Label>
+                <Label htmlFor="password">{t("loginPassword")}</Label>
                 <div className="relative">
                   <Input
                     id="password"
@@ -100,7 +102,7 @@ export default function LoginPage() {
               </div>
               <Button type="submit" className="w-full gap-2 mt-1" disabled={loading} data-testid="button-login">
                 <LogIn className="w-4 h-4" />
-                {loading ? "Memproses..." : "Masuk"}
+                {loading ? t("loginProcessing") : t("loginSubmit")}
               </Button>
             </form>
             {/* <p className="text-xs text-muted-foreground text-center mt-4">

@@ -192,6 +192,7 @@ export interface IStorage {
   // Generated Letters
   createGeneratedLetter(data: { permitId: string; templateId?: string; fileUrl?: string }): Promise<any>;
   getGeneratedLetter(permitId: string): Promise<any>;
+  updateGeneratedLetterFile(permitId: string, newFileUrl: string): Promise<any>;
 
   listLetterTemplateFiles(templateId: string): Promise<any[]>;
   getTemplateByType(type: string): Promise<any>;
@@ -861,6 +862,17 @@ export class DatabaseStorage implements IStorage {
       .where(and(eq(schema.generatedLetters.permitId, permitId), isNull(schema.generatedLetters.deletedAt)))
       .orderBy(desc(schema.generatedLetters.createdAt));
     return r;
+  }
+
+  async updateGeneratedLetterFile(permitId: string, newFileUrl: string) {
+    const existing = await this.getGeneratedLetter(permitId);
+    if (existing) {
+      await db.update(schema.generatedLetters)
+        .set({ fileUrl: newFileUrl })
+        .where(eq(schema.generatedLetters.id, existing.id));
+      return { ...existing, fileUrl: newFileUrl };
+    }
+    return this.createGeneratedLetter({ permitId, fileUrl: newFileUrl });
   }
 
   // ── Surveys ─────────────────────────────────────────────────────────────────
