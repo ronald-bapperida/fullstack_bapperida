@@ -1173,6 +1173,142 @@ export function registerFlutterApiRoutes(app: express.Express) {
     }
   });
 
+  // ─── PPID Keberatan (Flutter/Public) ─────────────────────────────────────────
+  const ppidObjectionUpload = getMulter("ppid/objections", 5);
+
+  /**
+   * @route   POST /api/flutter/ppid/objections
+   * @desc    Submit keberatan PPID (public)
+   * @access  Public
+   */
+  flutterRouter.post(
+    "/ppid/objections",
+    ppidObjectionUpload.fields([
+      { name: "ktpFile", maxCount: 1 },
+      { name: "evidenceFile", maxCount: 1 },
+    ]),
+    async (req: any, res: Response) => {
+      try {
+        const files = req.files as Record<string, Express.Multer.File[]>;
+        const ktpFile      = files?.ktpFile?.[0];
+        const evidenceFile = files?.evidenceFile?.[0];
+
+        const { fullName, nik, address, phone, email, occupation,
+                requestCode, informationDetail, requestPurpose,
+                objectionReasons, objectionNote } = req.body;
+
+        if (!fullName || !nik || !address || !phone || !informationDetail || !requestPurpose) {
+          return res.status(400).json({ success: false, message: "Field wajib tidak lengkap" });
+        }
+
+        // Parse objection reasons — bisa berupa string JSON atau array
+        let reasons: string[] = [];
+        if (objectionReasons) {
+          if (typeof objectionReasons === "string") {
+            try { reasons = JSON.parse(objectionReasons); } catch { reasons = [objectionReasons]; }
+          } else if (Array.isArray(objectionReasons)) {
+            reasons = objectionReasons;
+          }
+        }
+
+        const data = {
+          requestCode:      requestCode || null,
+          fullName,
+          nik,
+          address,
+          phone,
+          email:            email     || null,
+          occupation:       occupation || null,
+          ktpFileUrl:       ktpFile      ? fileUrl("ppid/objections", ktpFile.filename)      : null,
+          informationDetail,
+          requestPurpose,
+          objectionReasons: reasons,
+          objectionNote:    objectionNote || null,
+          evidenceFileUrl:  evidenceFile  ? fileUrl("ppid/objections", evidenceFile.filename) : null,
+        };
+
+        const result = await db.createPpidObjection(data);
+        return res.status(201).json({ success: true, message: "Keberatan berhasil dikirim", data: result });
+      } catch (error: any) {
+        return res.status(500).json({ success: false, message: "Gagal mengirim keberatan", error: error.message });
+      }
+    }
+  );
+
+  /**
+   * @route   GET /api/flutter/ppid/objections/:id
+   * @desc    Get detail keberatan by ID (public – untuk cek status)
+   * @access  Public
+   */
+  flutterRouter.get("/ppid/objections/:id", async (req: Request, res: Response) => {
+    try {
+      const item = await db.getPpidObjection(req.params.id);
+      if (!item) return res.status(404).json({ success: false, message: "Tidak ditemukan" });
+      return res.json({ success: true, data: item });
+    } catch (error: any) {
+      return res.status(500).json({ success: false, message: error.message });
+    }
+  });
+
+  // ─── PPID Permohonan Informasi (Flutter/Public) ───────────────────────────────
+  const ppidInfoReqUpload = getMulter("ppid/info-requests", 5);
+
+  /**
+   * @route   POST /api/flutter/ppid/information-requests
+   * @desc    Submit permohonan informasi PPID (public)
+   * @access  Public
+   */
+  flutterRouter.post(
+    "/ppid/information-requests",
+    ppidInfoReqUpload.fields([{ name: "ktpFile", maxCount: 1 }]),
+    async (req: any, res: Response) => {
+      try {
+        const files = req.files as Record<string, Express.Multer.File[]>;
+        const ktpFile = files?.ktpFile?.[0];
+
+        const { fullName, nik, address, phone, email, occupation,
+                informationDetail, requestPurpose, retrievalMethod } = req.body;
+
+        if (!fullName || !nik || !address || !phone || !informationDetail || !requestPurpose) {
+          return res.status(400).json({ success: false, message: "Field wajib tidak lengkap" });
+        }
+
+        const data = {
+          fullName,
+          nik,
+          address,
+          phone,
+          email:           email          || null,
+          occupation:      occupation      || null,
+          ktpFileUrl:      ktpFile         ? fileUrl("ppid/info-requests", ktpFile.filename) : null,
+          informationDetail,
+          requestPurpose,
+          retrievalMethod: retrievalMethod || null,
+        };
+
+        const result = await db.createPpidInfoRequest(data);
+        return res.status(201).json({ success: true, message: "Permohonan informasi berhasil dikirim", data: result });
+      } catch (error: any) {
+        return res.status(500).json({ success: false, message: "Gagal mengirim permohonan", error: error.message });
+      }
+    }
+  );
+
+  /**
+   * @route   GET /api/flutter/ppid/information-requests/:id
+   * @desc    Get detail permohonan informasi by ID (public – untuk cek status)
+   * @access  Public
+   */
+  flutterRouter.get("/ppid/information-requests/:id", async (req: Request, res: Response) => {
+    try {
+      const item = await db.getPpidInfoRequest(req.params.id);
+      if (!item) return res.status(404).json({ success: false, message: "Tidak ditemukan" });
+      return res.json({ success: true, data: item });
+    } catch (error: any) {
+      return res.status(500).json({ success: false, message: error.message });
+    }
+  });
+
   // Mount the router
   app.use("/api", flutterRouter);
 }

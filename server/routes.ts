@@ -1559,5 +1559,59 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   //   }
   // });
 
+  // ─── PPID Keberatan (Admin) ──────────────────────────────────────────────────
+  app.get("/api/admin/ppid/objections", authMiddleware, requireRole("super_admin", "admin_bpp"), async (req, res) => {
+    try {
+      const page  = parseInt(req.query.page  as string) || 1;
+      const limit = parseInt(req.query.limit as string) || 20;
+      const status = req.query.status as string | undefined;
+      return res.json(await db.listPpidObjections({ page, limit, status }));
+    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+  });
+
+  app.get("/api/admin/ppid/objections/:id", authMiddleware, requireRole("super_admin", "admin_bpp"), async (req, res) => {
+    try {
+      const item = await db.getPpidObjection(req.params.id);
+      if (!item) return res.status(404).json({ error: "Not found" });
+      return res.json(item);
+    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+  });
+
+  app.patch("/api/admin/ppid/objections/:id/status", authMiddleware, requireRole("super_admin", "admin_bpp"), async (req: any, res) => {
+    try {
+      const { status, reviewNote } = req.body;
+      if (!status) return res.status(400).json({ error: "Status diperlukan" });
+      const updated = await db.updatePpidObjectionStatus(req.params.id, { status, reviewNote, processedBy: req.user.id });
+      return res.json(updated);
+    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+  });
+
+  // ─── PPID Permohonan Informasi (Admin) ───────────────────────────────────────
+  app.get("/api/admin/ppid/information-requests", authMiddleware, requireRole("super_admin", "admin_bpp"), async (req, res) => {
+    try {
+      const page  = parseInt(req.query.page  as string) || 1;
+      const limit = parseInt(req.query.limit as string) || 20;
+      const status = req.query.status as string | undefined;
+      return res.json(await db.listPpidInfoRequests({ page, limit, status }));
+    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+  });
+
+  app.get("/api/admin/ppid/information-requests/:id", authMiddleware, requireRole("super_admin", "admin_bpp"), async (req, res) => {
+    try {
+      const item = await db.getPpidInfoRequest(req.params.id);
+      if (!item) return res.status(404).json({ error: "Not found" });
+      return res.json(item);
+    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+  });
+
+  app.patch("/api/admin/ppid/information-requests/:id/status", authMiddleware, requireRole("super_admin", "admin_bpp"), async (req: any, res) => {
+    try {
+      const { status, reviewNote } = req.body;
+      if (!status) return res.status(400).json({ error: "Status diperlukan" });
+      const updated = await db.updatePpidInfoRequestStatus(req.params.id, { status, reviewNote, processedBy: req.user.id });
+      return res.json(updated);
+    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+  });
+
   return httpServer;
 }

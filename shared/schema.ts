@@ -488,6 +488,79 @@ export const insertSuggestionSchema = createInsertSchema(suggestionBox).omit({
 export type InsertSuggestion = z.infer<typeof insertSuggestionSchema>;
 export type Suggestion = typeof suggestionBox.$inferSelect;
 
+// ─── PPID Keberatan (Objection) ───────────────────────────────────────────────
+export const ppidObjectionStatusValues = ["pending", "in_review", "resolved", "rejected"] as const;
+
+export const ppidObjections = pgTable("ppid_objections", {
+  id: varchar("id", { length: 36 }).primaryKey().default(uuidDefault),
+  requestCode: varchar("request_code", { length: 64 }),
+  fullName: text("full_name").notNull(),
+  nik: varchar("nik", { length: 20 }).notNull(),
+  address: text("address").notNull(),
+  phone: varchar("phone", { length: 32 }).notNull(),
+  email: varchar("email", { length: 191 }),
+  occupation: varchar("occupation", { length: 191 }),
+  ktpFileUrl: text("ktp_file_url"),
+  informationDetail: text("information_detail").notNull(),
+  requestPurpose: text("request_purpose").notNull(),
+  objectionReasons: text("objection_reasons").array(),
+  objectionNote: text("objection_note"),
+  evidenceFileUrl: text("evidence_file_url"),
+  status: text("status").notNull().default("pending"),
+  reviewNote: text("review_note"),
+  processedBy: varchar("processed_by", { length: 36 }).references(() => users.id),
+  processedAt: timestamp("processed_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertPpidObjectionSchema = createInsertSchema(ppidObjections).omit({
+  id: true,
+  status: true,
+  reviewNote: true,
+  processedBy: true,
+  processedAt: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertPpidObjection = z.infer<typeof insertPpidObjectionSchema>;
+export type PpidObjection = typeof ppidObjections.$inferSelect;
+
+// ─── PPID Permohonan Informasi ────────────────────────────────────────────────
+export const ppidInfoRequestStatusValues = ["pending", "in_review", "resolved", "rejected"] as const;
+
+export const ppidInformationRequests = pgTable("ppid_information_requests", {
+  id: varchar("id", { length: 36 }).primaryKey().default(uuidDefault),
+  fullName: text("full_name").notNull(),
+  nik: varchar("nik", { length: 20 }).notNull(),
+  address: text("address").notNull(),
+  phone: varchar("phone", { length: 32 }).notNull(),
+  email: varchar("email", { length: 191 }),
+  occupation: varchar("occupation", { length: 191 }),
+  ktpFileUrl: text("ktp_file_url"),
+  informationDetail: text("information_detail").notNull(),
+  requestPurpose: text("request_purpose").notNull(),
+  retrievalMethod: varchar("retrieval_method", { length: 50 }),
+  status: text("status").notNull().default("pending"),
+  reviewNote: text("review_note"),
+  processedBy: varchar("processed_by", { length: 36 }).references(() => users.id),
+  processedAt: timestamp("processed_at"),
+  createdAt: timestamp("created_at").defaultNow(),
+  updatedAt: timestamp("updated_at").defaultNow(),
+});
+
+export const insertPpidInfoRequestSchema = createInsertSchema(ppidInformationRequests).omit({
+  id: true,
+  status: true,
+  reviewNote: true,
+  processedBy: true,
+  processedAt: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertPpidInfoRequest = z.infer<typeof insertPpidInfoRequestSchema>;
+export type PpidInfoRequest = typeof ppidInformationRequests.$inferSelect;
+
 // ─── Audit Logs ───────────────────────────────────────────────────────────────
 export const auditLogs = pgTable("audit_logs", {
   id: varchar("id", { length: 36 }).primaryKey().default(uuidDefault),

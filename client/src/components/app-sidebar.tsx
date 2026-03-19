@@ -11,6 +11,7 @@ import {
   LayoutDashboard, Newspaper, Tag, Image, Menu, FileText,
   ClipboardList, BarChart2, Upload, MessageSquare, FileEdit,
   Users, LogOut, ChevronDown, Layers, FileType2, FolderOpen,
+  AlertTriangle, FileQuestion,
 } from "lucide-react";
 import { useAuth } from "@/contexts/auth";
 import { useLang } from "@/contexts/language";
@@ -144,10 +145,14 @@ export function AppSidebar() {
                   <NavItem href="/banners" icon={Image} label={t("banners")} />
                   <NavItem href="/menus" icon={Menu} label={t("menus")} />
                   <CollapsibleNav icon={FileText} label="PPID" basePath="/documents">
-                    <SubNavItem href="/documents" label="Daftar PPID" />
+                    <SubNavItem href="/documents" label="Daftar Dokumen" />
                     <SubNavItem href="/documents/kinds" label={t("docKinds")} />
                     <SubNavItem href="/documents/categories" label={t("docCategories")} />
                     <SubNavItem href="/documents/types" label={t("docTypes")} />
+                  </CollapsibleNav>
+                  <CollapsibleNav icon={AlertTriangle} label="Layanan PPID" basePath="/ppid">
+                    <SubNavItem href="/ppid/objections" label="Formulir Keberatan" />
+                    <SubNavItem href="/ppid/information-requests" label="Permohonan Informasi" />
                   </CollapsibleNav>
                 </SidebarMenu>
               </SidebarGroupContent>

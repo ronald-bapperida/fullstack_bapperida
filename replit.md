@@ -25,9 +25,12 @@ Admin panel untuk BAPPERIDA (Badan Perencanaan, Penelitian dan Pengembangan Daer
 - **admin_rida**: RIDA modules (Research Permits, Surveys, Final Reports, Letter Templates, Suggestions)
 
 ## Recent Changes
-- **Dashboard Redesign**: Complete visual overhaul with gradient hero header (user avatar + role badge + BAPPERIDA branding), colored gradient stat cards per role, gradient bar/area/donut charts with SVG linear gradients, satisfaction progress bars, and year/month filter controls.
-- **Letter Template Dynamic Variables**: Extended DOCX generation with 25+ placeholder variables. New schema fields on `letter_templates`: `officialName`, `officialPosition`, `officialNip`, `city`, `tembusan`. Template form now has a config panel for signing official and tembusan, plus a full DOCX variable cheatsheet with color-coded source labels (permit data / template config / auto).
-- **i18n Wiring**: Applied `useLang()` / `t()` translations across all pages (dashboard, banners, documents, surveys, suggestions, login).
+- **PPID Layanan PPID (Keberatan + Permohonan Informasi)**: Added two new PPID service modules — Formulir Keberatan and Permohonan Informasi. Each has: DB tables (`ppid_objections`, `ppid_information_requests`), Flutter/public POST API, admin list+detail pages with status update panel, sidebar nav under "Layanan PPID" (admin_bpp + superadmin). Flutter endpoints: `POST /api/ppid/objections`, `POST /api/ppid/information-requests`.
+- **Letter Template `<<KEPADA>>` Multi-line**: Added `kepada` config field — supports multi-line recipient address; `\n` converted to DOCX `<w:br/>`. DOCX newline support applies to all variables including `<<TEMBUSAN>>`.
+- **Favicon**: Changed to BAPPERIDA logo (`logo_bapperida.png`).
+- **Dashboard Redesign**: Gradient hero header, colored stat cards, gradient charts, donut pie, satisfaction progress bars.
+- **Letter Template Dynamic Variables**: 25+ DOCX variables, config panel with official details, tembusan, kepada, and cheatsheet.
+- **i18n Wiring**: All pages wired with `useLang()` + `t()`.
 
 ## Modules
 

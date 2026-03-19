@@ -1151,6 +1151,68 @@ export class DatabaseStorage implements IStorage {
   //     monthly_trend: monthlyTrend,
   //   };
   // }
+
+  // ── PPID Keberatan ──────────────────────────────────────────────────────────
+  async createPpidObjection(data: any) {
+    return insertAndGet<any>(schema.ppidObjections, schema.ppidObjections.id, data);
+  }
+
+  async listPpidObjections({ page = 1, limit = 20, status }: { page?: number; limit?: number; status?: string }) {
+    const offset = (page - 1) * limit;
+    const where = status ? eq(schema.ppidObjections.status, status) : undefined;
+    const [items, [{ count }]] = await Promise.all([
+      db.select().from(schema.ppidObjections)
+        .where(where)
+        .orderBy(desc(schema.ppidObjections.createdAt))
+        .limit(limit).offset(offset),
+      db.select({ count: sql<number>`count(*)::int` }).from(schema.ppidObjections).where(where),
+    ]);
+    return { items, total: count };
+  }
+
+  async getPpidObjection(id: string) {
+    const [r] = await db.select().from(schema.ppidObjections).where(eq(schema.ppidObjections.id, id));
+    return r;
+  }
+
+  async updatePpidObjectionStatus(id: string, data: { status: string; reviewNote?: string; processedBy?: string }) {
+    return updateAndGet<any>(schema.ppidObjections, schema.ppidObjections.id, id, {
+      ...data,
+      processedAt: new Date(),
+      updatedAt: new Date(),
+    });
+  }
+
+  // ── PPID Permohonan Informasi ────────────────────────────────────────────────
+  async createPpidInfoRequest(data: any) {
+    return insertAndGet<any>(schema.ppidInformationRequests, schema.ppidInformationRequests.id, data);
+  }
+
+  async listPpidInfoRequests({ page = 1, limit = 20, status }: { page?: number; limit?: number; status?: string }) {
+    const offset = (page - 1) * limit;
+    const where = status ? eq(schema.ppidInformationRequests.status, status) : undefined;
+    const [items, [{ count }]] = await Promise.all([
+      db.select().from(schema.ppidInformationRequests)
+        .where(where)
+        .orderBy(desc(schema.ppidInformationRequests.createdAt))
+        .limit(limit).offset(offset),
+      db.select({ count: sql<number>`count(*)::int` }).from(schema.ppidInformationRequests).where(where),
+    ]);
+    return { items, total: count };
+  }
+
+  async getPpidInfoRequest(id: string) {
+    const [r] = await db.select().from(schema.ppidInformationRequests).where(eq(schema.ppidInformationRequests.id, id));
+    return r;
+  }
+
+  async updatePpidInfoRequestStatus(id: string, data: { status: string; reviewNote?: string; processedBy?: string }) {
+    return updateAndGet<any>(schema.ppidInformationRequests, schema.ppidInformationRequests.id, id, {
+      ...data,
+      processedAt: new Date(),
+      updatedAt: new Date(),
+    });
+  }
 }
 
 export const storage = new DatabaseStorage();

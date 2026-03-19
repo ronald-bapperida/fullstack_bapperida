@@ -28,6 +28,10 @@ import LetterTemplatesCreatePage from "@/pages/letter-templates/new";
 import LetterTemplatesEditPage from "@/pages/letter-templates/[id]/edit";
 import LetterTemplatesPreviewPage from "@/pages/letter-templates/[id]/index";
 import UsersPage from "@/pages/users/index";
+import PpidObjectionsPage from "@/pages/ppid/objections/index";
+import PpidObjectionDetailPage from "@/pages/ppid/objections/[id]";
+import PpidInfoRequestsPage from "@/pages/ppid/information-requests/index";
+import PpidInfoRequestDetailPage from "@/pages/ppid/information-requests/[id]";
 import NotFound from "@/pages/not-found";
 
 const sidebarStyle = {
@@ -148,6 +152,10 @@ function Router() {
       <Route path="/letter-templates/:id/edit" component={() => <ProtectedRoute component={LetterTemplatesEditPage} roles={["super_admin", "admin_rida"]}/>} />
       <Route path="/letter-templates/:id" component={() => <ProtectedRoute component={LetterTemplatesPreviewPage} roles={["super_admin", "admin_rida"]}/>} />
       <Route path="/users" component={() => <ProtectedRoute component={UsersPage} roles={["super_admin"]} />} />
+      <Route path="/ppid/objections" component={() => <ProtectedRoute component={PpidObjectionsPage} roles={["super_admin", "admin_bpp"]} />} />
+      <Route path="/ppid/objections/:id" component={() => <ProtectedRoute component={PpidObjectionDetailPage} roles={["super_admin", "admin_bpp"]} />} />
+      <Route path="/ppid/information-requests" component={() => <ProtectedRoute component={PpidInfoRequestsPage} roles={["super_admin", "admin_bpp"]} />} />
+      <Route path="/ppid/information-requests/:id" component={() => <ProtectedRoute component={PpidInfoRequestDetailPage} roles={["super_admin", "admin_bpp"]} />} />
       <Route component={NotFound} />
     </Switch>
   );
