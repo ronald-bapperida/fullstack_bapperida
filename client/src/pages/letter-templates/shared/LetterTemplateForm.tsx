@@ -17,7 +17,7 @@ import { Copy, CheckCircle2, ChevronDown, ChevronUp, Info } from "lucide-react";
 const DOCX_VARIABLES: { key: string; label: string; source: string }[] = [
   // Dari data pemohon
   { key: "<<NAMA>>",               label: "Nama Pemohon",             source: "permit" },
-  { key: "<<KEPADA>>",             label: "Kepada (Nama Pemohon)",     source: "permit" },
+  { key: "<<KEPADA>>",             label: "Kepada (teks alamat surat, bisa multi-baris)", source: "template" },
   { key: "<<NIM>>",                label: "NIM / NIK Pemohon",        source: "permit" },
   { key: "<<NIM/NIK>>",           label: "NIM atau NIK",              source: "permit" },
   { key: "<<INSTANSI>>",           label: "Instansi Pemohon",         source: "permit" },
@@ -81,6 +81,7 @@ type FormValues = {
   officialNip: string;
   city: string;
   tembusan: string;
+  kepada: string;
 };
 
 export default function LetterTemplateForm({
@@ -112,6 +113,7 @@ export default function LetterTemplateForm({
       officialNip:      initial?.officialNip      || "",
       city:             initial?.city             || "Palangka Raya",
       tembusan:         initial?.tembusan         || "",
+      kepada:           initial?.kepada           || "",
     },
   });
 
@@ -245,6 +247,21 @@ export default function LetterTemplateForm({
             />
             <p className="text-xs text-muted-foreground">Satu baris = satu penerima. Digunakan untuk <code className="bg-muted px-1 rounded">{"<<TEMBUSAN>>"}</code></p>
           </div>
+        </div>
+        {/* Kepada — full width, multi-baris */}
+        <div className="space-y-2">
+          <Label className="text-xs font-medium">Kepada (Alamat Surat)</Label>
+          <Textarea
+            {...register("kepada")}
+            placeholder={"Yth. Bapak/Ibu Gubernur Kalimantan Tengah\ndi Palangka Raya"}
+            rows={3}
+            className="text-sm font-mono"
+          />
+          <p className="text-xs text-muted-foreground">
+            Bisa multi-baris — tekan <kbd className="px-1.5 py-0.5 rounded bg-muted border text-xs">Enter</kbd> untuk baris baru.
+            Digunakan untuk <code className="bg-muted px-1 rounded">{"<<KEPADA>>"}</code>.
+            Jika kosong, otomatis diisi nama pemohon.
+          </p>
         </div>
       </div>
 

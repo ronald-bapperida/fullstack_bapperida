@@ -104,6 +104,19 @@ function escapeXml(str: string): string {
 }
 
 /**
+ * Escape string untuk XML sekaligus mengubah newline (\n) menjadi
+ * line-break DOCX yang valid: </w:t><w:br/><w:t xml:space="preserve">
+ * sehingga Enter pada nilai variabel menghasilkan baris baru di Word.
+ */
+function escapeXmlWithBreaks(str: string): string {
+  if (!str) return "";
+  const lines = str.split("\n");
+  return lines
+    .map(line => escapeXml(line.trimEnd()))
+    .join('</w:t></w:r><w:r><w:br/></w:r><w:r><w:t xml:space="preserve">');
+}
+
+/**
  * Generate DOCX dari template dengan raw XML replacement.
  * Mendukung format <<PLACEHOLDER>> yang disimpan sebagai &lt;&lt;PLACEHOLDER&gt;&gt; di XML.
  * 
@@ -131,7 +144,10 @@ function generateDocxFromBuffer(
     let xml = zip.files[target].asText();
 
     for (const [placeholder, value] of Object.entries(replacements)) {
-      const safeValue = escapeXml(value);
+      // Gunakan escapeXmlWithBreaks agar \n dalam nilai diubah menjadi
+      // line-break Word yang valid (<w:br/>) sehingga Enter pada field
+      // kepada / tembusan menghasilkan baris baru di dokumen Word.
+      const safeValue = escapeXmlWithBreaks(value);
       // Format XML-escaped: &lt;&lt;PLACEHOLDER&gt;&gt;
       const xmlEscaped = `&lt;&lt;${placeholder}&gt;&gt;`;
       xml = xml.split(xmlEscaped).join(safeValue);
@@ -175,7 +191,8 @@ function buildLetterReplacements(permit: any, template?: any): Record<string, st
   return {
     // Dari data permit
     "NAMA":                  permit.fullName         ?? "-",
-    "KEPADA":                permit.fullName         ?? "-",
+    // Kepada: pakai field kepada dari template (bisa multi-baris), fallback ke nama pemohon
+    "KEPADA":                (template?.kepada || permit.fullName) ?? "-",
     "NIM":                   permit.nimNik            ?? "-",
     "NIK":                   permit.nimNik            ?? "-",
     "NIM/NIK":               permit.nimNik            ?? "-",

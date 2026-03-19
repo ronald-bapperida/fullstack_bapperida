@@ -39,6 +39,7 @@ export default function LetterTemplateEditPage() {
         officialNip:      t?.officialNip      ?? "",
         city:             t?.city             ?? "Palangka Raya",
         tembusan:         t?.tembusan         ?? "",
+        kepada:           t?.kepada           ?? "",
       };
     },
   });

@@ -386,6 +386,7 @@ export const letterTemplates = pgTable("letter_templates", {
   officialNip: text("official_nip"),
   city: text("city").default("Palangka Raya"),
   tembusan: text("tembusan"),
+  kepada: text("kepada"),
   createdBy: varchar("created_by", { length: 36 }).references(() => users.id),
   updatedBy: varchar("updated_by", { length: 36 }).references(() => users.id),
   createdAt: timestamp("created_at").defaultNow(),
