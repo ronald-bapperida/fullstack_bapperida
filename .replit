@@ -33,10 +33,6 @@ author = "agent"
 task = "workflow.run"
 args = "Start application"
 
-[[workflows.workflow.tasks]]
-task = "workflow.run"
-args = "Go API Backend"
-
 [[workflows.workflow]]
 name = "Start application"
 author = "agent"
@@ -46,14 +42,11 @@ task = "shell.exec"
 args = "npm run dev"
 waitForPort = 5000
 
-[[workflows.workflow]]
-name = "Go API Backend"
-author = "agent"
+[userenv]
 
-[[workflows.workflow.tasks]]
-task = "shell.exec"
-args = "cd backend && go run cmd/api/main.go"
-waitForPort = 8080
-
-[workflows.workflow.metadata]
-outputType = "console"
+[userenv.shared]
+NODE_ENV = "development"
+HOST = "0.0.0.0"
+RUN_SEED = "true"
+SEED_ADMIN_PASSWORD = "Admin@123"
+VITE_TINYMCE_API_KEY = "n6orr52fyuwpmh2yqlhh3ng0nqd9lwauyg0jowt7vr4twq5g"

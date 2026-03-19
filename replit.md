@@ -1,21 +1,15 @@
 # Portal Admin BAPPERIDA Kalimantan Tengah
 
-## Go Backend (Port 8080)
-Backend Golang dengan arsitektur Clean Architecture berjalan paralel di port 8080.
-Lihat `backend/README.md` untuk dokumentasi lengkap dan contoh curl.
-
 ## Overview
 Admin panel untuk BAPPERIDA (Badan Perencanaan, Penelitian dan Pengembangan Daerah) Kalimantan Tengah. Sistem dual-domain: BAPPEDA dan RIDA.
 
 ## Tech Stack
 - **Frontend**: React + TypeScript, Wouter (routing), TanStack Query, Shadcn UI, Tailwind CSS, **react-quill-new** (rich text editor)
 - **Node.js Backend**: Express.js + TypeScript, JWT Auth (port 5000 - serves React admin panel)
-- **Go Backend**: Gin + Clean Architecture, JWT Auth (port 8080 - serves Flutter mobile app)
-- **Database**: PostgreSQL + Drizzle ORM (Node.js) + raw SQL (Go)
+- **Database**: PostgreSQL (Replit built-in) + Drizzle ORM
 - **File Storage**: Local filesystem (`/uploads`)
 
-## Dual Backend Architecture
-- **Go API (port 8080)**: Primary REST API for Flutter mobile app. Full public endpoints (news, banners, menus, documents, surveys, suggestions) + protected admin endpoints with RBAC
+## Architecture
 - **Node.js API (port 5000)**: Serves React admin panel via Express + Drizzle ORM
 
 ## Default Credentials
