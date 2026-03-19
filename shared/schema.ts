@@ -380,6 +380,12 @@ export const letterTemplates = pgTable("letter_templates", {
   content: text("content").notNull(),
   placeholders: text("placeholders"),
   isActive: boolean("is_active").notNull().default(true),
+  // Dynamic letter config
+  officialName: text("official_name"),
+  officialPosition: text("official_position"),
+  officialNip: text("official_nip"),
+  city: text("city").default("Palangka Raya"),
+  tembusan: text("tembusan"),
   createdBy: varchar("created_by", { length: 36 }).references(() => users.id),
   updatedBy: varchar("updated_by", { length: 36 }).references(() => users.id),
   createdAt: timestamp("created_at").defaultNow(),

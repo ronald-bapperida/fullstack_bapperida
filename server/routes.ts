@@ -149,7 +149,7 @@ function generateDocxFromBuffer(
 /**
  * Buat mapping data dari permit ke placeholder template
  */
-function buildLetterReplacements(permit: any): Record<string, string> {
+function buildLetterReplacements(permit: any, template?: any): Record<string, string> {
   const formatDate = (d: any): string => {
     if (!d) return "-";
     return new Date(d).toLocaleDateString("id-ID", {
@@ -159,15 +159,53 @@ function buildLetterReplacements(permit: any): Record<string, string> {
     }).toUpperCase();
   };
 
+  const today = new Date();
+  const city = template?.city || "Palangka Raya";
+
+  // Format tembusan as numbered list for DOCX (newline-separated entries from template)
+  const tembusanRaw: string = template?.tembusan || "";
+  const tembusanLines = tembusanRaw
+    .split("\n")
+    .map((s: string) => s.trim())
+    .filter(Boolean);
+  const tembusanFormatted = tembusanLines.length > 0
+    ? tembusanLines.map((line: string, i: number) => `${i + 1}. ${line}`).join("\n")
+    : "-";
+
   return {
-    "NAMA":               permit.fullName       ?? "-",
-    "NIM":                permit.nimNik          ?? "-",
-    "TIM SURVEY/PENELITI": permit.institution   ?? "-",
-    "JUDUL PENELITIAN":   permit.researchTitle   ?? "-",
-    "LOKASI PENELITIAN":  permit.researchLocation ?? "-",
-    "NOMOR SURAT":        permit.introLetterNumber ?? "-",
-    "TANGGAL SURAT":      formatDate(permit.introLetterDate),
-    "TANDA TANGAN":       permit.workUnit || permit.institution || "-",
+    // Dari data permit
+    "NAMA":                  permit.fullName         ?? "-",
+    "KEPADA":                permit.fullName         ?? "-",
+    "NIM":                   permit.nimNik            ?? "-",
+    "NIK":                   permit.nimNik            ?? "-",
+    "NIM/NIK":               permit.nimNik            ?? "-",
+    "TIM SURVEY/PENELITI":   permit.institution      ?? "-",
+    "NAMA INSTANSI":         permit.institution      ?? "-",
+    "INSTANSI":              permit.institution      ?? "-",
+    "JUDUL PENELITIAN":      permit.researchTitle    ?? "-",
+    "LOKASI PENELITIAN":     permit.researchLocation ?? "-",
+    "DURASI PENELITIAN":     permit.researchDuration ?? "-",
+    "NOMOR SURAT":           permit.introLetterNumber ?? "-",
+    "NOMOR PENGAJUAN":       permit.requestNumber    ?? "-",
+    "TANGGAL SURAT":         formatDate(permit.introLetterDate),
+    "TANGGAL PENGAJUAN":     formatDate(permit.createdAt),
+    "TANDA TANGAN":          permit.workUnit || permit.institution || "-",
+    "TELEPON":               permit.phone            ?? "-",
+    "EMAIL":                 permit.email            ?? "-",
+    "ALAMAT":                permit.address          ?? "-",
+    // Dari config template
+    "NAMA PEJABAT":          template?.officialName     ?? "-",
+    "JABATAN":               template?.officialPosition ?? "-",
+    "JABATAN PEJABAT":       template?.officialPosition ?? "-",
+    "NIP":                   template?.officialNip      ?? "-",
+    "NIP PEJABAT":           template?.officialNip      ?? "-",
+    "KOTA":                  city,
+    "TEMBUSAN":              tembusanFormatted,
+    // Tanggal otomatis
+    "TANGGAL HARI INI":      formatDate(today),
+    "TANGGAL":               formatDate(today),
+    "TAHUN":                 String(today.getFullYear()),
+    "BULAN":                 today.toLocaleDateString("id-ID", { month: "long" }).toUpperCase(),
   };
 }
 
@@ -872,8 +910,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           });
         }
 
-        // Build replacements dari data permit
-        const replacements = buildLetterReplacements(permit);
+        // Fetch template config (for dynamic variables like officialName, tembusan etc.)
+        let templateConfig: any = null;
+        if (req.body.templateId) {
+          templateConfig = await db.getTemplate(req.body.templateId);
+        }
+
+        // Build replacements dari data permit + template config
+        const replacements = buildLetterReplacements(permit, templateConfig);
 
         // Generate DOCX
         const outputBuffer = generateDocxFromBuffer(templateBuffer, replacements);

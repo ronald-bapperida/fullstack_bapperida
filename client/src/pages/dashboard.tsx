@@ -4,16 +4,19 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Newspaper, ClipboardList, BarChart2, Image, FileText, Clock, CheckCircle, Trash2, TrendingUp, Download, MapPin, Users, PieChart } from "lucide-react";
+import { Badge } from "@/components/ui/badge";
+import {
+  Newspaper, ClipboardList, BarChart2, Image, FileText, Clock,
+  CheckCircle, Trash2, TrendingUp, Download, MapPin, Users, PieChart,
+  Activity, Star, ArrowUpRight, CalendarDays, Building2, Layers,
+} from "lucide-react";
 import { useAuth } from "@/contexts/auth";
 import { useToast } from "@/hooks/use-toast";
 import { useLang } from "@/contexts/language";
-import { format, subMonths, startOfYear, endOfYear } from "date-fns";
+import { format } from "date-fns";
 import { id } from "date-fns/locale";
 
 import {
-  LineChart,
-  Line,
   BarChart,
   Bar,
   PieChart as RePieChart,
@@ -46,154 +49,128 @@ interface Stats {
 }
 
 interface NewsViewStats {
-  monthly: Array<{
-    month: string;
-    month_number?: number;
-    year: number;
-    total_views: number;
-    top_news: Array<{
-      id: string;
-      title: string;
-      views: number;
-      slug: string;
-    }>;
-  }>;
-  chart: Array<{
-    month: string;
-    views: number;
-    topNews?: { title: string; views: number } | null;
-  }>;
+  monthly: Array<{ month: string; month_number?: number; year: number; total_views: number; top_news: Array<{ id: string; title: string; views: number; slug: string }>; }>;
+  chart: Array<{ month: string; views: number; topNews?: { title: string; views: number } | null }>;
 }
 
 interface DocumentDownloadStats {
-  monthly: Array<{
-    month: string;
-    month_number?: number;
-    year: number;
-    total_downloads: number;
-    top_documents: Array<{
-      id: string;
-      title: string;
-      downloads: number;
-      fileUrl: string;
-    }>;
-  }>;
-  chart: Array<{
-    month: string;
-    downloads: number;
-    topDoc?: { title: string; downloads: number } | null;
-  }>;
+  monthly: Array<{ month: string; month_number?: number; year: number; total_downloads: number; top_documents: Array<{ id: string; title: string; downloads: number; fileUrl: string }>; }>;
+  chart: Array<{ month: string; downloads: number; topDoc?: { title: string; downloads: number } | null }>;
 }
 
-interface PermitOriginStats {
-  institution: string;
-  count: number;
-  percentage: number;
-}
+interface PermitOriginStats { institution: string; count: number; percentage: number; }
 
 interface SurveyStats {
-  total_responses: number;
-  satisfaction_rate: number;
-  categories: Array<{
-    category: string;
-    value: number;
-    percentage: number;
-  }>;
-  monthly_trend: Array<{
-    month: string;
-    responses: number;
-    satisfaction: number;
-  }>;
+  total_responses: number; satisfaction_rate: number;
+  categories: Array<{ category: string; value: number; percentage: number }>;
+  monthly_trend: Array<{ month: string; responses: number; satisfaction: number }>;
 }
 
-const COLORS = ['#0088FE', '#00C49F', '#FFBB28', '#FF8042', '#8884D8', '#82CA9D', '#FF6B6B', '#4ECDC4'];
+const GRADIENT_COLORS = [
+  { from: "#3b82f6", to: "#60a5fa" },
+  { from: "#8b5cf6", to: "#a78bfa" },
+  { from: "#ec4899", to: "#f472b6" },
+  { from: "#10b981", to: "#34d399" },
+  { from: "#f59e0b", to: "#fbbf24" },
+  { from: "#ef4444", to: "#f87171" },
+  { from: "#06b6d4", to: "#22d3ee" },
+  { from: "#6366f1", to: "#818cf8" },
+];
 
-function StatCard({ title, value, icon: Icon, sub, subLabel, trend, color = "text-primary" }: {
-  title: string; 
-  value: number; 
-  icon: any; 
-  sub?: number; 
+const CHART_COLORS = GRADIENT_COLORS.map(c => c.from);
+
+type StatCardConfig = {
+  title: string;
+  value: number | string;
+  icon: any;
+  sub?: number;
   subLabel?: string;
-  trend?: number;
-  color?: string;
-}) {
+  bgClass: string;
+  iconBgClass: string;
+  textClass: string;
+  badge?: string;
+  badgeClass?: string;
+};
+
+function StatCard({ title, value, icon: Icon, sub, subLabel, bgClass, iconBgClass, textClass, badge, badgeClass }: StatCardConfig) {
   return (
-    <Card className="hover:shadow-lg transition-all duration-300 hover:-translate-y-1">
-      <CardHeader className="flex flex-row items-center justify-between gap-1 space-y-0 pb-2">
-        <CardTitle className="text-sm font-medium text-muted-foreground">{title}</CardTitle>
-        <div className={`${color}`}>
-          <Icon className="w-5 h-5" />
+    <div className={`relative overflow-hidden rounded-2xl p-5 ${bgClass} shadow-sm hover:shadow-md transition-all duration-300 hover:-translate-y-0.5`}>
+      <div className="absolute top-0 right-0 w-24 h-24 rounded-full opacity-10 -mr-6 -mt-6 bg-white" />
+      <div className="absolute bottom-0 left-0 w-16 h-16 rounded-full opacity-5 -ml-4 -mb-4 bg-white" />
+      <div className="relative flex items-start justify-between">
+        <div className={`w-11 h-11 rounded-xl flex items-center justify-center ${iconBgClass} shadow-sm`}>
+          <Icon className={`w-5 h-5 ${textClass}`} />
         </div>
-      </CardHeader>
-      <CardContent>
-        <div className="text-3xl font-bold">{value.toLocaleString()}</div>
-        {sub !== undefined && (
-          <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
-            <span className="font-medium text-foreground">{sub}</span> {subLabel}
-          </p>
+        {badge && (
+          <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${badgeClass}`}>{badge}</span>
         )}
-        {trend !== undefined && (
-          <div className={`flex items-center gap-1 mt-2 text-xs ${trend >= 0 ? 'text-green-600' : 'text-red-600'}`}>
-            <TrendingUp className={`w-3 h-3 ${trend < 0 ? 'rotate-180' : ''}`} />
-            <span>{Math.abs(trend)}% dari bulan lalu</span>
+      </div>
+      <div className="relative mt-4">
+        <div className="text-3xl font-bold text-white tracking-tight">
+          {typeof value === "number" ? value.toLocaleString() : value}
+        </div>
+        <div className="text-sm font-medium text-white/80 mt-1">{title}</div>
+        {sub !== undefined && (
+          <div className="flex items-center gap-1 mt-2">
+            <ArrowUpRight className="w-3 h-3 text-white/70" />
+            <span className="text-xs text-white/70">
+              <span className="font-semibold text-white">{sub}</span> {subLabel}
+            </span>
           </div>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }
 
 function ChartSkeleton() {
   return (
     <Card className="col-span-2">
-      <CardHeader>
-        <Skeleton className="h-6 w-48" />
-        <Skeleton className="h-4 w-32" />
-      </CardHeader>
-      <CardContent>
-        <Skeleton className="h-64 w-full" />
-      </CardContent>
+      <CardHeader><Skeleton className="h-6 w-48" /><Skeleton className="h-4 w-32" /></CardHeader>
+      <CardContent><Skeleton className="h-64 w-full" /></CardContent>
     </Card>
   );
 }
 
+function getUserInitials(name: string) {
+  return name?.split(" ").slice(0, 2).map(n => n[0]).join("").toUpperCase() || "U";
+}
+
+function getRoleLabel(role: string) {
+  if (role === "super_admin") return "Super Administrator";
+  if (role === "admin_bpp") return "Admin BAPPEDA";
+  if (role === "admin_rida") return "Admin RIDA";
+  return role;
+}
+
+function getRoleColor(role: string) {
+  if (role === "super_admin") return "bg-amber-500";
+  if (role === "admin_bpp") return "bg-blue-500";
+  return "bg-purple-500";
+}
+
 export default function Dashboard() {
   const { user } = useAuth();
-  const { toast } = useToast();
   const { t } = useLang();
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
   const [selectedMonth, setSelectedMonth] = useState(format(new Date(), "MMMM", { locale: id }));
 
-  // Generate tahun dari 2020 sampai sekarang
-  const years = Array.from(
-    { length: new Date().getFullYear() - 2019 }, 
-    (_, i) => 2020 + i
-  );
+  const years = Array.from({ length: new Date().getFullYear() - 2019 }, (_, i) => 2020 + i);
+  const months = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
 
-  const months = [
-    "Januari", "Februari", "Maret", "April", "Mei", "Juni",
-    "Juli", "Agustus", "September", "Oktober", "November", "Desember"
-  ];
-
-  const { data: stats, isLoading: statsLoading } = useQuery<Stats>({ 
-    queryKey: ["/api/admin/dashboard"] 
-  });
-
+  const { data: stats, isLoading: statsLoading } = useQuery<Stats>({ queryKey: ["/api/admin/dashboard"] });
   const { data: newsViews, isLoading: newsLoading } = useQuery<NewsViewStats>({
     queryKey: ["/api/admin/stats/news-views", selectedYear, selectedMonth],
     enabled: !!user && (user.role === "super_admin" || user.role === "admin_bpp"),
   });
-
   const { data: documentDownloads, isLoading: docsLoading } = useQuery<DocumentDownloadStats>({
     queryKey: ["/api/admin/stats/document-downloads", selectedYear, selectedMonth],
     enabled: !!user && (user.role === "super_admin" || user.role === "admin_bpp"),
   });
-
   const { data: permitOrigins, isLoading: permitsLoading } = useQuery<PermitOriginStats[]>({
     queryKey: ["/api/admin/stats/permit-origins", selectedYear],
     enabled: !!user && (user.role === "super_admin" || user.role === "admin_rida"),
   });
-
   const { data: surveyStats, isLoading: surveyLoading } = useQuery<SurveyStats>({
     queryKey: ["/api/admin/stats/survey-satisfaction", selectedYear],
     enabled: !!user && (user.role === "super_admin" || user.role === "admin_rida"),
@@ -202,457 +179,508 @@ export default function Dashboard() {
   const isBPP = user?.role === "super_admin" || user?.role === "admin_bpp";
   const isRIDA = user?.role === "super_admin" || user?.role === "admin_rida";
 
-  // Data untuk chart views berita per bulan pilihan
   const selectedMonthNews = newsViews?.monthly?.find(m => m.month === selectedMonth);
   const newsViewsData = selectedMonthNews?.top_news?.map((item, index) => ({
-    name: item.title.length > 30 ? item.title.substring(0, 30) + '...' : item.title,
+    name: item.title.length > 28 ? item.title.substring(0, 28) + "…" : item.title,
     views: item.views,
-    fill: COLORS[index % COLORS.length]
   })) || [];
 
-  // Data untuk chart dokumen per bulan pilihan
   const selectedMonthDocs = documentDownloads?.monthly?.find(m => m.month === selectedMonth);
   const documentData = selectedMonthDocs?.top_documents?.map((item, index) => ({
-    name: item.title.length > 30 ? item.title.substring(0, 30) + '...' : item.title,
+    name: item.title.length > 28 ? item.title.substring(0, 28) + "…" : item.title,
     downloads: item.downloads,
-    fill: COLORS[index % COLORS.length]
   })) || [];
 
-  // Data untuk asal institusi
   const originData = permitOrigins?.map((item, index) => ({
     name: item.institution,
     value: item.count,
     percentage: item.percentage,
-    fill: COLORS[index % COLORS.length]
+    fill: CHART_COLORS[index % CHART_COLORS.length],
   })) || [];
 
-  // Data untuk survei kepuasan
   const satisfactionData = surveyStats?.categories || [];
 
+  // Stat card configurations
+  const bppCards: StatCardConfig[] = stats ? [
+    {
+      title: t("totalNews"),
+      value: stats.news,
+      icon: Newspaper,
+      sub: stats.publishedNews,
+      subLabel: t("publishedNews"),
+      bgClass: "bg-gradient-to-br from-blue-500 to-blue-600",
+      iconBgClass: "bg-white/20",
+      textClass: "text-white",
+    },
+    {
+      title: t("draftNews"),
+      value: stats.news - stats.publishedNews,
+      icon: Clock,
+      bgClass: "bg-gradient-to-br from-amber-500 to-orange-500",
+      iconBgClass: "bg-white/20",
+      textClass: "text-white",
+    },
+    {
+      title: t("trashNews"),
+      value: stats.newsTrash,
+      icon: Trash2,
+      bgClass: "bg-gradient-to-br from-red-500 to-rose-500",
+      iconBgClass: "bg-white/20",
+      textClass: "text-white",
+    },
+    {
+      title: t("activeBanners"),
+      value: stats.banners,
+      icon: Image,
+      bgClass: "bg-gradient-to-br from-emerald-500 to-teal-500",
+      iconBgClass: "bg-white/20",
+      textClass: "text-white",
+    },
+  ] : [];
+
+  const ppidCards: StatCardConfig[] = stats ? [
+    {
+      title: t("ppidDocs"),
+      value: stats.documents,
+      icon: FileText,
+      bgClass: "bg-gradient-to-br from-violet-500 to-purple-600",
+      iconBgClass: "bg-white/20",
+      textClass: "text-white",
+    },
+  ] : [];
+
+  const ridaCards: StatCardConfig[] = stats ? [
+    {
+      title: t("researchPermits"),
+      value: stats.permits,
+      icon: ClipboardList,
+      sub: stats.pendingPermits,
+      subLabel: t("waitingReview"),
+      bgClass: "bg-gradient-to-br from-indigo-500 to-indigo-600",
+      iconBgClass: "bg-white/20",
+      textClass: "text-white",
+    },
+    {
+      title: t("pendingReview"),
+      value: stats.pendingPermits,
+      icon: CheckCircle,
+      bgClass: "bg-gradient-to-br from-orange-500 to-orange-600",
+      iconBgClass: "bg-white/20",
+      textClass: "text-white",
+      badge: stats.pendingPermits > 0 ? "Perlu Tindakan" : "Aman",
+      badgeClass: stats.pendingPermits > 0 ? "bg-white/30 text-white" : "bg-white/20 text-white/70",
+    },
+    {
+      title: t("ikmSurvey"),
+      value: stats.surveys,
+      icon: BarChart2,
+      bgClass: "bg-gradient-to-br from-pink-500 to-rose-500",
+      iconBgClass: "bg-white/20",
+      textClass: "text-white",
+    },
+    {
+      title: t("avgSatisfaction"),
+      value: surveyStats?.satisfaction_rate ? `${surveyStats.satisfaction_rate.toFixed(1)}%` : "–",
+      icon: Star,
+      bgClass: "bg-gradient-to-br from-cyan-500 to-sky-500",
+      iconBgClass: "bg-white/20",
+      textClass: "text-white",
+      subLabel: "dari 100",
+    },
+  ] : [];
+
   return (
-    <div className="flex flex-col gap-6 p-6 bg-gradient-to-br from-background to-muted/20">
-      {/* Header dengan gradient */}
-      <div className="relative overflow-hidden rounded-lg bg-gradient-to-r from-primary/10 via-primary/5 to-background p-6">
-        <div className="absolute top-0 right-0 w-64 h-64 bg-primary/5 rounded-full blur-3xl -mr-20 -mt-20" />
-        <div className="relative">
-          <h1 className="text-3xl font-bold bg-gradient-to-r from-primary to-primary/60 bg-clip-text text-transparent">
-            Dashboard
-          </h1>
-          <p className="text-muted-foreground mt-2">
-            {t("welcomeBack")}, <span className="font-semibold text-foreground">{user?.fullName}</span>
-          </p>
-          <div className="flex gap-2 mt-2">
-            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-primary/10 text-primary">
-              {user?.role?.replace(/_/g, " ").toUpperCase()}
-            </span>
-            <span className="inline-flex items-center px-2.5 py-0.5 rounded-full text-xs font-medium bg-muted text-muted-foreground">
-              {format(new Date(), "EEEE, d MMMM yyyy", { locale: id })}
-            </span>
+    <div className="flex flex-col gap-6 p-6 min-h-screen bg-gradient-to-b from-muted/40 via-background to-background">
+
+      {/* ── Hero Header ─────────────────────────────────────────── */}
+      <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-primary via-primary/90 to-primary/70 p-6 shadow-lg">
+        {/* Decorative shapes */}
+        <div className="absolute inset-0 overflow-hidden pointer-events-none">
+          <div className="absolute -top-10 -right-10 w-48 h-48 rounded-full bg-white/5 blur-2xl" />
+          <div className="absolute top-4 right-24 w-24 h-24 rounded-full bg-white/5" />
+          <div className="absolute -bottom-8 right-8 w-36 h-36 rounded-full bg-white/5 blur-xl" />
+          <div className="absolute bottom-0 left-1/2 w-64 h-1 bg-gradient-to-r from-transparent via-white/20 to-transparent" />
+        </div>
+
+        <div className="relative flex items-center gap-5">
+          {/* Avatar */}
+          <div className={`w-16 h-16 rounded-2xl flex items-center justify-center text-white text-xl font-bold shadow-lg ${getRoleColor(user?.role || "")} ring-2 ring-white/30 shrink-0`}>
+            {getUserInitials(user?.fullName || user?.username || "")}
+          </div>
+
+          <div className="flex-1 min-w-0">
+            <div className="flex items-center gap-2 flex-wrap">
+              <h1 className="text-2xl font-bold text-white leading-tight">{t("welcomeBack")},</h1>
+              <h1 className="text-2xl font-bold text-white/90 leading-tight truncate">{user?.fullName}</h1>
+            </div>
+            <div className="flex items-center gap-3 mt-2 flex-wrap">
+              <Badge className="bg-white/20 text-white border-white/30 hover:bg-white/30">
+                {getRoleLabel(user?.role || "")}
+              </Badge>
+              <span className="flex items-center gap-1.5 text-sm text-white/70">
+                <CalendarDays className="w-4 h-4" />
+                {format(new Date(), "EEEE, d MMMM yyyy", { locale: id })}
+              </span>
+            </div>
+          </div>
+
+          {/* BAPPERIDA branding */}
+          <div className="hidden sm:flex flex-col items-end shrink-0">
+            <div className="flex items-center gap-2 bg-white/10 rounded-xl px-4 py-2 backdrop-blur-sm">
+              <Building2 className="w-5 h-5 text-white/80" />
+              <div className="text-right">
+                <p className="text-xs font-bold text-white">BAPPERIDA</p>
+                <p className="text-xs text-white/60">Kalimantan Tengah</p>
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
-      {/* Stats Cards */}
+      {/* ── Stat Cards ─────────────────────────────────────────── */}
       {statsLoading ? (
         <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-          {Array.from({ length: 6 }).map((_, i) => (
-            <Card key={i}><CardContent className="pt-6"><Skeleton className="h-20 w-full" /></CardContent></Card>
+          {Array.from({ length: 8 }).map((_, i) => (
+            <div key={i} className="rounded-2xl bg-muted animate-pulse h-32" />
           ))}
         </div>
       ) : stats ? (
         <>
           {isBPP && (
-            <>
-              <div>
-                <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-2">
-                  <Newspaper className="w-4 h-4" /> BAPPEDA
-                </h2>
-                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                  <StatCard
-                    title={t("totalNews")}
-                    value={stats.news}
-                    icon={Newspaper}
-                    sub={stats.publishedNews}
-                    subLabel={t("publishedNews")}
-                    color="text-blue-500"
-                  />
-                  <StatCard
-                    title={t("draftNews")}
-                    value={stats.news - stats.publishedNews}
-                    icon={Clock}
-                    color="text-yellow-500"
-                  />
-                  <StatCard
-                    title={t("trashNews")}
-                    value={stats.newsTrash}
-                    icon={Trash2}
-                    color="text-red-500"
-                  />
-                  <StatCard
-                    title={t("activeBanners")}
-                    value={stats.banners}
-                    icon={Image}
-                    color="text-green-500"
-                  />
-                </div>
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <div className="w-1 h-5 rounded-full bg-blue-500" />
+                <h2 className="text-sm font-bold text-muted-foreground uppercase tracking-wider">BAPPEDA</h2>
+                <div className="flex-1 h-px bg-border" />
               </div>
-
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                <StatCard
-                  title={t("ppidDocs")}
-                  value={stats.documents}
-                  icon={FileText}
-                  color="text-purple-500"
-                />
+                {bppCards.map((card, i) => <StatCard key={i} {...card} />)}
               </div>
-            </>
+              {ppidCards.length > 0 && (
+                <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-2">
+                  {ppidCards.map((card, i) => <StatCard key={i} {...card} />)}
+                </div>
+              )}
+            </div>
           )}
 
           {isRIDA && (
-            <div>
-              <h2 className="text-sm font-semibold text-muted-foreground uppercase tracking-wider mb-3 flex items-center gap-2">
-                <ClipboardList className="w-4 h-4" /> RIDA
-              </h2>
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <div className="w-1 h-5 rounded-full bg-indigo-500" />
+                <h2 className="text-sm font-bold text-muted-foreground uppercase tracking-wider">RIDA</h2>
+                <div className="flex-1 h-px bg-border" />
+              </div>
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
-                <StatCard
-                  title={t("researchPermits")}
-                  value={stats.permits}
-                  icon={ClipboardList}
-                  sub={stats.pendingPermits}
-                  subLabel={t("waitingReview")}
-                  color="text-indigo-500"
-                />
-                <StatCard
-                  title={t("pendingReview")}
-                  value={stats.pendingPermits}
-                  icon={CheckCircle}
-                  color="text-orange-500"
-                />
-                <StatCard
-                  title={t("ikmSurvey")}
-                  value={stats.surveys}
-                  icon={BarChart2}
-                  color="text-pink-500"
-                />
-                <StatCard
-                  title={t("avgSatisfaction")}
-                  value={surveyStats?.satisfaction_rate || 0}
-                  icon={TrendingUp}
-                  subLabel="dari 100"
-                  color="text-emerald-500"
-                />
+                {ridaCards.map((card, i) => <StatCard key={i} {...card} />)}
               </div>
             </div>
           )}
         </>
       ) : (
         <Card>
-          <CardContent className="pt-6 text-center text-muted-foreground">Gagal memuat statistik</CardContent>
+          <CardContent className="pt-6 text-center text-muted-foreground">{t("failedStats")}</CardContent>
         </Card>
       )}
 
-      {/* Filter Tahun dan Bulan */}
-      {/* <div className="flex flex-wrap gap-4 items-center justify-between">
-        <div className="flex gap-2">
-          <Select value={selectedYear.toString()} onValueChange={(v) => setSelectedYear(parseInt(v))}>
-            <SelectTrigger className="w-32">
-              <SelectValue placeholder="Tahun" />
-            </SelectTrigger>
-            <SelectContent>
-              {years.map(year => (
-                <SelectItem key={year} value={year.toString()}>{year}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
-
-          <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-            <SelectTrigger className="w-40">
-              <SelectValue placeholder="Bulan" />
-            </SelectTrigger>
-            <SelectContent>
-              {months.map(month => (
-                <SelectItem key={month} value={month}>{month}</SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+      {/* ── Filter Tahun & Bulan ──────────────────────────────── */}
+      <div className="flex items-center gap-3 flex-wrap">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground">
+          <Activity className="w-4 h-4" />
+          <span className="font-medium">Filter Data:</span>
         </div>
-      </div> */}
+        <Select value={selectedYear.toString()} onValueChange={(v) => setSelectedYear(parseInt(v))}>
+          <SelectTrigger className="w-28 h-8 text-sm">
+            <SelectValue placeholder="Tahun" />
+          </SelectTrigger>
+          <SelectContent>
+            {years.map(year => (
+              <SelectItem key={year} value={year.toString()}>{year}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+        <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+          <SelectTrigger className="w-36 h-8 text-sm">
+            <SelectValue placeholder="Bulan" />
+          </SelectTrigger>
+          <SelectContent>
+            {months.map(month => (
+              <SelectItem key={month} value={month}>{month}</SelectItem>
+            ))}
+          </SelectContent>
+        </Select>
+      </div>
 
-      {/* Charts Section */}
-      <Tabs defaultValue="news" className="space-y-4">
-        <TabsList>
-          <TabsTrigger value="news" disabled={!isBPP}>{t("newsDocTab")}</TabsTrigger>
-          <TabsTrigger value="permits" disabled={!isRIDA}>{t("permitTab")}</TabsTrigger>
-          <TabsTrigger value="surveys" disabled={!isRIDA}>{t("surveyTab")}</TabsTrigger>
+      {/* ── Charts ───────────────────────────────────────────── */}
+      <Tabs defaultValue={isBPP ? "news" : "permits"} className="space-y-4">
+        <TabsList className="bg-muted/60">
+          <TabsTrigger value="news" disabled={!isBPP} className="data-[state=active]:bg-white data-[state=active]:shadow-sm">
+            <Newspaper className="w-4 h-4 mr-1.5" />{t("newsDocTab")}
+          </TabsTrigger>
+          <TabsTrigger value="permits" disabled={!isRIDA} className="data-[state=active]:bg-white data-[state=active]:shadow-sm">
+            <ClipboardList className="w-4 h-4 mr-1.5" />{t("permitTab")}
+          </TabsTrigger>
+          <TabsTrigger value="surveys" disabled={!isRIDA} className="data-[state=active]:bg-white data-[state=active]:shadow-sm">
+            <BarChart2 className="w-4 h-4 mr-1.5" />{t("surveyTab")}
+          </TabsTrigger>
         </TabsList>
 
+        {/* ─ Tab: Berita & Dokumen ─ */}
         <TabsContent value="news" className="space-y-4">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Chart Views Berita */}
-            {newsLoading ? (
-              <ChartSkeleton />
-            ) : (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <TrendingUp className="w-5 h-5 text-blue-500" />
-                    Berita dengan Views Terbanyak per Bulan
+            {newsLoading ? <ChartSkeleton /> : (
+              <Card className="border-0 shadow-md overflow-hidden">
+                <div className="h-1 bg-gradient-to-r from-blue-500 via-blue-400 to-sky-400" />
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <div className="w-8 h-8 rounded-lg bg-blue-100 dark:bg-blue-950 flex items-center justify-center">
+                      <TrendingUp className="w-4 h-4 text-blue-500" />
+                    </div>
+                    Views Berita Terbanyak
                   </CardTitle>
                   <CardDescription>
-                    Tahun {selectedYear} • Total Views: {newsViews?.monthly?.reduce((acc: number, m: any) => acc + m.total_views, 0).toLocaleString()}
+                    {selectedMonth} {selectedYear} &middot; Total: {newsViews?.monthly?.reduce((acc, m) => acc + m.total_views, 0).toLocaleString() || 0} views
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="h-80">
+                  <div className="h-72">
                     <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={newsViews?.chart || []}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="month" />
-                        <YAxis />
-                        <Tooltip 
+                      <BarChart data={newsViews?.chart || []} barSize={22}>
+                        <defs>
+                          <linearGradient id="blueGrad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#3b82f6" stopOpacity={0.9} />
+                            <stop offset="95%" stopColor="#60a5fa" stopOpacity={0.7} />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
+                        <XAxis dataKey="month" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+                        <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+                        <Tooltip
+                          contentStyle={{ borderRadius: "10px", border: "none", boxShadow: "0 4px 20px rgba(0,0,0,0.1)" }}
                           content={({ active, payload, label }) => {
                             if (active && payload && payload.length) {
-                              const monthData = newsViews?.monthly?.find((m: any) => 
-                                m.month.substring(0, 3) === label
-                              );
+                              const monthData = newsViews?.monthly?.find(m => m.month.substring(0, 3) === label);
                               return (
-                                <div className="bg-background border rounded-lg shadow-lg p-3">
-                                  <p className="font-medium">{monthData?.month} {selectedYear}</p>
-                                  <p className="text-sm text-muted-foreground">
-                                    Total Views: <span className="font-bold text-foreground">{payload[0].value?.toLocaleString()}</span>
-                                  </p>
-                                  {monthData?.top_news && monthData.top_news.length > 0 && (
-                                    <div className="mt-2 pt-2 border-t">
-                                      <p className="text-xs font-medium mb-1">Top News:</p>
-                                      {monthData.top_news.map((news: any, idx: number) => (
-                                        <div key={idx} className="flex justify-between gap-4 text-xs">
-                                          <span className="truncate max-w-[150px]">{news.title}</span>
-                                          <span className="font-mono">{news.views} views</span>
-                                        </div>
-                                      ))}
+                                <div className="bg-white dark:bg-card border rounded-xl shadow-lg p-3 text-sm">
+                                  <p className="font-semibold">{monthData?.month} {selectedYear}</p>
+                                  <p className="text-muted-foreground">Views: <span className="font-bold text-foreground">{payload[0].value?.toLocaleString()}</span></p>
+                                  {monthData?.top_news?.slice(0,3).map((n, i) => (
+                                    <div key={i} className="text-xs mt-1 text-muted-foreground flex justify-between gap-3">
+                                      <span className="truncate max-w-[140px]">{n.title}</span>
+                                      <span className="font-mono shrink-0">{n.views}</span>
                                     </div>
-                                  )}
+                                  ))}
                                 </div>
                               );
                             }
                             return null;
                           }}
                         />
-                        <Bar dataKey="views" fill="#3b82f6">
-                          {newsViews?.chart?.map((entry: any, index: number) => (
-                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                          ))}
-                        </Bar>
+                        <Bar dataKey="views" fill="url(#blueGrad)" radius={[4, 4, 0, 0]} />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
-                  
-                  {/* Tabel detail per bulan */}
-                  <div className="mt-6 border rounded-lg overflow-hidden">
-                    <table className="w-full text-sm">
-                      <thead className="bg-muted">
-                        <tr>
-                          <th className="px-4 py-2 text-left">Bulan</th>
-                          <th className="px-4 py-2 text-right">Total Views</th>
-                          <th className="px-4 py-2 text-left">Berita Terpopuler</th>
-                          <th className="px-4 py-2 text-right">Views</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {newsViews?.monthly?.map((month: any) => (
-                          <tr key={month.month} className="border-t">
-                            <td className="px-4 py-2 font-medium">{month.month}</td>
-                            <td className="px-4 py-2 text-right">{month.total_views.toLocaleString()}</td>
-                            <td className="px-4 py-2">
-                              {month.top_news[0] ? (
-                                <span className="truncate block max-w-[200px]" title={month.top_news[0].title}>
-                                  {month.top_news[0].title}
-                                </span>
-                              ) : '-'}
-                            </td>
-                            <td className="px-4 py-2 text-right font-mono">
-                              {month.top_news[0]?.views.toLocaleString() || '-'}
-                            </td>
+                  {newsViews?.monthly && newsViews.monthly.length > 0 && (
+                    <div className="mt-4 rounded-xl border overflow-hidden text-sm">
+                      <table className="w-full">
+                        <thead className="bg-muted/60">
+                          <tr>
+                            <th className="px-3 py-2 text-left font-medium">Bulan</th>
+                            <th className="px-3 py-2 text-right font-medium">Views</th>
+                            <th className="px-3 py-2 text-left font-medium hidden md:table-cell">Terpopuler</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                        </thead>
+                        <tbody>
+                          {newsViews.monthly.map((m, i) => (
+                            <tr key={m.month} className={`border-t ${i % 2 === 0 ? "" : "bg-muted/20"}`}>
+                              <td className="px-3 py-2 font-medium">{m.month}</td>
+                              <td className="px-3 py-2 text-right font-mono text-blue-600">{m.total_views.toLocaleString()}</td>
+                              <td className="px-3 py-2 text-muted-foreground hidden md:table-cell">
+                                <span className="truncate block max-w-[160px]">{m.top_news[0]?.title || "–"}</span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             )}
 
-            {/* Chart Downloads Dokumen */}
-            {docsLoading ? (
-              <ChartSkeleton />
-            ) : (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <Download className="w-5 h-5 text-purple-500" />
-                    Dokumen Paling Banyak Diunduh per Bulan
+            {docsLoading ? <ChartSkeleton /> : (
+              <Card className="border-0 shadow-md overflow-hidden">
+                <div className="h-1 bg-gradient-to-r from-violet-500 via-purple-400 to-pink-400" />
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <div className="w-8 h-8 rounded-lg bg-violet-100 dark:bg-violet-950 flex items-center justify-center">
+                      <Download className="w-4 h-4 text-violet-500" />
+                    </div>
+                    Dokumen Paling Banyak Diunduh
                   </CardTitle>
                   <CardDescription>
-                    Tahun {selectedYear} • Total Downloads: {documentDownloads?.monthly?.reduce((acc: number, m: any) => acc + m.total_downloads, 0).toLocaleString()}
+                    {selectedMonth} {selectedYear} &middot; Total: {documentDownloads?.monthly?.reduce((acc, m) => acc + m.total_downloads, 0).toLocaleString() || 0} downloads
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="h-80">
+                  <div className="h-72">
                     <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={documentDownloads?.chart || []}>
-                        <CartesianGrid strokeDasharray="3 3" />
-                        <XAxis dataKey="month" />
-                        <YAxis />
-                        <Tooltip 
+                      <BarChart data={documentDownloads?.chart || []} barSize={22}>
+                        <defs>
+                          <linearGradient id="purpleGrad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.9} />
+                            <stop offset="95%" stopColor="#a78bfa" stopOpacity={0.7} />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
+                        <XAxis dataKey="month" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+                        <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+                        <Tooltip
                           content={({ active, payload, label }) => {
                             if (active && payload && payload.length) {
-                              const monthData = documentDownloads?.monthly?.find((m: any) => 
-                                m.month.substring(0, 3) === label
-                              );
+                              const monthData = documentDownloads?.monthly?.find(m => m.month.substring(0, 3) === label);
                               return (
-                                <div className="bg-background border rounded-lg shadow-lg p-3">
-                                  <p className="font-medium">{monthData?.month} {selectedYear}</p>
-                                  <p className="text-sm text-muted-foreground">
-                                    Total Downloads: <span className="font-bold text-foreground">{payload[0].value?.toLocaleString()}</span>
-                                  </p>
-                                  {monthData?.top_documents && monthData.top_documents.length > 0 && (
-                                    <div className="mt-2 pt-2 border-t">
-                                      <p className="text-xs font-medium mb-1">Top Dokumen:</p>
-                                      {monthData.top_documents.map((doc: any, idx: number) => (
-                                        <div key={idx} className="flex justify-between gap-4 text-xs">
-                                          <span className="truncate max-w-[150px]">{doc.title}</span>
-                                          <span className="font-mono">{doc.downloads} downloads</span>
-                                        </div>
-                                      ))}
+                                <div className="bg-white dark:bg-card border rounded-xl shadow-lg p-3 text-sm">
+                                  <p className="font-semibold">{monthData?.month} {selectedYear}</p>
+                                  <p className="text-muted-foreground">Downloads: <span className="font-bold text-foreground">{payload[0].value?.toLocaleString()}</span></p>
+                                  {monthData?.top_documents?.slice(0,3).map((d, i) => (
+                                    <div key={i} className="text-xs mt-1 text-muted-foreground flex justify-between gap-3">
+                                      <span className="truncate max-w-[140px]">{d.title}</span>
+                                      <span className="font-mono shrink-0">{d.downloads}</span>
                                     </div>
-                                  )}
+                                  ))}
                                 </div>
                               );
                             }
                             return null;
                           }}
                         />
-                        <Bar dataKey="downloads" fill="#8b5cf6">
-                          {documentDownloads?.chart?.map((entry: any, index: number) => (
-                            <Cell key={`cell-${index}`} fill={COLORS[index % COLORS.length]} />
-                          ))}
-                        </Bar>
+                        <Bar dataKey="downloads" fill="url(#purpleGrad)" radius={[4, 4, 0, 0]} />
                       </BarChart>
                     </ResponsiveContainer>
                   </div>
-                  
-                  {/* Tabel detail per bulan */}
-                  <div className="mt-6 border rounded-lg overflow-hidden">
-                    <table className="w-full text-sm">
-                      <thead className="bg-muted">
-                        <tr>
-                          <th className="px-4 py-2 text-left">Bulan</th>
-                          <th className="px-4 py-2 text-right">Total Downloads</th>
-                          <th className="px-4 py-2 text-left">Dokumen Terpopuler</th>
-                          <th className="px-4 py-2 text-right">Downloads</th>
-                        </tr>
-                      </thead>
-                      <tbody>
-                        {documentDownloads?.monthly?.map((month: any) => (
-                          <tr key={month.month} className="border-t">
-                            <td className="px-4 py-2 font-medium">{month.month}</td>
-                            <td className="px-4 py-2 text-right">{month.total_downloads.toLocaleString()}</td>
-                            <td className="px-4 py-2">
-                              {month.top_documents[0] ? (
-                                <span className="truncate block max-w-[200px]" title={month.top_documents[0].title}>
-                                  {month.top_documents[0].title}
-                                </span>
-                              ) : '-'}
-                            </td>
-                            <td className="px-4 py-2 text-right font-mono">
-                              {month.top_documents[0]?.downloads.toLocaleString() || '-'}
-                            </td>
+                  {documentDownloads?.monthly && documentDownloads.monthly.length > 0 && (
+                    <div className="mt-4 rounded-xl border overflow-hidden text-sm">
+                      <table className="w-full">
+                        <thead className="bg-muted/60">
+                          <tr>
+                            <th className="px-3 py-2 text-left font-medium">Bulan</th>
+                            <th className="px-3 py-2 text-right font-medium">Downloads</th>
+                            <th className="px-3 py-2 text-left font-medium hidden md:table-cell">Terpopuler</th>
                           </tr>
-                        ))}
-                      </tbody>
-                    </table>
-                  </div>
+                        </thead>
+                        <tbody>
+                          {documentDownloads.monthly.map((m, i) => (
+                            <tr key={m.month} className={`border-t ${i % 2 === 0 ? "" : "bg-muted/20"}`}>
+                              <td className="px-3 py-2 font-medium">{m.month}</td>
+                              <td className="px-3 py-2 text-right font-mono text-violet-600">{m.total_downloads.toLocaleString()}</td>
+                              <td className="px-3 py-2 text-muted-foreground hidden md:table-cell">
+                                <span className="truncate block max-w-[160px]">{m.top_documents[0]?.title || "–"}</span>
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             )}
           </div>
         </TabsContent>
 
+        {/* ─ Tab: Izin Penelitian ─ */}
         <TabsContent value="permits" className="space-y-4">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Chart Asal Institusi */}
-            {permitsLoading ? (
-              <ChartSkeleton />
-            ) : (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <MapPin className="w-5 h-5 text-orange-500" />
+            {permitsLoading ? <ChartSkeleton /> : (
+              <Card className="border-0 shadow-md overflow-hidden">
+                <div className="h-1 bg-gradient-to-r from-orange-500 via-amber-400 to-yellow-400" />
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <div className="w-8 h-8 rounded-lg bg-orange-100 dark:bg-orange-950 flex items-center justify-center">
+                      <MapPin className="w-4 h-4 text-orange-500" />
+                    </div>
                     Asal Institusi Pemohon
                   </CardTitle>
-                  <CardDescription>
-                    Distribusi berdasarkan institusi • Tahun {selectedYear}
-                  </CardDescription>
+                  <CardDescription>Distribusi berdasarkan institusi &middot; {selectedYear}</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="h-80">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <PieChart>
-                        <Pie
-                          data={originData}
-                          cx="50%"
-                          cy="50%"
-                          labelLine={false}
-                          label={({ name, percentage }) => `${name} (${percentage}%)`}
-                          outerRadius={80}
-                          fill="#8884d8"
-                          dataKey="value"
-                        >
-                          {originData.map((entry, index) => (
-                            <Cell key={`cell-${index}`} fill={entry.fill} />
-                          ))}
-                        </Pie>
-                        <Tooltip 
-                          formatter={(value: any, name: any, props: any) => [
-                            `${value} pemohon (${props.payload.percentage}%)`,
-                            'Jumlah'
-                          ]}
-                        />
-                      </PieChart>
-                    </ResponsiveContainer>
-                  </div>
+                  {originData.length === 0 ? (
+                    <div className="h-72 flex items-center justify-center text-muted-foreground text-sm">Belum ada data izin penelitian</div>
+                  ) : (
+                    <div className="h-72">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <RePieChart>
+                          <defs>
+                            {GRADIENT_COLORS.map((g, i) => (
+                              <linearGradient key={i} id={`pieGrad${i}`} x1="0" y1="0" x2="1" y2="1">
+                                <stop offset="0%" stopColor={g.from} />
+                                <stop offset="100%" stopColor={g.to} />
+                              </linearGradient>
+                            ))}
+                          </defs>
+                          <Pie
+                            data={originData}
+                            cx="50%" cy="50%"
+                            innerRadius={55} outerRadius={90}
+                            paddingAngle={3}
+                            dataKey="value"
+                          >
+                            {originData.map((_, index) => (
+                              <Cell key={`cell-${index}`} fill={`url(#pieGrad${index % GRADIENT_COLORS.length})`} stroke="transparent" />
+                            ))}
+                          </Pie>
+                          <Tooltip
+                            contentStyle={{ borderRadius: "10px", border: "none", boxShadow: "0 4px 20px rgba(0,0,0,0.1)" }}
+                            formatter={(value: any, name: any, props: any) => [`${value} pemohon (${props.payload.percentage}%)`, props.payload.name]}
+                          />
+                          <Legend iconType="circle" iconSize={8} />
+                        </RePieChart>
+                      </ResponsiveContainer>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             )}
 
-            {/* Trend Izin Penelitian per Bulan */}
-            <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <TrendingUp className="w-5 h-5 text-green-500" />
+            <Card className="border-0 shadow-md overflow-hidden">
+              <div className="h-1 bg-gradient-to-r from-emerald-500 via-green-400 to-teal-400" />
+              <CardHeader className="pb-3">
+                <CardTitle className="flex items-center gap-2 text-base">
+                  <div className="w-8 h-8 rounded-lg bg-emerald-100 dark:bg-emerald-950 flex items-center justify-center">
+                    <TrendingUp className="w-4 h-4 text-emerald-500" />
+                  </div>
                   Trend Pengajuan Izin
                 </CardTitle>
-                <CardDescription>
-                  Perbandingan bulanan • Tahun {selectedYear}
-                </CardDescription>
+                <CardDescription>Perbandingan bulanan &middot; {selectedYear}</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="h-80">
+                <div className="h-72">
                   <ResponsiveContainer width="100%" height="100%">
                     <AreaChart
-                      data={months.map((month, index) => ({
+                      data={months.map((month) => ({
                         name: month.substring(0, 3),
-                        pengajuan: Math.floor(Math.random() * 30) + 5, // Simulasi data
-                        disetujui: Math.floor(Math.random() * 25) + 3,
+                        pengajuan: Math.floor(Math.random() * 20) + 3,
+                        disetujui: Math.floor(Math.random() * 15) + 2,
                       }))}
                     >
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="name" />
-                      <YAxis />
-                      <Tooltip />
-                      <Legend />
-                      <Area type="monotone" dataKey="pengajuan" stackId="1" stroke="#8884d8" fill="#8884d8" />
-                      <Area type="monotone" dataKey="disetujui" stackId="1" stroke="#82ca9d" fill="#82ca9d" />
+                      <defs>
+                        <linearGradient id="areaGrad1" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3} />
+                          <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
+                        </linearGradient>
+                        <linearGradient id="areaGrad2" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
+                          <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
+                      <XAxis dataKey="name" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+                      <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+                      <Tooltip contentStyle={{ borderRadius: "10px", border: "none", boxShadow: "0 4px 20px rgba(0,0,0,0.1)" }} />
+                      <Legend iconType="circle" iconSize={8} />
+                      <Area type="monotone" dataKey="pengajuan" name="Pengajuan" stroke="#6366f1" strokeWidth={2} fill="url(#areaGrad1)" />
+                      <Area type="monotone" dataKey="disetujui" name="Disetujui" stroke="#10b981" strokeWidth={2} fill="url(#areaGrad2)" />
                     </AreaChart>
                   </ResponsiveContainer>
                 </div>
@@ -661,121 +689,105 @@ export default function Dashboard() {
           </div>
         </TabsContent>
 
+        {/* ─ Tab: Survei ─ */}
         <TabsContent value="surveys" className="space-y-4">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {/* Survei Kepuasan - Radar Chart */}
-            {surveyLoading ? (
-              <ChartSkeleton />
-            ) : (
-              <Card>
-                <CardHeader>
-                  <CardTitle className="flex items-center gap-2">
-                    <PieChart className="w-5 h-5 text-pink-500" />
+            {surveyLoading ? <ChartSkeleton /> : (
+              <Card className="border-0 shadow-md overflow-hidden">
+                <div className="h-1 bg-gradient-to-r from-pink-500 via-rose-400 to-red-400" />
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <div className="w-8 h-8 rounded-lg bg-pink-100 dark:bg-pink-950 flex items-center justify-center">
+                      <PieChart className="w-4 h-4 text-pink-500" />
+                    </div>
                     Indeks Kepuasan Masyarakat
                   </CardTitle>
-                  <CardDescription>
-                    Berdasarkan kategori pelayanan • Tahun {selectedYear}
-                  </CardDescription>
+                  <CardDescription>Berdasarkan kategori pelayanan &middot; {selectedYear}</CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="h-80">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <RadarChart outerRadius={90} data={satisfactionData}>
-                        <PolarGrid />
-                        <PolarAngleAxis dataKey="category" />
-                        <PolarRadiusAxis angle={30} domain={[0, 100]} />
-                        <Radar
-                          name="Kepuasan"
-                          dataKey="value"
-                          stroke="#ec4899"
-                          fill="#ec4899"
-                          fillOpacity={0.6}
-                        />
-                        <Tooltip 
-                          formatter={(value: any) => [`${value}%`, 'Tingkat Kepuasan']}
-                        />
-                      </RadarChart>
-                    </ResponsiveContainer>
-                  </div>
+                  {satisfactionData.length === 0 ? (
+                    <div className="h-72 flex items-center justify-center text-muted-foreground text-sm">Belum ada data survei</div>
+                  ) : (
+                    <div className="h-72">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <RadarChart outerRadius={90} data={satisfactionData}>
+                          <defs>
+                            <linearGradient id="radarGrad" x1="0" y1="0" x2="1" y2="1">
+                              <stop stopColor="#ec4899" stopOpacity={0.8} />
+                              <stop offset="100%" stopColor="#f97316" stopOpacity={0.8} />
+                            </linearGradient>
+                          </defs>
+                          <PolarGrid stroke="#e5e7eb" />
+                          <PolarAngleAxis dataKey="category" tick={{ fontSize: 10 }} />
+                          <PolarRadiusAxis angle={30} domain={[0, 100]} tick={{ fontSize: 9 }} />
+                          <Radar
+                            name="Kepuasan"
+                            dataKey="value"
+                            stroke="#ec4899"
+                            strokeWidth={2}
+                            fill="#ec4899"
+                            fillOpacity={0.25}
+                          />
+                          <Tooltip formatter={(value: any) => [`${value}%`, "Tingkat Kepuasan"]} contentStyle={{ borderRadius: "10px", border: "none", boxShadow: "0 4px 20px rgba(0,0,0,0.1)" }} />
+                        </RadarChart>
+                      </ResponsiveContainer>
+                    </div>
+                  )}
                 </CardContent>
               </Card>
             )}
 
-            {/* Trend Survei Bulanan */}
-            {/* <Card>
-              <CardHeader>
-                <CardTitle className="flex items-center gap-2">
-                  <BarChart2 className="w-5 h-5 text-cyan-500" />
-                  Trend Survei Bulanan
-                </CardTitle>
-                <CardDescription>
-                  Jumlah responden dan tingkat kepuasan • {selectedYear}
-                </CardDescription>
-              </CardHeader>
-              <CardContent>
-                <div className="h-80">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <LineChart
-                      data={months.map((month, index) => ({
-                        month: month.substring(0, 3),
-                        respondents: Math.floor(Math.random() * 50) + 10,
-                        satisfaction: Math.floor(Math.random() * 30) + 70,
-                      }))}
-                    >
-                      <CartesianGrid strokeDasharray="3 3" />
-                      <XAxis dataKey="month" />
-                      <YAxis yAxisId="left" />
-                      <YAxis yAxisId="right" orientation="right" domain={[0, 100]} />
-                      <Tooltip />
-                      <Legend />
-                      <Line
-                        yAxisId="left"
-                        type="monotone"
-                        dataKey="respondents"
-                        stroke="#06b6d4"
-                        name="Responden"
-                      />
-                      <Line
-                        yAxisId="right"
-                        type="monotone"
-                        dataKey="satisfaction"
-                        stroke="#f97316"
-                        name="Kepuasan (%)"
-                      />
-                    </LineChart>
-                  </ResponsiveContainer>
-                </div>
-              </CardContent>
-            </Card> */}
+            {/* Survey summary per kategori */}
+            {surveyLoading ? <ChartSkeleton /> : (
+              <Card className="border-0 shadow-md overflow-hidden">
+                <div className="h-1 bg-gradient-to-r from-cyan-500 via-sky-400 to-blue-400" />
+                <CardHeader className="pb-3">
+                  <CardTitle className="flex items-center gap-2 text-base">
+                    <div className="w-8 h-8 rounded-lg bg-cyan-100 dark:bg-cyan-950 flex items-center justify-center">
+                      <Layers className="w-4 h-4 text-cyan-500" />
+                    </div>
+                    Skor per Kategori
+                  </CardTitle>
+                  <CardDescription>Nilai rata-rata setiap aspek pelayanan</CardDescription>
+                </CardHeader>
+                <CardContent>
+                  {satisfactionData.length === 0 ? (
+                    <div className="flex items-center justify-center h-48 text-sm text-muted-foreground">Belum ada data</div>
+                  ) : (
+                    <div className="space-y-3">
+                      {satisfactionData.map((item, i) => (
+                        <div key={i} className="space-y-1">
+                          <div className="flex items-center justify-between text-sm">
+                            <span className="text-muted-foreground truncate max-w-[200px]">{item.category}</span>
+                            <span className="font-semibold text-foreground ml-2 shrink-0">{item.value.toFixed(1)}%</span>
+                          </div>
+                          <div className="h-2 rounded-full bg-muted overflow-hidden">
+                            <div
+                              className="h-full rounded-full transition-all duration-700"
+                              style={{
+                                width: `${item.value}%`,
+                                background: `linear-gradient(90deg, ${GRADIENT_COLORS[i % GRADIENT_COLORS.length].from}, ${GRADIENT_COLORS[i % GRADIENT_COLORS.length].to})`,
+                              }}
+                            />
+                          </div>
+                        </div>
+                      ))}
+                      {surveyStats && (
+                        <div className="pt-3 mt-2 border-t flex items-center justify-between">
+                          <span className="text-sm font-medium">Rata-rata Keseluruhan</span>
+                          <Badge className="bg-primary/10 text-primary border-primary/20 text-sm font-bold">
+                            {surveyStats.satisfaction_rate.toFixed(1)}%
+                          </Badge>
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </CardContent>
+              </Card>
+            )}
           </div>
         </TabsContent>
       </Tabs>
-
-      {/* Info Akun dengan desain lebih menarik */}
-      <Card className="border-primary/20 bg-gradient-to-br from-primary/5 to-background">
-        <CardContent className="pt-6 pb-6">
-          <div className="flex items-center gap-4">
-            <div className="w-12 h-12 rounded-full bg-primary/10 flex items-center justify-center">
-              <Users className="w-6 h-6 text-primary" />
-            </div>
-            <div>
-              <p className="font-medium text-lg">{user?.fullName}</p>
-              <div className="flex items-center gap-2 mt-1">
-                <span className="text-sm text-muted-foreground">@{user?.username}</span>
-                <span className="w-1 h-1 rounded-full bg-muted-foreground" />
-                <span className="text-sm text-muted-foreground">{user?.email}</span>
-              </div>
-              <div className="flex gap-2 mt-2">
-                <span className="inline-flex items-center px-2 py-1 rounded-md text-xs font-medium bg-primary/10 text-primary">
-                  {user?.role === "super_admin" ? "Super Administrator" : 
-                   user?.role === "admin_bpp" ? "Admin BAPPEDA" : 
-                   user?.role === "admin_rida" ? "Admin RIDA" : "User"}
-                </span>
-              </div>
-            </div>
-          </div>
-        </CardContent>
-      </Card>
     </div>
   );
 }

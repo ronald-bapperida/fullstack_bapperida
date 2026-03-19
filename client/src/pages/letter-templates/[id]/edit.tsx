@@ -31,9 +31,14 @@ export default function LetterTemplateEditPage() {
 
       // normalize shape for form
       return {
-        name: t?.name ?? "",
-        type: t?.type ?? "research_permit",
-        content: t?.content ?? t?.contentHtml ?? t?.html ?? t?.template ?? "",
+        name:             t?.name             ?? "",
+        type:             t?.type             ?? "research_permit",
+        content:          t?.content          ?? t?.contentHtml ?? t?.html ?? t?.template ?? "",
+        officialName:     t?.officialName     ?? "",
+        officialPosition: t?.officialPosition ?? "",
+        officialNip:      t?.officialNip      ?? "",
+        city:             t?.city             ?? "Palangka Raya",
+        tembusan:         t?.tembusan         ?? "",
       };
     },
   });
