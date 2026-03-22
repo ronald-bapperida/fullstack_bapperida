@@ -100,7 +100,7 @@ export default function MenusPage() {
       </div>
 
       <Dialog open={menuOpen} onOpenChange={setMenuOpen}>
-        <DialogContent className="max-h-[90vh] flex flex-col">
+        <DialogContent>
           <DialogHeader><DialogTitle>{editMenu ? "Edit Menu" : "Tambah Menu"}</DialogTitle></DialogHeader>
           <form onSubmit={hm(d => menuMutation.mutate(d))} className="flex flex-col gap-4 pt-2">
             <div className="flex flex-col gap-2">
@@ -130,7 +130,7 @@ export default function MenusPage() {
       </Dialog>
 
       <Dialog open={itemOpen} onOpenChange={setItemOpen}>
-        <DialogContent className="max-w-3xl w-[95vw] max-h-[95vh] flex flex-col">
+        <DialogContent className="max-w-3xl w-[95vw]">
           <DialogHeader><DialogTitle>{editItem ? "Edit Item" : "Tambah Item"}</DialogTitle></DialogHeader>
           <form onSubmit={hi(d => itemMutation.mutate(d))} className="flex flex-col gap-4 pt-2">
             <div className="flex flex-col gap-2">
@@ -159,7 +159,7 @@ export default function MenusPage() {
                   name="value"
                   control={ci}
                   render={({ field }) => (
-                    <div className="border rounded-md overflow-hidden">
+                    <div className="border rounded-md overflow-hidden max-h-[50vh] overflow-y-auto">
                       <QuillEditor
                         value={field.value || ""}
                         onChange={field.onChange}

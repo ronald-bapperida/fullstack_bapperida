@@ -1165,7 +1165,7 @@ export class DatabaseStorage implements IStorage {
         .where(where)
         .orderBy(desc(schema.ppidObjections.createdAt))
         .limit(limit).offset(offset),
-      db.select({ count: sql<number>`count(*)::int` }).from(schema.ppidObjections).where(where),
+      db.select({ count: sql<number>`cast(count(*) as signed)` }).from(schema.ppidObjections).where(where),
     ]);
     return { items, total: count };
   }
@@ -1196,7 +1196,7 @@ export class DatabaseStorage implements IStorage {
         .where(where)
         .orderBy(desc(schema.ppidInformationRequests.createdAt))
         .limit(limit).offset(offset),
-      db.select({ count: sql<number>`count(*)::int` }).from(schema.ppidInformationRequests).where(where),
+      db.select({ count: sql<number>`cast(count(*) as signed)` }).from(schema.ppidInformationRequests).where(where),
     ]);
     return { items, total: count };
   }

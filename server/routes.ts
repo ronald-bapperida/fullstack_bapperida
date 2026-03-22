@@ -1445,8 +1445,74 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
   // ─── Surveys ─────────────────────────────────────────────────────────────────
   app.post("/api/surveys", async (req, res) => {
-    try { return res.json(await db.createSurvey(req.body)); }
-    catch (e: any) { return res.status(500).json({ error: e.message }); }
+    try {
+      const data = req.body;
+  
+      // =========================
+      // 1. NORMALIZE GENDER
+      // =========================
+      const gender = String(data.gender || "").toLowerCase().trim();
+  
+      if (!["laki-laki", "perempuan"].includes(gender)) {
+        return res.status(400).json({
+          error: `Invalid gender: ${data.gender}`,
+        });
+      }
+  
+      // =========================
+      // 2. MAP ANSWERS (a → 1)
+      // =========================
+      const ANSWER_MAP: Record<string, number> = {
+        a: 1,
+        b: 2,
+        c: 3,
+        d: 4,
+      };
+  
+      const mappedAnswers: Record<string, number> = {};
+
+      for (let i = 1; i <= 9; i++) {
+        const key = `q${i}`;
+        const value = data[key];
+
+        if (!(value in ANSWER_MAP)) {
+          return res.status(400).json({
+            error: `Invalid value for ${key}: ${value}`,
+          });
+        }
+
+        mappedAnswers[key] = ANSWER_MAP[value];
+      }
+  
+      // =========================
+      // 3. BUILD FINAL OBJECT
+      // =========================
+      const finalData = {
+        respondentName: data.respondentName,
+        age: Number(data.age),
+        gender,
+        education: data.education,
+        occupation: data.occupation,
+        suggestion: data.suggestion || null,
+        ...mappedAnswers,
+      };
+  
+      // =========================
+      // 4. INSERT
+      // =========================
+      const result = await db.createSurvey(finalData);
+  
+      return res.json({
+        success: true,
+        message: "Survey berhasil disimpan",
+        data: result,
+      });
+  
+    } catch (e: any) {
+      return res.status(500).json({
+        error: e.message,
+      });
+    }
   });
 
   app.get("/api/admin/surveys", authMiddleware, requireRole("super_admin", "admin_rida"), async (req, res) => {

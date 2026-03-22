@@ -1182,7 +1182,7 @@ export function registerFlutterApiRoutes(app: express.Express) {
    * @access  Public
    */
   flutterRouter.post(
-    "/ppid/objections",
+    "/v1/ppid/objections",
     ppidObjectionUpload.fields([
       { name: "ktpFile", maxCount: 1 },
       { name: "evidenceFile", maxCount: 1 },
@@ -1240,7 +1240,7 @@ export function registerFlutterApiRoutes(app: express.Express) {
    * @desc    Get detail keberatan by ID (public – untuk cek status)
    * @access  Public
    */
-  flutterRouter.get("/ppid/objections/:id", async (req: Request, res: Response) => {
+  flutterRouter.get("/v1/ppid/objections/:id", async (req: Request, res: Response) => {
     try {
       const item = await db.getPpidObjection(req.params.id);
       if (!item) return res.status(404).json({ success: false, message: "Tidak ditemukan" });
@@ -1259,7 +1259,7 @@ export function registerFlutterApiRoutes(app: express.Express) {
    * @access  Public
    */
   flutterRouter.post(
-    "/ppid/information-requests",
+    "/v1/ppid/information-requests",
     ppidInfoReqUpload.fields([{ name: "ktpFile", maxCount: 1 }]),
     async (req: any, res: Response) => {
       try {
@@ -1299,7 +1299,7 @@ export function registerFlutterApiRoutes(app: express.Express) {
    * @desc    Get detail permohonan informasi by ID (public – untuk cek status)
    * @access  Public
    */
-  flutterRouter.get("/ppid/information-requests/:id", async (req: Request, res: Response) => {
+  flutterRouter.get("/v1/ppid/information-requests/:id", async (req: Request, res: Response) => {
     try {
       const item = await db.getPpidInfoRequest(req.params.id);
       if (!item) return res.status(404).json({ success: false, message: "Tidak ditemukan" });

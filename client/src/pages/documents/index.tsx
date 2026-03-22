@@ -336,13 +336,14 @@ export default function DocumentsPage() {
       </div>
 
       <Dialog open={open} onOpenChange={o => { setOpen(o); if (!o) setEditDoc(undefined); }}>
-        <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto">
-          <DialogHeader>
+        <DialogContent className="max-w-4xl w-[95vw] max-h-[90vh] flex flex-col p-0">
+          <DialogHeader className="flex-shrink-0 px-6 pt-6 pb-2">
             <DialogTitle>{editDoc ? t("editDocument") : t("addDocument")}</DialogTitle>
             <DialogDescription>
               Jenis, Kategori, dan Tipe file wajib diisi.
             </DialogDescription>
           </DialogHeader>
+          <div className="overflow-y-auto flex-1 min-h-0 px-6 pb-6">
           <DocForm
             doc={editDoc}
             kinds={kinds}
@@ -350,6 +351,7 @@ export default function DocumentsPage() {
             types={types}
             onDone={() => { setOpen(false); setEditDoc(undefined); }}
           />
+          </div>
         </DialogContent>
       </Dialog>
 
