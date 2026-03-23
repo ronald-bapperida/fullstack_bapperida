@@ -519,6 +519,7 @@ export const ppidInfoRequestStatusValues = ["pending", "in_review", "resolved", 
 
 export const ppidInformationRequests = mysqlTable("ppid_information_requests", {
   id: varchar("id", { length: 36 }).primaryKey().default(uuidDefault),
+  token: varchar("token", { length: 16 }),
   fullName: text("full_name").notNull(),
   nik: varchar("nik", { length: 20 }).notNull(),
   address: text("address").notNull(),
@@ -531,6 +532,7 @@ export const ppidInformationRequests = mysqlTable("ppid_information_requests", {
   retrievalMethod: varchar("retrieval_method", { length: 50 }),
   status: text("status").notNull().default("pending"),
   reviewNote: text("review_note"),
+  responseFileUrl: text("response_file_url"),
   processedBy: varchar("processed_by", { length: 36 }).references(() => users.id),
   processedAt: timestamp("processed_at"),
   createdAt: timestamp("created_at").defaultNow(),

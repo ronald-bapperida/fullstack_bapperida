@@ -25,6 +25,7 @@ Admin panel untuk BAPPERIDA (Badan Perencanaan, Penelitian dan Pengembangan Daer
 - **admin_rida**: RIDA modules (Research Permits, Surveys, Final Reports, Letter Templates, Suggestions)
 
 ## Recent Changes
+- **UI Sprint (Session 3)**: Sidebar renamed "Layanan PPID" → "Layanan Informasi"; submenu order changed (Permohonan Informasi first, Keberatan second). Permit detail page rewritten: `LetterActionButtons` widget at top-right (Preview, Download DOCX, Kirim ke Email — shown only when letter exists); `GenerateCard` and `UploadSuratCard` are now separate cards. PPID info-request detail shows token and supports file upload response via multipart. Export Excel buttons added to permits, permohonan informasi, and keberatan list pages.
 - **PPID Layanan PPID (Keberatan + Permohonan Informasi)**: Added two new PPID service modules — Formulir Keberatan and Permohonan Informasi. Each has: DB tables (`ppid_objections`, `ppid_information_requests`), Flutter/public POST API, admin list+detail pages with status update panel, sidebar nav under "Layanan PPID" (admin_bpp + superadmin). Flutter endpoints: `POST /api/ppid/objections`, `POST /api/ppid/information-requests`.
 - **Letter Template `<<KEPADA>>` Multi-line**: Added `kepada` config field — supports multi-line recipient address; `\n` converted to DOCX `<w:br/>`. DOCX newline support applies to all variables including `<<TEMBUSAN>>`.
 - **Favicon**: Changed to BAPPERIDA logo (`logo_bapperida.png`).

@@ -9,7 +9,7 @@ import { Badge } from "@/components/ui/badge";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { Eye, Search, ClipboardList } from "lucide-react";
+import { Eye, Search, ClipboardList, FileSpreadsheet } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useLang } from "@/contexts/language";
 import { format } from "date-fns";
@@ -46,6 +46,30 @@ export default function PermitsPage() {
   const [page, setPage] = useState(1);
   const [search, setSearch] = useState("");
   const [status, setStatus] = useState("all");
+  const [exporting, setExporting] = useState(false);
+
+  async function handleExport() {
+    setExporting(true);
+    try {
+      const res = await fetch("/api/admin/export/permits", {
+        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const blob = await res.blob();
+      const cd = res.headers.get("Content-Disposition") || "";
+      const filename = cd.match(/filename="([^"]+)"/)?.[1] || "permits.xlsx";
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = filename;
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+      toast({ title: "Export berhasil", description: filename });
+    } catch (e: any) {
+      toast({ title: "Export gagal", description: e.message, variant: "destructive" });
+    } finally {
+      setExporting(false);
+    }
+  }
 
   const params = { page: String(page), limit: "15", ...(search ? { search } : {}), ...(status !== "all" ? { status } : {}) };
   const { data, isLoading } = useQuery<{ items: Permit[]; total: number }>({ queryKey: ["/api/admin/permits", params] });
@@ -56,9 +80,15 @@ export default function PermitsPage() {
 
   return (
     <div className="flex flex-col gap-6 p-6">
-      <div>
-        <h1 className="text-2xl font-bold flex items-center gap-2"><ClipboardList className="w-6 h-6" /> {t("permits")}</h1>
-        <p className="text-muted-foreground text-sm mt-1">{total} {t("totalData")}</p>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <h1 className="text-2xl font-bold flex items-center gap-2"><ClipboardList className="w-6 h-6" /> {t("permits")}</h1>
+          <p className="text-muted-foreground text-sm mt-1">{total} {t("totalData")}</p>
+        </div>
+        <Button variant="outline" size="sm" onClick={handleExport} disabled={exporting} className="gap-2 shrink-0">
+          <FileSpreadsheet className="w-4 h-4" />
+          {exporting ? "Mengekspor..." : "Export Excel"}
+        </Button>
       </div>
 
       <div className="flex items-center gap-3 flex-wrap">

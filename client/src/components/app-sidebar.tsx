@@ -150,9 +150,9 @@ export function AppSidebar() {
                     <SubNavItem href="/documents/categories" label={t("docCategories")} />
                     <SubNavItem href="/documents/types" label={t("docTypes")} />
                   </CollapsibleNav>
-                  <CollapsibleNav icon={AlertTriangle} label="Layanan PPID" basePath="/ppid">
-                    <SubNavItem href="/ppid/objections" label="Formulir Keberatan" />
+                  <CollapsibleNav icon={AlertTriangle} label="Layanan Informasi" basePath="/ppid">
                     <SubNavItem href="/ppid/information-requests" label="Permohonan Informasi" />
+                    <SubNavItem href="/ppid/objections" label="Keberatan" />
                   </CollapsibleNav>
                 </SidebarMenu>
               </SidebarGroupContent>

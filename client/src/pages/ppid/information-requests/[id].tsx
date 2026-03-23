@@ -6,10 +6,12 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Textarea } from "@/components/ui/textarea";
 import { Label } from "@/components/ui/label";
+import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient, apiRequest } from "@/lib/queryClient";
-import { ArrowLeft, Download, FileQuestion } from "lucide-react";
+import { queryClient } from "@/lib/queryClient";
+import { apiRequest } from "@/lib/queryClient";
+import { ArrowLeft, Download, FileQuestion, ExternalLink, Upload, Loader2 } from "lucide-react";
 import { format } from "date-fns";
 import { id } from "date-fns/locale";
 
@@ -28,10 +30,10 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 const RETRIEVAL_LABELS: Record<string, string> = {
-  ambil_langsung: "Ambil Langsung",
-  email:          "Email",
-  salinan_cetak:  "Salinan Cetak",
-  salinan_digital:"Salinan Digital",
+  ambil_langsung:  "Ambil Langsung",
+  email:           "Email",
+  salinan_cetak:   "Salinan Cetak",
+  salinan_digital: "Salinan Digital",
 };
 
 function StatusBadge({ status }: { status: string }) {
@@ -57,6 +59,7 @@ export default function PpidInfoRequestDetailPage() {
   const { toast } = useToast();
   const [newStatus, setNewStatus] = useState("");
   const [reviewNote, setReviewNote] = useState("");
+  const [responseFile, setResponseFile] = useState<File | null>(null);
 
   const { data: item, isLoading } = useQuery<any>({
     queryKey: ["/api/admin/ppid/information-requests", paramId],
@@ -70,9 +73,14 @@ export default function PpidInfoRequestDetailPage() {
 
   const mutation = useMutation({
     mutationFn: async () => {
-      const res = await apiRequest("PATCH", `/api/admin/ppid/information-requests/${paramId}/status`, {
-        status: newStatus,
-        reviewNote: reviewNote || undefined,
+      const fd = new FormData();
+      fd.append("status", newStatus);
+      if (reviewNote) fd.append("reviewNote", reviewNote);
+      if (responseFile) fd.append("responseFile", responseFile);
+      const res = await fetch(`/api/admin/ppid/information-requests/${paramId}/status`, {
+        method: "PATCH",
+        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+        body: fd,
       });
       if (!res.ok) throw new Error(await res.text());
       return res.json();
@@ -80,9 +88,10 @@ export default function PpidInfoRequestDetailPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/ppid/information-requests", paramId] });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/ppid/information-requests"] });
-      toast({ title: "Status berhasil diperbarui" });
+      toast({ title: "Status berhasil diperbarui", description: item?.email ? `Email notifikasi dikirim ke ${item.email}` : undefined });
       setNewStatus("");
       setReviewNote("");
+      setResponseFile(null);
     },
     onError: (e: any) => toast({ title: "Gagal", description: e.message, variant: "destructive" }),
   });
@@ -111,7 +120,7 @@ export default function PpidInfoRequestDetailPage() {
         </Button>
         <div className="flex-1">
           <h1 className="text-xl font-bold flex items-center gap-2">
-            <FileQuestion className="w-5 h-5 text-blue-500" /> Detail Permohonan Informasi PPID
+            <FileQuestion className="w-5 h-5 text-blue-500" /> Detail Permohonan Informasi
           </h1>
           <p className="text-sm text-muted-foreground">
             Diterima {format(new Date(item.createdAt), "d MMMM yyyy, HH:mm", { locale: id })}
@@ -119,6 +128,17 @@ export default function PpidInfoRequestDetailPage() {
         </div>
         <StatusBadge status={item.status} />
       </div>
+
+      {/* Token display */}
+      {item.token && (
+        <div className="flex items-center gap-3 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg px-4 py-3">
+          <div className="text-xs text-blue-600 font-medium">Token Pelacakan:</div>
+          <code className="text-base font-bold tracking-widest text-blue-800 dark:text-blue-300 bg-white dark:bg-blue-950/30 px-3 py-1 rounded border border-blue-200 dark:border-blue-700">
+            {item.token}
+          </code>
+          <span className="text-xs text-blue-500 ml-auto">Token ini dikirim ke email pemohon saat submit</span>
+        </div>
+      )}
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Detail Info */}
@@ -129,7 +149,7 @@ export default function PpidInfoRequestDetailPage() {
               <InfoRow label="Nama Lengkap" value={item.fullName} />
               <InfoRow label="NIK" value={item.nik} />
               <InfoRow label="Alamat" value={item.address} />
-              <InfoRow label="Kontak" value={item.phone} />
+              <InfoRow label="No. Telepon" value={item.phone} />
               <InfoRow label="Email" value={item.email} />
               <InfoRow label="Pekerjaan" value={item.occupation} />
               {item.ktpFileUrl && (
@@ -149,12 +169,23 @@ export default function PpidInfoRequestDetailPage() {
               <InfoRow label="Rincian Informasi" value={<span className="whitespace-pre-line">{item.informationDetail}</span>} />
               <InfoRow label="Tujuan Permohonan" value={<span className="whitespace-pre-line">{item.requestPurpose}</span>} />
               <InfoRow label="Cara Mendapatkan" value={
-                item.retrievalMethod
-                  ? (RETRIEVAL_LABELS[item.retrievalMethod] || item.retrievalMethod)
-                  : null
+                item.retrievalMethod ? (RETRIEVAL_LABELS[item.retrievalMethod] || item.retrievalMethod) : null
               } />
             </CardContent>
           </Card>
+
+          {/* File Respons */}
+          {item.responseFileUrl && (
+            <Card className="border-green-200 bg-green-50 dark:bg-green-950/20">
+              <CardHeader><CardTitle className="text-base text-green-800 dark:text-green-300">File Respons Admin</CardTitle></CardHeader>
+              <CardContent>
+                <a href={item.responseFileUrl} target="_blank" rel="noopener noreferrer"
+                  className="inline-flex items-center gap-2 text-sm text-green-700 hover:underline font-medium">
+                  <ExternalLink className="w-4 h-4" /> Lihat / Unduh File Respons
+                </a>
+              </CardContent>
+            </Card>
+          )}
 
           {item.reviewNote && (
             <Card className="border-blue-200 bg-blue-50 dark:bg-blue-950/20">
@@ -169,7 +200,7 @@ export default function PpidInfoRequestDetailPage() {
         {/* Update Status */}
         <div>
           <Card className="sticky top-6">
-            <CardHeader><CardTitle className="text-base">Update Status</CardTitle></CardHeader>
+            <CardHeader><CardTitle className="text-base">Tanggapi Permohonan</CardTitle></CardHeader>
             <CardContent className="space-y-4">
               <div className="space-y-1.5">
                 <Label className="text-xs">Status Saat Ini</Label>
@@ -188,23 +219,40 @@ export default function PpidInfoRequestDetailPage() {
                 </Select>
               </div>
               <div className="space-y-1.5">
-                <Label className="text-xs">Catatan (opsional)</Label>
+                <Label className="text-xs">Catatan / Tanggapan</Label>
                 <Textarea
                   value={reviewNote}
                   onChange={e => setReviewNote(e.target.value)}
-                  placeholder="Catatan untuk pemohon..."
+                  placeholder="Tulis tanggapan untuk pemohon..."
                   rows={4}
                   data-testid="input-review-note"
                 />
               </div>
+              <div className="space-y-1.5">
+                <Label className="text-xs">Lampiran File (opsional)</Label>
+                <p className="text-xs text-muted-foreground">Upload file informasi yang diminta. File ini akan dikirim ke email pemohon.</p>
+                <Input
+                  type="file"
+                  accept=".pdf,.docx,.xlsx,.jpg,.jpeg,.png,.zip"
+                  onChange={(e) => setResponseFile(e.target.files?.[0] || null)}
+                  data-testid="input-response-file"
+                />
+                {responseFile && (
+                  <p className="text-xs text-green-600">File dipilih: {responseFile.name}</p>
+                )}
+              </div>
               <Button
-                className="w-full"
+                className="w-full gap-2"
                 disabled={!newStatus || mutation.isPending}
                 onClick={() => mutation.mutate()}
                 data-testid="button-update-status"
               >
-                {mutation.isPending ? "Menyimpan..." : "Simpan Status"}
+                {mutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                {mutation.isPending ? "Menyimpan..." : "Simpan & Kirim Email"}
               </Button>
+              {item.email && (
+                <p className="text-xs text-muted-foreground text-center">Notifikasi email akan dikirim ke: {item.email}</p>
+              )}
             </CardContent>
           </Card>
         </div>

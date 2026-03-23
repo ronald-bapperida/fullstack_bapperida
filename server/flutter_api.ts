@@ -8,6 +8,14 @@ import { randomUUID } from "crypto";
 import { and, eq, isNull, desc, sql } from "drizzle-orm";
 import { db as drizzleDb } from "./db";
 import * as schema from "@shared/schema";
+import { sendPpidInfoRequestConfirmation } from "./email";
+
+function generateToken(): string {
+  const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+  let token = "";
+  for (let i = 0; i < 10; i++) token += chars[Math.floor(Math.random() * chars.length)];
+  return token;
+}
 
 // ─── File Upload Setup ────────────────────────────────────────────────────────
 const uploadDir = path.join(process.cwd(), "uploads");
@@ -1273,7 +1281,9 @@ export function registerFlutterApiRoutes(app: express.Express) {
           return res.status(400).json({ success: false, message: "Field wajib tidak lengkap" });
         }
 
+        const token = generateToken();
         const data = {
+          token,
           fullName,
           nik,
           address,
@@ -1287,6 +1297,15 @@ export function registerFlutterApiRoutes(app: express.Express) {
         };
 
         const result = await db.createPpidInfoRequest(data);
+        // Kirim email konfirmasi dengan token jika email tersedia
+        if (email) {
+          sendPpidInfoRequestConfirmation({
+            to: email,
+            fullName,
+            token,
+            informationDetail,
+          }).catch((err: any) => console.error("PPID confirmation email failed:", err));
+        }
         return res.status(201).json({ success: true, message: "Permohonan informasi berhasil dikirim", data: result });
       } catch (error: any) {
         return res.status(500).json({ success: false, message: "Gagal mengirim permohonan", error: error.message });
@@ -1303,6 +1322,17 @@ export function registerFlutterApiRoutes(app: express.Express) {
     try {
       const item = await db.getPpidInfoRequest(req.params.id);
       if (!item) return res.status(404).json({ success: false, message: "Tidak ditemukan" });
+      return res.json({ success: true, data: item });
+    } catch (error: any) {
+      return res.status(500).json({ success: false, message: error.message });
+    }
+  });
+
+  // Cek status via token
+  flutterRouter.get("/v1/ppid/information-requests/by-token/:token", async (req: Request, res: Response) => {
+    try {
+      const item = await db.getPpidInfoRequestByToken(req.params.token);
+      if (!item) return res.status(404).json({ success: false, message: "Token tidak ditemukan" });
       return res.json({ success: true, data: item });
     } catch (error: any) {
       return res.status(500).json({ success: false, message: error.message });

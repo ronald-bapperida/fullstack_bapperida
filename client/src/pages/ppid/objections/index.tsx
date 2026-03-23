@@ -7,7 +7,8 @@ import { Button } from "@/components/ui/button";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { AlertTriangle, Eye } from "lucide-react";
+import { AlertTriangle, Eye, FileSpreadsheet } from "lucide-react";
+import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { id } from "date-fns/locale";
 
@@ -47,8 +48,33 @@ interface Objection {
 
 export default function PpidObjectionsPage() {
   const [, setLocation] = useLocation();
+  const { toast } = useToast();
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState("all");
+  const [exporting, setExporting] = useState(false);
+
+  async function handleExport() {
+    setExporting(true);
+    try {
+      const res = await fetch("/api/admin/export/ppid-objections", {
+        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const blob = await res.blob();
+      const cd = res.headers.get("Content-Disposition") || "";
+      const filename = cd.match(/filename="([^"]+)"/)?.[1] || "ppid-keberatan.xlsx";
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = filename;
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+      toast({ title: "Export berhasil", description: filename });
+    } catch (e: any) {
+      toast({ title: "Export gagal", description: e.message, variant: "destructive" });
+    } finally {
+      setExporting(false);
+    }
+  }
 
   const { data, isLoading } = useQuery<{ items: Objection[]; total: number }>({
     queryKey: ["/api/admin/ppid/objections", { page: String(page), limit: "20", status: statusFilter === "all" ? undefined : statusFilter }],
@@ -60,25 +86,31 @@ export default function PpidObjectionsPage() {
 
   return (
     <div className="flex flex-col gap-6 p-6">
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between gap-3 flex-wrap">
         <div>
           <h1 className="text-2xl font-bold flex items-center gap-2">
-            <AlertTriangle className="w-6 h-6 text-orange-500" /> Formulir Keberatan PPID
+            <AlertTriangle className="w-6 h-6 text-orange-500" /> Keberatan
           </h1>
           <p className="text-muted-foreground text-sm mt-1">{total} keberatan masuk</p>
         </div>
-        <Select value={statusFilter} onValueChange={v => { setStatusFilter(v); setPage(1); }}>
-          <SelectTrigger className="w-44" data-testid="select-status-filter">
-            <SelectValue placeholder="Semua Status" />
-          </SelectTrigger>
-          <SelectContent>
-            <SelectItem value="all">Semua Status</SelectItem>
-            <SelectItem value="pending">Menunggu</SelectItem>
-            <SelectItem value="in_review">Sedang Diproses</SelectItem>
-            <SelectItem value="resolved">Selesai</SelectItem>
-            <SelectItem value="rejected">Ditolak</SelectItem>
-          </SelectContent>
-        </Select>
+        <div className="flex items-center gap-2">
+          <Button variant="outline" size="sm" onClick={handleExport} disabled={exporting} className="gap-2">
+            <FileSpreadsheet className="w-4 h-4" />
+            {exporting ? "Mengekspor..." : "Export Excel"}
+          </Button>
+          <Select value={statusFilter} onValueChange={v => { setStatusFilter(v); setPage(1); }}>
+            <SelectTrigger className="w-44" data-testid="select-status-filter">
+              <SelectValue placeholder="Semua Status" />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="all">Semua Status</SelectItem>
+              <SelectItem value="pending">Menunggu</SelectItem>
+              <SelectItem value="in_review">Sedang Diproses</SelectItem>
+              <SelectItem value="resolved">Selesai</SelectItem>
+              <SelectItem value="rejected">Ditolak</SelectItem>
+            </SelectContent>
+          </Select>
+        </div>
       </div>
 
       <Card>

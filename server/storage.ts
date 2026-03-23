@@ -1206,7 +1206,12 @@ export class DatabaseStorage implements IStorage {
     return r;
   }
 
-  async updatePpidInfoRequestStatus(id: string, data: { status: string; reviewNote?: string; processedBy?: string }) {
+  async getPpidInfoRequestByToken(token: string) {
+    const [r] = await db.select().from(schema.ppidInformationRequests).where(eq(schema.ppidInformationRequests.token, token));
+    return r;
+  }
+
+  async updatePpidInfoRequestStatus(id: string, data: { status: string; reviewNote?: string; processedBy?: string; responseFileUrl?: string }) {
     return updateAndGet<any>(schema.ppidInformationRequests, schema.ppidInformationRequests.id, id, {
       ...data,
       processedAt: new Date(),

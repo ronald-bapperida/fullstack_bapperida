@@ -7,6 +7,13 @@ import { storage as db } from "./storage";
 import { authMiddleware, requireRole, hashPassword, verifyPassword, signToken } from "./auth";
 import { randomUUID } from "crypto";
 import {
+  sendPermitSubmittedEmail,
+  sendPermitStatusEmail,
+  sendPermitLetterEmail,
+  sendPpidInfoRequestConfirmation,
+  sendPpidInfoRequestReply,
+} from "./email";
+import {
   Document as DocxDocument, Packer, Paragraph, TextRun,
   AlignmentType, BorderStyle, Table as DocxTable, TableRow as DocxTableRow,
   TableCell as DocxTableCell, WidthType, ImageRun, UnderlineType,
@@ -780,6 +787,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (data.introLetterDate) data.introLetterDate = new Date(data.introLetterDate);
       data.agreementFinalReport = data.agreementFinalReport === "true";
       const permit = await db.createPermit(data);
+      // Kirim email konfirmasi ke pemohon
+      if (permit.email) {
+        sendPermitSubmittedEmail({
+          to: permit.email,
+          fullName: permit.fullName,
+          requestNumber: permit.requestNumber,
+          institution: permit.institution,
+          researchTitle: permit.researchTitle,
+        }).catch((err: any) => console.error("Email submit permit failed:", err));
+      }
       return res.json(permit);
     } catch (e: any) { return res.status(500).json({ error: e.message }); }
   });
@@ -847,6 +864,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const { status, note } = req.body;
       const p = await db.updatePermitStatus(req.params.id, status, note, req.user.id);
+      // Kirim email notifikasi status
+      if (p.email && status !== "submitted") {
+        sendPermitStatusEmail({
+          to: p.email,
+          fullName: p.fullName,
+          requestNumber: p.requestNumber,
+          status,
+          note,
+        }).catch((err: any) => console.error("Email status permit failed:", err));
+      }
       return res.json(p);
     } catch (e: any) { return res.status(500).json({ error: e.message }); }
   });
@@ -943,7 +970,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         const letterDir = path.join(uploadDir, "letters");
         if (!fs.existsSync(letterDir)) fs.mkdirSync(letterDir, { recursive: true });
 
-        const fileName = `${permit.requestNumber.replace(/[\\/]/g, "-")}-${Date.now()}.docx`;
+        // Format nama file: BAPPERIDA-TanggalHariIni-XXXXX.docx
+        const todayStr = new Date().toLocaleDateString("id-ID", { day: "2-digit", month: "2-digit", year: "numeric" }).replace(/\//g, "-");
+        const rand5 = String(Math.floor(10000 + Math.random() * 90000));
+        const fileName = `BAPPERIDA-${todayStr}-${rand5}.docx`;
         const filePath = path.join(letterDir, fileName);
         fs.writeFileSync(filePath, outputBuffer);
 
@@ -956,7 +986,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           fileUrl: generatedFileUrl,
         });
 
-        // Update status permit
+        // Update status permit ke generated_letter (tanpa kirim email — email dikirim saat "sent")
         await db.updatePermitStatus(
           permit.id,
           "generated_letter",
@@ -1001,12 +1031,58 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         if (!permit) return res.status(404).json({ error: "Permit tidak ditemukan" });
         const newUrl = fileUrl("letters", req.file.filename);
         await db.updateGeneratedLetterFile(permit.id, newUrl);
-        // Pastikan status tetap generated_letter
+        // Pastikan status tetap generated_letter - dengan keterangan berkas diupload manual
         if (permit.status !== "generated_letter" && permit.status !== "sent") {
-          await db.updatePermitStatus(permit.id, "generated_letter", "Surat diupload manual", req.user.id);
+          await db.updatePermitStatus(permit.id, "generated_letter", "Berkas surat diupload manual (bukan dari generate template)", req.user.id);
+        } else if (permit.status === "generated_letter") {
+          // Tambah history bahwa berkas ditimpa secara manual
+          await (db as any).addPermitStatusHistory({
+            permitId: permit.id,
+            fromStatus: "generated_letter",
+            toStatus: "generated_letter",
+            note: "Berkas surat ditimpa (upload manual — bukan dari generate template)",
+            changedBy: req.user.id,
+          });
         }
         return res.json({ fileUrl: newUrl });
       } catch (e: any) {
+        return res.status(500).json({ error: e.message });
+      }
+    }
+  );
+
+  // Kirim surat izin via email (status → sent)
+  app.post(
+    "/api/admin/permits/:id/send-letter",
+    authMiddleware,
+    requireRole("super_admin", "admin_rida"),
+    async (req: any, res) => {
+      try {
+        const permit = await db.getPermit(req.params.id);
+        if (!permit) return res.status(404).json({ error: "Permit tidak ditemukan" });
+        if (!permit.email) return res.status(400).json({ error: "Email pemohon kosong" });
+
+        // Cari file surat yang sudah digenerate
+        const letter = await (db as any).getGeneratedLetter(permit.id);
+        if (!letter?.fileUrl) return res.status(400).json({ error: "Surat belum digenerate" });
+
+        const filePath = path.join(process.cwd(), letter.fileUrl.replace(/^\//, ""));
+        if (!fs.existsSync(filePath)) return res.status(400).json({ error: "File surat tidak ditemukan di server" });
+
+        const fileName = path.basename(filePath);
+        await sendPermitLetterEmail({
+          to: permit.email,
+          fullName: permit.fullName,
+          requestNumber: permit.requestNumber,
+          filePath,
+          fileName,
+        });
+
+        // Update status ke sent
+        await db.updatePermitStatus(permit.id, "sent", "Surat izin berhasil dikirim ke email pemohon", req.user.id);
+        return res.json({ ok: true });
+      } catch (e: any) {
+        console.error("Send letter email error:", e);
         return res.status(500).json({ error: e.message });
       }
     }
@@ -1670,12 +1746,131 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { return res.status(500).json({ error: e.message }); }
   });
 
-  app.patch("/api/admin/ppid/information-requests/:id/status", authMiddleware, requireRole("super_admin", "admin_bpp"), async (req: any, res) => {
+  // Upload file response for PPID info request
+  const ppidResponseUpload = getMulter("ppid/responses", 10);
+  app.patch("/api/admin/ppid/information-requests/:id/status", authMiddleware, requireRole("super_admin", "admin_bpp"),
+    ppidResponseUpload.single("responseFile"),
+    async (req: any, res) => {
+      try {
+        const { status, reviewNote } = req.body;
+        if (!status) return res.status(400).json({ error: "Status diperlukan" });
+        let responseFileUrl: string | undefined;
+        if (req.file) {
+          responseFileUrl = fileUrl("ppid/responses", req.file.filename);
+        }
+        const updated = await db.updatePpidInfoRequestStatus(req.params.id, { status, reviewNote, processedBy: req.user.id, responseFileUrl });
+        // Kirim email notifikasi ke pemohon
+        if (updated.email) {
+          let attachmentPath: string | undefined;
+          let attachmentName: string | undefined;
+          if (responseFileUrl) {
+            attachmentPath = path.join(process.cwd(), responseFileUrl.replace(/^\//, ""));
+            attachmentName = req.file?.originalname || path.basename(responseFileUrl);
+          }
+          sendPpidInfoRequestReply({
+            to: updated.email,
+            fullName: updated.fullName,
+            token: updated.token || updated.id.slice(0, 8).toUpperCase(),
+            status,
+            reviewNote,
+            attachmentPath,
+            attachmentName,
+          }).catch((err: any) => console.error("PPID reply email failed:", err));
+        }
+        return res.json(updated);
+      } catch (e: any) { return res.status(500).json({ error: e.message }); }
+    }
+  );
+
+  // ─── Export Excel / CSV ───────────────────────────────────────────────────────
+  app.get("/api/admin/export/permits", authMiddleware, requireRole("super_admin", "admin_rida"), async (req, res) => {
     try {
-      const { status, reviewNote } = req.body;
-      if (!status) return res.status(400).json({ error: "Status diperlukan" });
-      const updated = await db.updatePpidInfoRequestStatus(req.params.id, { status, reviewNote, processedBy: req.user.id });
-      return res.json(updated);
+      const ExcelJS = require("exceljs");
+      const permits = await db.listPermits({ limit: 9999 });
+      const wb = new ExcelJS.Workbook();
+      const ws = wb.addWorksheet("Izin Penelitian");
+      ws.columns = [
+        { header: "No. Permohonan", key: "requestNumber", width: 24 },
+        { header: "Nama", key: "fullName", width: 25 },
+        { header: "Email", key: "email", width: 28 },
+        { header: "NIM/NIK", key: "nimNik", width: 18 },
+        { header: "Asal Lembaga", key: "institution", width: 28 },
+        { header: "Judul Penelitian", key: "researchTitle", width: 40 },
+        { header: "Lokasi", key: "researchLocation", width: 24 },
+        { header: "Durasi", key: "researchDuration", width: 16 },
+        { header: "Status", key: "status", width: 18 },
+        { header: "Tanggal Pengajuan", key: "createdAt", width: 20 },
+      ];
+      const statusLabel: Record<string,string> = {
+        submitted: "Diajukan", in_review: "Dalam Review", revision_requested: "Perlu Revisi",
+        approved: "Disetujui", generated_letter: "Surat Dibuat", sent: "Terkirim", rejected: "Ditolak",
+      };
+      permits.items.forEach((p: any) => {
+        ws.addRow({
+          ...p,
+          status: statusLabel[p.status] || p.status,
+          createdAt: p.createdAt ? new Date(p.createdAt).toLocaleDateString("id-ID") : "",
+        });
+      });
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      res.setHeader("Content-Disposition", `attachment; filename="IzinPenelitian-${Date.now()}.xlsx"`);
+      await wb.xlsx.write(res);
+    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+  });
+
+  app.get("/api/admin/export/ppid-objections", authMiddleware, requireRole("super_admin", "admin_bpp"), async (req, res) => {
+    try {
+      const ExcelJS = require("exceljs");
+      const data = await db.listPpidObjections({ limit: 9999 });
+      const wb = new ExcelJS.Workbook();
+      const ws = wb.addWorksheet("Keberatan PPID");
+      ws.columns = [
+        { header: "ID", key: "id", width: 36 },
+        { header: "Nama", key: "fullName", width: 25 },
+        { header: "NIK", key: "nik", width: 18 },
+        { header: "Email", key: "email", width: 28 },
+        { header: "Telepon", key: "phone", width: 16 },
+        { header: "Detail Informasi", key: "informationDetail", width: 40 },
+        { header: "Tujuan", key: "requestPurpose", width: 28 },
+        { header: "Status", key: "status", width: 16 },
+        { header: "Tanggal", key: "createdAt", width: 20 },
+      ];
+      const statusLabel: Record<string,string> = { pending: "Menunggu", in_review: "Diproses", resolved: "Selesai", rejected: "Ditolak" };
+      data.items.forEach((d: any) => {
+        ws.addRow({ ...d, status: statusLabel[d.status] || d.status, createdAt: d.createdAt ? new Date(d.createdAt).toLocaleDateString("id-ID") : "" });
+      });
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      res.setHeader("Content-Disposition", `attachment; filename="PPID-Keberatan-${Date.now()}.xlsx"`);
+      await wb.xlsx.write(res);
+    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+  });
+
+  app.get("/api/admin/export/ppid-info-requests", authMiddleware, requireRole("super_admin", "admin_bpp"), async (req, res) => {
+    try {
+      const ExcelJS = require("exceljs");
+      const data = await db.listPpidInfoRequests({ limit: 9999 });
+      const wb = new ExcelJS.Workbook();
+      const ws = wb.addWorksheet("Permohonan Informasi PPID");
+      ws.columns = [
+        { header: "ID", key: "id", width: 36 },
+        { header: "Token", key: "token", width: 18 },
+        { header: "Nama", key: "fullName", width: 25 },
+        { header: "NIK", key: "nik", width: 18 },
+        { header: "Email", key: "email", width: 28 },
+        { header: "Telepon", key: "phone", width: 16 },
+        { header: "Detail Informasi", key: "informationDetail", width: 40 },
+        { header: "Tujuan", key: "requestPurpose", width: 28 },
+        { header: "Metode Pengambilan", key: "retrievalMethod", width: 22 },
+        { header: "Status", key: "status", width: 16 },
+        { header: "Tanggal", key: "createdAt", width: 20 },
+      ];
+      const statusLabel: Record<string,string> = { pending: "Menunggu", in_review: "Diproses", resolved: "Selesai", rejected: "Ditolak" };
+      data.items.forEach((d: any) => {
+        ws.addRow({ ...d, status: statusLabel[d.status] || d.status, createdAt: d.createdAt ? new Date(d.createdAt).toLocaleDateString("id-ID") : "" });
+      });
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      res.setHeader("Content-Disposition", `attachment; filename="PPID-Permohonan-${Date.now()}.xlsx"`);
+      await wb.xlsx.write(res);
     } catch (e: any) { return res.status(500).json({ error: e.message }); }
   });
 
