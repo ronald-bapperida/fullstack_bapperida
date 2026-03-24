@@ -234,6 +234,36 @@ function buildLetterReplacements(permit: any, template?: any): Record<string, st
 }
 
 
+// ─── DOCX → PDF via mammoth + puppeteer ─────────────────────────────────────
+async function convertDocxToPdf(docxBuffer: Buffer, title = "Surat"): Promise<Buffer> {
+  const mammoth = require("mammoth");
+  const { value: rawHtml } = await mammoth.convertToHtml({ buffer: docxBuffer });
+
+  const html = `<!DOCTYPE html><html lang="id"><head>
+<meta charset="UTF-8"/>
+<style>
+  @page { size: A4; margin: 2.5cm 3cm; }
+  * { box-sizing: border-box; }
+  body { font-family: 'Times New Roman', Times, serif; font-size: 12pt; line-height: 1.7; color: #1a1a1a; }
+  p { margin: 0 0 6px; }
+  table { width: 100%; border-collapse: collapse; margin: 6px 0; }
+  td, th { padding: 3px 6px; vertical-align: top; }
+  img { max-width: 100%; }
+  h1,h2,h3,h4 { margin: 8px 0 4px; }
+</style></head><body>${rawHtml}</body></html>`;
+
+  const puppeteer = require("puppeteer");
+  const browser = await puppeteer.launch({
+    args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
+    headless: true,
+  });
+  const page = await browser.newPage();
+  await page.setContent(html, { waitUntil: "networkidle0" });
+  const pdfUint8 = await page.pdf({ format: "A4", printBackground: true });
+  await browser.close();
+  return Buffer.from(pdfUint8);
+}
+
 export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
   // Serve uploads
   app.use("/uploads", (req, res, next) => {
@@ -864,15 +894,37 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const { status, note } = req.body;
       const p = await db.updatePermitStatus(req.params.id, status, note, req.user.id);
-      // Kirim email notifikasi status
+      // Kirim email notifikasi status (async, non-blocking)
       if (p.email && status !== "submitted") {
-        sendPermitStatusEmail({
-          to: p.email,
-          fullName: p.fullName,
-          requestNumber: p.requestNumber,
-          status,
-          note,
-        }).catch((err: any) => console.error("Email status permit failed:", err));
+        (async () => {
+          try {
+            let pdfAttachment: Buffer | undefined;
+            let pdfFileName: string | undefined;
+            // Jika status generated_letter, lampirkan PDF surat yang sudah digenerate
+            if (status === "generated_letter") {
+              const letter = await (db as any).getGeneratedLetter(p.id);
+              if (letter?.fileUrl) {
+                const docxPath = path.join(process.cwd(), letter.fileUrl.replace(/^\//, ""));
+                if (fs.existsSync(docxPath) && docxPath.endsWith(".docx")) {
+                  const docxBuf = fs.readFileSync(docxPath);
+                  pdfAttachment = await convertDocxToPdf(docxBuf, `Surat Izin ${p.requestNumber}`);
+                  pdfFileName = path.basename(docxPath).replace(".docx", ".pdf");
+                }
+              }
+            }
+            await sendPermitStatusEmail({
+              to: p.email,
+              fullName: p.fullName,
+              requestNumber: p.requestNumber,
+              status,
+              note,
+              pdfAttachment,
+              pdfFileName,
+            });
+          } catch (err: any) {
+            console.error("Email status permit failed:", err);
+          }
+        })();
       }
       return res.json(p);
     } catch (e: any) { return res.status(500).json({ error: e.message }); }
@@ -1017,6 +1069,55 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   );
 
+  // ─── Preview surat sebagai PDF (server-side DOCX → PDF) ──────────────────────
+  app.post(
+    "/api/admin/permits/:id/preview-letter-pdf",
+    authMiddleware,
+    requireRole("super_admin", "admin_rida"),
+    async (req: any, res) => {
+      try {
+        const permit = await db.getPermit(req.params.id);
+        if (!permit) return res.status(404).json({ error: "Permit tidak ditemukan" });
+
+        let docxBuffer: Buffer;
+        let baseName: string;
+
+        const { templateId } = req.body;
+
+        if (templateId) {
+          // Generate fresh DOCX dari template yang dipilih
+          const templateFiles = await db.listLetterTemplateFiles(templateId);
+          const templateFile = templateFiles.find((f) => f.fileUrl.endsWith(".docx"));
+          if (!templateFile) return res.status(400).json({ error: "Template DOCX tidak ditemukan" });
+          const templatePath = path.join(process.cwd(), templateFile.fileUrl.replace(/^\//, ""));
+          if (!fs.existsSync(templatePath)) return res.status(400).json({ error: "File template tidak ada di disk" });
+          const templateBuf = fs.readFileSync(templatePath);
+          const templateConfig = await db.getTemplate(templateId);
+          const replacements = buildLetterReplacements(permit, templateConfig);
+          docxBuffer = generateDocxFromBuffer(templateBuf, replacements);
+          baseName = `BAPPERIDA-${permit.requestNumber.replace(/\//g, "-")}`;
+        } else {
+          // Pakai file surat yang sudah tersimpan
+          const letter = await (db as any).getGeneratedLetter(permit.id);
+          if (!letter?.fileUrl) return res.status(400).json({ error: "Surat belum digenerate" });
+          const filePath = path.join(process.cwd(), letter.fileUrl.replace(/^\//, ""));
+          if (!fs.existsSync(filePath)) return res.status(400).json({ error: "File surat tidak ada di disk" });
+          docxBuffer = fs.readFileSync(filePath);
+          baseName = path.basename(filePath, ".docx");
+        }
+
+        const pdfBuffer = await convertDocxToPdf(docxBuffer, `Surat Izin ${permit.requestNumber}`);
+
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Content-Disposition", `inline; filename="${baseName}.pdf"`);
+        return res.send(pdfBuffer);
+      } catch (e: any) {
+        console.error("PDF preview error:", e);
+        return res.status(500).json({ error: e.message });
+      }
+    }
+  );
+
   // Upload / overwrite generated letter file (max 5MB)
   const generatedLetterUpload = getMulter("letters", 5);
   app.post(
@@ -1070,12 +1171,28 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         if (!fs.existsSync(filePath)) return res.status(400).json({ error: "File surat tidak ditemukan di server" });
 
         const fileName = path.basename(filePath);
+
+        // Generate PDF dari DOCX jika file adalah .docx
+        let pdfBuffer: Buffer | undefined;
+        let pdfName: string | undefined;
+        if (filePath.endsWith(".docx")) {
+          try {
+            const docxBuf = fs.readFileSync(filePath);
+            pdfBuffer = await convertDocxToPdf(docxBuf, `Surat Izin ${permit.requestNumber}`);
+            pdfName = fileName.replace(".docx", ".pdf");
+          } catch (pdfErr: any) {
+            console.warn("PDF generation for email failed, sending DOCX instead:", pdfErr.message);
+          }
+        }
+
         await sendPermitLetterEmail({
           to: permit.email,
           fullName: permit.fullName,
           requestNumber: permit.requestNumber,
           filePath,
           fileName,
+          pdfBuffer,
+          pdfName,
         });
 
         // Update status ke sent
@@ -1870,6 +1987,89 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       });
       res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
       res.setHeader("Content-Disposition", `attachment; filename="PPID-Permohonan-${Date.now()}.xlsx"`);
+      await wb.xlsx.write(res);
+    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+  });
+
+  // ─── Export Berita (News) ─────────────────────────────────────────────────────
+  app.get("/api/admin/export/news", authMiddleware, requireRole("super_admin", "admin_bpp"), async (req, res) => {
+    try {
+      const ExcelJS = require("exceljs");
+      const data = await db.listNews({ limit: 9999, status: undefined });
+      const wb = new ExcelJS.Workbook();
+      const ws = wb.addWorksheet("Berita");
+      ws.columns = [
+        { header: "Judul", key: "title", width: 50 },
+        { header: "Slug", key: "slug", width: 30 },
+        { header: "Status", key: "status", width: 14 },
+        { header: "Kategori", key: "categoryName", width: 22 },
+        { header: "Penulis", key: "authorName", width: 22 },
+        { header: "Views", key: "viewCount", width: 10 },
+        { header: "Tanggal Publish", key: "publishedAt", width: 20 },
+        { header: "Tanggal Buat", key: "createdAt", width: 20 },
+      ];
+      const fmt = (d: any) => d ? new Date(d).toLocaleDateString("id-ID") : "-";
+      data.items.forEach((n: any) => {
+        ws.addRow({ ...n, publishedAt: fmt(n.publishedAt), createdAt: fmt(n.createdAt) });
+      });
+      // Style header row
+      ws.getRow(1).font = { bold: true };
+      ws.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1E3A5F" } };
+      ws.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      res.setHeader("Content-Disposition", `attachment; filename="Berita-${new Date().getFullYear()}.xlsx"`);
+      await wb.xlsx.write(res);
+    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+  });
+
+  // ─── Export Survey ─────────────────────────────────────────────────────────
+  app.get("/api/admin/export/surveys", authMiddleware, requireRole("super_admin", "admin_bpp"), async (req, res) => {
+    try {
+      const ExcelJS = require("exceljs");
+      const data = await db.listSurveys({ limit: 9999 });
+      const wb = new ExcelJS.Workbook();
+      const ws = wb.addWorksheet("Respons Survei");
+      ws.columns = [
+        { header: "Rating", key: "rating", width: 10 },
+        { header: "Komentar", key: "comment", width: 50 },
+        { header: "Halaman/Fitur", key: "pageName", width: 25 },
+        { header: "Tanggal", key: "createdAt", width: 20 },
+      ];
+      const fmt = (d: any) => d ? new Date(d).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" }) : "-";
+      data.items.forEach((s: any) => {
+        ws.addRow({ ...s, createdAt: fmt(s.createdAt) });
+      });
+      ws.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
+      ws.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1E3A5F" } };
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      res.setHeader("Content-Disposition", `attachment; filename="Survei-${new Date().getFullYear()}.xlsx"`);
+      await wb.xlsx.write(res);
+    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+  });
+
+  // ─── Export Laporan Akhir ──────────────────────────────────────────────────
+  app.get("/api/admin/export/final-reports", authMiddleware, requireRole("super_admin", "admin_rida"), async (req, res) => {
+    try {
+      const ExcelJS = require("exceljs");
+      const data = await db.listFinalReports({ limit: 9999 });
+      const wb = new ExcelJS.Workbook();
+      const ws = wb.addWorksheet("Laporan Akhir");
+      ws.columns = [
+        { header: "Nomor Permohonan", key: "permitNumber", width: 28 },
+        { header: "Nama Peneliti", key: "researcherName", width: 28 },
+        { header: "Judul Penelitian", key: "researchTitle", width: 40 },
+        { header: "Asal Lembaga", key: "institution", width: 28 },
+        { header: "Status", key: "status", width: 16 },
+        { header: "Tanggal Laporan", key: "createdAt", width: 20 },
+      ];
+      const fmt = (d: any) => d ? new Date(d).toLocaleDateString("id-ID") : "-";
+      data.items.forEach((r: any) => {
+        ws.addRow({ ...r, createdAt: fmt(r.createdAt) });
+      });
+      ws.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
+      ws.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1E3A5F" } };
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      res.setHeader("Content-Disposition", `attachment; filename="LaporanAkhir-${new Date().getFullYear()}.xlsx"`);
       await wb.xlsx.write(res);
     } catch (e: any) { return res.status(500).json({ error: e.message }); }
   });

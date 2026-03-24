@@ -2,8 +2,6 @@ import { useMemo, useState } from "react";
 import { useParams, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
-import * as mammoth from "mammoth";
-
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -31,9 +29,6 @@ import { id as localeId } from "date-fns/locale";
 
 interface LetterTemplate {
   id: string; name: string; type: string | null; isActive: boolean; placeholders: string | null; createdAt: string;
-}
-interface TemplateFile {
-  id: string; templateId: string; fileUrl: string; fileName: string; fileSize: number; mimeType: string;
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -74,79 +69,24 @@ function downloadBlob(blob: Blob, filename: string) {
   URL.revokeObjectURL(url);
 }
 
-function buildReplacementsFromPermit(permit: any): Record<string, string> {
-  const formatDate = (d: any): string => {
-    if (!d) return "-";
-    return new Date(d).toLocaleDateString("id-ID", { day: "numeric", month: "long", year: "numeric" }).toUpperCase();
-  };
-  return {
-    "NAMA": permit.fullName ?? "-",
-    "NIM": permit.nimNik ?? "-",
-    "TIM SURVEY/PENELITI": permit.institution ?? "-",
-    "JUDUL PENELITIAN": permit.researchTitle ?? "-",
-    "LOKASI PENELITIAN": permit.researchLocation ?? "-",
-    "NOMOR SURAT": permit.introLetterNumber ?? "-",
-    "TANGGAL SURAT": formatDate(permit.introLetterDate),
-    "TANDA TANGAN": permit.workUnit || permit.institution || "-",
-  };
-}
-
-function applyReplacementsToHtml(html: string, replacements: Record<string, string>): string {
-  let out = html;
-  for (const [key, value] of Object.entries(replacements)) {
-    const escaped = value.replace(/</g, "&lt;").replace(/>/g, "&gt;");
-    out = out.replace(new RegExp(`<<${key}>>`, "gi"),
-      `<mark style="background:#dbeafe;color:#1e40af;border-radius:2px;padding:0 2px;font-weight:600;">${escaped}</mark>`);
+async function openPdfPreview(permitId: string, templateId?: string) {
+  const res = await fetch(`/api/admin/permits/${permitId}/preview-letter-pdf`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${localStorage.getItem("token")}`,
+    },
+    body: JSON.stringify({ templateId }),
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(async () => ({ error: await res.text() }));
+    throw new Error(err.error || "Gagal generate PDF preview");
   }
-  out = out.replace(/<<([^>]+)>>/g,
-    `<mark style="background:#fef9c3;color:#713f12;border-radius:2px;padding:0 2px;">&lt;&lt;$1&gt;&gt;</mark>`);
-  return out;
-}
-
-async function docxUrlToHtml(fileUrl: string): Promise<string> {
-  const resp = await fetch(fileUrl);
-  if (!resp.ok) throw new Error(`Gagal mengambil file template: ${resp.statusText}`);
-  const arrayBuffer = await resp.arrayBuffer();
-  const result = await mammoth.convertToHtml({ arrayBuffer });
-  return result.value;
-}
-
-async function openPreviewInNewTab(permit: any, templateId: string) {
-  const res = await apiRequest("GET", `/api/admin/letter-templates/${templateId}/files`);
-  if (!res.ok) throw new Error("Gagal mengambil file template");
-  const files: TemplateFile[] = await res.json();
-  const docxFile = files.find((f) => f.fileUrl.endsWith(".docx"));
-  if (!docxFile) throw new Error("File DOCX tidak ditemukan untuk template ini");
-
-  const rawHtml = await docxUrlToHtml(docxFile.fileUrl);
-  const replacements = buildReplacementsFromPermit(permit);
-  const filledHtml = applyReplacementsToHtml(rawHtml, replacements);
-
-  const win = window.open("", "_blank");
-  if (!win) throw new Error("Browser memblokir popup. Izinkan popup untuk halaman ini.");
-
-  win.document.write(`<!DOCTYPE html>
-<html lang="id"><head><meta charset="UTF-8"/>
-<title>Preview Surat — ${permit.requestNumber}</title>
-<style>
-* { box-sizing: border-box; }
-body { font-family: 'Times New Roman', Times, serif; font-size: 12pt; line-height: 1.6; color: #1a1a1a; background: #e5e7eb; margin: 0; padding: 24px 16px; }
-.legend { max-width: 21cm; margin: 0 auto 12px; font-family: Arial, sans-serif; font-size: 11px; display: flex; gap: 16px; align-items: center; }
-.legend span { display: inline-flex; align-items: center; gap: 4px; }
-.paper { background: white; max-width: 21cm; margin: 0 auto; padding: 2.5cm 3cm; box-shadow: 0 4px 24px rgba(0,0,0,0.15); min-height: 29.7cm; }
-p { margin: 0 0 4px; } table { width: 100%; border-collapse: collapse; margin: 6px 0; }
-td, th { padding: 3px 6px; vertical-align: top; }
-@media print { body { background: white; padding: 0; } .legend { display: none; } .paper { box-shadow: none; padding: 0; max-width: 100%; } }
-</style></head><body>
-<div class="legend">
-<strong>Keterangan:</strong>
-<span><mark style="background:#dbeafe;color:#1e40af;padding:0 4px;border-radius:2px;">Biru</mark> = Data pemohon</span>
-<span><mark style="background:#fef9c3;color:#713f12;padding:0 4px;border-radius:2px;">Kuning</mark> = Placeholder belum terpetakan</span>
-<button onclick="window.print()" style="margin-left:auto;padding:4px 12px;cursor:pointer;border:1px solid #d1d5db;border-radius:4px;background:#f9fafb;font-family:Arial,sans-serif;">Cetak / Print</button>
-</div>
-<div class="paper">${filledHtml}</div>
-</body></html>`);
-  win.document.close();
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  window.open(url, "_blank");
+  // Revoke setelah sedikit delay agar browser sempat membuka PDF
+  setTimeout(() => URL.revokeObjectURL(url), 30000);
 }
 
 // ─── Sub-components ───────────────────────────────────────────────────────────
@@ -241,7 +181,7 @@ function GenerateCard({ permit, permitId }: { permit: any; permitId: string }) {
     }
     setPreviewLoading(true);
     try {
-      await openPreviewInNewTab(permit, selectedTemplateId);
+      await openPdfPreview(permit.id, selectedTemplateId);
     } catch (e: any) {
       toast({ title: "Gagal preview", description: e.message, variant: "destructive" });
     } finally {
@@ -459,11 +399,7 @@ function LetterActionButtons({ permit, permitId }: { permit: any; permitId: stri
   async function handlePreviewGenerated() {
     setPreviewLoading(true);
     try {
-      if (effectiveTemplateId) {
-        await openPreviewInNewTab(permit, effectiveTemplateId);
-      } else {
-        window.open(permit.generatedLetter.fileUrl, "_blank");
-      }
+      await openPdfPreview(permit.id, effectiveTemplateId);
     } catch (e: any) {
       toast({ title: "Gagal preview", description: e.message, variant: "destructive" });
     } finally {

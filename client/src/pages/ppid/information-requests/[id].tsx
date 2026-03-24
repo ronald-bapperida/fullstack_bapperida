@@ -132,11 +132,11 @@ export default function PpidInfoRequestDetailPage() {
       {/* Token display */}
       {item.token && (
         <div className="flex items-center gap-3 bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 rounded-lg px-4 py-3">
-          <div className="text-xs text-blue-600 font-medium">Token Pelacakan:</div>
+          <div className="text-xs text-blue-600 font-medium">Kode Permohonan:</div>
           <code className="text-base font-bold tracking-widest text-blue-800 dark:text-blue-300 bg-white dark:bg-blue-950/30 px-3 py-1 rounded border border-blue-200 dark:border-blue-700">
             {item.token}
           </code>
-          <span className="text-xs text-blue-500 ml-auto">Token ini dikirim ke email pemohon saat submit</span>
+          <span className="text-xs text-blue-500 ml-auto">Kode ini dikirim ke email pemohon dan dapat digunakan untuk mengajukan keberatan</span>
         </div>
       )}
 
