@@ -58,14 +58,20 @@ async function updateAndGet<T>(
 }
 
 // ─── Request Number Generator ─────────────────────────────────────────────────
+const ALPHANUM = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
+
+function generateAlphanumToken(length = 8): string {
+  let token = "";
+  for (let i = 0; i < length; i++) {
+    token += ALPHANUM[Math.floor(Math.random() * ALPHANUM.length)];
+  }
+  return token;
+}
+
 async function generateRequestNumber(): Promise<string> {
-  const year = new Date().getFullYear();
-  const MAX_RETRY = 10;
-
+  const MAX_RETRY = 20;
   for (let i = 0; i < MAX_RETRY; i++) {
-    const random = Math.floor(100000 + Math.random() * 900000);
-    const requestNumber = `BAPPERIDA-RID-${year}-${random}`;
-
+    const requestNumber = generateAlphanumToken(8);
     const existing = await db
       .select({ id: schema.researchPermitRequests.id })
       .from(schema.researchPermitRequests)
@@ -76,12 +82,8 @@ async function generateRequestNumber(): Promise<string> {
         )
       )
       .limit(1);
-
-    if (existing.length === 0) {
-      return requestNumber;
-    }
+    if (existing.length === 0) return requestNumber;
   }
-
   throw new Error("Failed to generate unique request number");
 }
 

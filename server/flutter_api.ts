@@ -13,7 +13,7 @@ import { sendPpidInfoRequestConfirmation } from "./email";
 function generateToken(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
   let token = "";
-  for (let i = 0; i < 10; i++) token += chars[Math.floor(Math.random() * chars.length)];
+  for (let i = 0; i < 8; i++) token += chars[Math.floor(Math.random() * chars.length)];
   return token;
 }
 

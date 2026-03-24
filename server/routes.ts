@@ -237,26 +237,40 @@ function buildLetterReplacements(permit: any, template?: any): Record<string, st
 // ─── DOCX → PDF via mammoth + puppeteer ─────────────────────────────────────
 /** Cari path executable Chrome/Chromium yang terinstal */
 function findChromePath(): string | undefined {
+  // 1. Scan puppeteer cache (semua versi yang terinstall)
   const home = process.env.HOME || "/home/runner";
-  const puppeteerCacheDir = path.join(home, ".cache", "puppeteer", "chrome");
+  for (const cacheRoot of [
+    path.join(home, ".cache", "puppeteer", "chrome"),
+    path.join("/root", ".cache", "puppeteer", "chrome"),
+  ]) {
+    try {
+      const versions = fs.readdirSync(cacheRoot);
+      for (const ver of versions.sort().reverse()) {
+        for (const subDir of ["chrome-linux64", "chrome-linux"]) {
+          const candidate = path.join(cacheRoot, ver, subDir, "chrome");
+          if (fs.existsSync(candidate)) return candidate;
+        }
+      }
+    } catch {}
+  }
+  // 2. Coba pakai path yang diketahui puppeteer
   try {
-    const versions = fs.readdirSync(puppeteerCacheDir);
-    for (const ver of versions.sort().reverse()) {
-      const candidate = path.join(puppeteerCacheDir, ver, "chrome-linux64", "chrome");
-      if (fs.existsSync(candidate)) return candidate;
-    }
+    const puppeteer = require("puppeteer");
+    const ep = typeof puppeteer.executablePath === "function" ? puppeteer.executablePath() : undefined;
+    if (ep && fs.existsSync(ep)) return ep;
   } catch {}
-  // Fallback ke system chromium
-  const systemPaths = ["/usr/bin/chromium-browser", "/usr/bin/chromium", "/usr/bin/google-chrome", "/usr/local/bin/chromium"];
+  // 3. System chromium / chrome
+  const systemPaths = [
+    "/usr/bin/google-chrome-stable", "/usr/bin/google-chrome",
+    "/usr/bin/chromium-browser", "/usr/bin/chromium",
+    "/usr/local/bin/chromium", "/snap/bin/chromium",
+  ];
   for (const p of systemPaths) { if (fs.existsSync(p)) return p; }
   return undefined;
 }
 
-async function convertDocxToPdf(docxBuffer: Buffer, title = "Surat"): Promise<Buffer> {
-  const mammoth = require("mammoth");
-  const { value: rawHtml } = await mammoth.convertToHtml({ buffer: docxBuffer });
-
-  const html = `<!DOCTYPE html><html lang="id"><head>
+function buildLetterHtml(rawHtml: string): string {
+  return `<!DOCTYPE html><html lang="id"><head>
 <meta charset="UTF-8"/>
 <style>
   @page { size: A4; margin: 2.5cm 3cm; }
@@ -268,11 +282,20 @@ async function convertDocxToPdf(docxBuffer: Buffer, title = "Surat"): Promise<Bu
   img { max-width: 100%; }
   h1,h2,h3,h4 { margin: 8px 0 4px; }
 </style></head><body>${rawHtml}</body></html>`;
+}
 
-  const puppeteer = require("puppeteer");
+async function convertDocxToPdf(docxBuffer: Buffer, title = "Surat"): Promise<Buffer> {
+  const mammoth = require("mammoth");
+  const { value: rawHtml } = await mammoth.convertToHtml({ buffer: docxBuffer });
+  const html = buildLetterHtml(rawHtml);
+
   const executablePath = findChromePath();
+  if (!executablePath) {
+    throw new Error("Chrome tidak ditemukan di server. Pastikan Puppeteer sudah terinstall (jalankan: npx puppeteer browsers install chrome).");
+  }
+  const puppeteer = require("puppeteer");
   const browser = await puppeteer.launch({
-    ...(executablePath ? { executablePath } : {}),
+    executablePath,
     args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
     headless: true,
   });
@@ -281,6 +304,12 @@ async function convertDocxToPdf(docxBuffer: Buffer, title = "Surat"): Promise<Bu
   const pdfUint8 = await page.pdf({ format: "A4", printBackground: true });
   await browser.close();
   return Buffer.from(pdfUint8);
+}
+
+async function convertDocxToHtml(docxBuffer: Buffer): Promise<string> {
+  const mammoth = require("mammoth");
+  const { value: rawHtml } = await mammoth.convertToHtml({ buffer: docxBuffer });
+  return buildLetterHtml(rawHtml);
 }
 
 export async function registerRoutes(httpServer: Server, app: Express): Promise<Server> {
@@ -863,7 +892,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const { number } = req.params;
   
-      const pattern = /^BAPPERIDA-RID-\d{4}-\d{6}$/;
+      const pattern = /^[A-Z0-9]{8}$/;
 
       if (!pattern.test(number)) {
         return res.status(400).json({ error: "Invalid request number format" });
@@ -1121,11 +1150,19 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           baseName = path.basename(filePath, ".docx");
         }
 
-        const pdfBuffer = await convertDocxToPdf(docxBuffer, `Surat Izin ${permit.requestNumber}`);
-
-        res.setHeader("Content-Type", "application/pdf");
-        res.setHeader("Content-Disposition", `inline; filename="${baseName}.pdf"`);
-        return res.send(pdfBuffer);
+        // Coba PDF via Chrome; fallback ke HTML jika Chrome tidak ada
+        try {
+          const pdfBuffer = await convertDocxToPdf(docxBuffer, `Surat Izin ${permit.requestNumber}`);
+          res.setHeader("Content-Type", "application/pdf");
+          res.setHeader("Content-Disposition", `inline; filename="${baseName}.pdf"`);
+          return res.send(pdfBuffer);
+        } catch (pdfErr: any) {
+          console.warn("PDF preview fallback to HTML:", pdfErr.message);
+          // Fallback: serve HTML langsung — browser bisa tampilkan & print
+          const htmlContent = await convertDocxToHtml(docxBuffer);
+          res.setHeader("Content-Type", "text/html; charset=utf-8");
+          return res.send(htmlContent);
+        }
       } catch (e: any) {
         console.error("PDF preview error:", e);
         return res.status(500).json({ error: e.message });
@@ -1133,8 +1170,23 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   );
 
-  // Upload / overwrite generated letter file (max 5MB)
-  const generatedLetterUpload = getMulter("letters", 5);
+  // Upload / overwrite generated letter file (PDF atau DOCX, max 10MB)
+  const letterFilesDir = path.join(uploadDir, "letters");
+  if (!fs.existsSync(letterFilesDir)) fs.mkdirSync(letterFilesDir, { recursive: true });
+  const generatedLetterUpload = multer({
+    storage: multer.diskStorage({
+      destination: (_, __, cb) => cb(null, letterFilesDir),
+      filename: (_, file, cb) => {
+        const ext = path.extname(file.originalname).toLowerCase();
+        cb(null, `${randomUUID()}${ext}`);
+      },
+    }),
+    limits: { fileSize: 10 * 1024 * 1024 },
+    fileFilter: (_, file, cb) => {
+      const ext = path.extname(file.originalname).toLowerCase();
+      cb(null, [".pdf", ".docx", ".doc"].includes(ext));
+    },
+  });
   app.post(
     "/api/admin/permits/:id/upload-generated-letter",
     authMiddleware,
@@ -1356,8 +1408,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   }
 
   async function renderPdfFromHtml(html: string): Promise<Buffer> {
+    const executablePath = findChromePath();
+    if (!executablePath) {
+      throw new Error("Chrome tidak ditemukan di server ini. Jalankan: npx puppeteer browsers install chrome");
+    }
     const puppeteer = require("puppeteer");
-    const browser = await puppeteer.launch();
+    const browser = await puppeteer.launch({
+      executablePath,
+      args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
+      headless: true,
+    });
     const page = await browser.newPage();
     await page.setContent(html, { waitUntil: "networkidle0" });
     const buffer = await page.pdf({ format: "A4", printBackground: true });
@@ -1379,12 +1439,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         if (!template) return res.status(400).json({ error: "No template found" });
   
         const html = fillTemplate(template.content, permit);
-  
-        const pdfBuffer = await renderPdfFromHtml(html);
-  
-        res.setHeader("Content-Type", "application/pdf");
-        res.setHeader("Content-Disposition", `inline; filename="Preview-${permit.requestNumber}.pdf"`);
-        return res.send(pdfBuffer);
+
+        try {
+          const pdfBuffer = await renderPdfFromHtml(html);
+          res.setHeader("Content-Type", "application/pdf");
+          res.setHeader("Content-Disposition", `inline; filename="Preview-${permit.requestNumber}.pdf"`);
+          return res.send(pdfBuffer);
+        } catch (pdfErr: any) {
+          console.warn("Letter preview PDF fallback to HTML:", pdfErr.message);
+          res.setHeader("Content-Type", "text/html; charset=utf-8");
+          return res.send(html);
+        }
       } catch (e: any) {
         return res.status(500).json({ error: e.message });
       }
