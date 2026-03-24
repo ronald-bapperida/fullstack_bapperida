@@ -235,6 +235,23 @@ function buildLetterReplacements(permit: any, template?: any): Record<string, st
 
 
 // ─── DOCX → PDF via mammoth + puppeteer ─────────────────────────────────────
+/** Cari path executable Chrome/Chromium yang terinstal */
+function findChromePath(): string | undefined {
+  const home = process.env.HOME || "/home/runner";
+  const puppeteerCacheDir = path.join(home, ".cache", "puppeteer", "chrome");
+  try {
+    const versions = fs.readdirSync(puppeteerCacheDir);
+    for (const ver of versions.sort().reverse()) {
+      const candidate = path.join(puppeteerCacheDir, ver, "chrome-linux64", "chrome");
+      if (fs.existsSync(candidate)) return candidate;
+    }
+  } catch {}
+  // Fallback ke system chromium
+  const systemPaths = ["/usr/bin/chromium-browser", "/usr/bin/chromium", "/usr/bin/google-chrome", "/usr/local/bin/chromium"];
+  for (const p of systemPaths) { if (fs.existsSync(p)) return p; }
+  return undefined;
+}
+
 async function convertDocxToPdf(docxBuffer: Buffer, title = "Surat"): Promise<Buffer> {
   const mammoth = require("mammoth");
   const { value: rawHtml } = await mammoth.convertToHtml({ buffer: docxBuffer });
@@ -253,8 +270,10 @@ async function convertDocxToPdf(docxBuffer: Buffer, title = "Surat"): Promise<Bu
 </style></head><body>${rawHtml}</body></html>`;
 
   const puppeteer = require("puppeteer");
+  const executablePath = findChromePath();
   const browser = await puppeteer.launch({
-    args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage"],
+    ...(executablePath ? { executablePath } : {}),
+    args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
     headless: true,
   });
   const page = await browser.newPage();
@@ -1038,18 +1057,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           fileUrl: generatedFileUrl,
         });
 
-        // Update status permit ke generated_letter (tanpa kirim email — email dikirim saat "sent")
-        await db.updatePermitStatus(
-          permit.id,
-          "generated_letter",
-          "Surat izin berhasil digenerate",
-          req.user.id
-        );
-
-        // Jika saveOnly=true, kembalikan JSON (tidak download)
+        // Jika saveOnly=true, kembalikan JSON (tidak download, tidak update status)
+        // Status diupdate secara manual oleh admin setelah preview
         if (req.body.saveOnly === "true" || req.body.saveOnly === true) {
           return res.json({ fileUrl: generatedFileUrl, fileName });
         }
+
+        // Jika download langsung (bukan saveOnly), tetap tidak auto-update status
+        // Admin wajib preview dulu, lalu update status secara manual
 
         // Kirim file ke browser sebagai download
         res.setHeader(
@@ -1132,19 +1147,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         if (!permit) return res.status(404).json({ error: "Permit tidak ditemukan" });
         const newUrl = fileUrl("letters", req.file.filename);
         await db.updateGeneratedLetterFile(permit.id, newUrl);
-        // Pastikan status tetap generated_letter - dengan keterangan berkas diupload manual
-        if (permit.status !== "generated_letter" && permit.status !== "sent") {
-          await db.updatePermitStatus(permit.id, "generated_letter", "Berkas surat diupload manual (bukan dari generate template)", req.user.id);
-        } else if (permit.status === "generated_letter") {
-          // Tambah history bahwa berkas ditimpa secara manual
-          await (db as any).addPermitStatusHistory({
-            permitId: permit.id,
-            fromStatus: "generated_letter",
-            toStatus: "generated_letter",
-            note: "Berkas surat ditimpa (upload manual — bukan dari generate template)",
-            changedBy: req.user.id,
-          });
-        }
+        // Tambah history upload tanpa mengubah status — admin update status manual setelah preview
+        await (db as any).addPermitStatusHistory({
+          permitId: permit.id,
+          fromStatus: permit.status,
+          toStatus: permit.status,
+          note: "Berkas surat ditimpa/diupload manual (bukan dari generate template)",
+          changedBy: req.user.id,
+        });
         return res.json({ fileUrl: newUrl });
       } catch (e: any) {
         return res.status(500).json({ error: e.message });
@@ -1808,15 +1818,80 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
   
-  // app.get("/api/admin/stats/survey-satisfaction", authMiddleware, requireRole("super_admin", "admin_rida"), async (req, res) => {
-  //   try {
-  //     const year = req.query.year ? parseInt(req.query.year as string) : undefined;
-  //     const stats = await db.getSurveySatisfactionStats(year);
-  //     return res.json(stats);
-  //   } catch (e: any) {
-  //     return res.status(500).json({ error: e.message });
-  //   }
-  // });
+  // ─── IKM Dashboard Stats ──────────────────────────────────────────────────────
+  app.get("/api/admin/stats/ikm-dashboard", authMiddleware, async (req, res) => {
+    try {
+      const year = req.query.year ? parseInt(req.query.year as string) : new Date().getFullYear();
+
+      // Load all surveys via storage layer (no limit = all data)
+      const { items: allSurveys } = await db.listSurveys({ limit: 9999 });
+      // Filter by year
+      const surveys = allSurveys.filter((s: any) => s.createdAt && new Date(s.createdAt).getFullYear() === year);
+      const total = surveys.length;
+
+      const questionLabels = [
+        "Persyaratan", "Prosedur", "Waktu Pelayanan", "Biaya/Tarif",
+        "Produk Layanan", "Kompetensi Pelaksana", "Perilaku Pelaksana",
+        "Penanganan Pengaduan", "Sarana & Prasarana",
+      ];
+
+      const calcIkm = (s: any) => {
+        const qsum = [s.q1,s.q2,s.q3,s.q4,s.q5,s.q6,s.q7,s.q8,s.q9].reduce((a: number, b: number) => a + (Number(b) || 0), 0);
+        return qsum / 9;
+      };
+
+      // Per-question averages
+      const qAvgs = questionLabels.map((label, i) => {
+        const key = `q${i + 1}`;
+        const avg = total > 0 ? surveys.reduce((s: number, r: any) => s + (Number(r[key]) || 0), 0) / total : 0;
+        return { question: `Q${i + 1}`, label, avg: parseFloat(avg.toFixed(2)), ikm: parseFloat((avg / 4 * 100).toFixed(1)) };
+      });
+
+      // Overall IKM
+      const overallIkm = total > 0
+        ? parseFloat((qAvgs.reduce((s, q) => s + q.avg, 0) / 9 / 4 * 100).toFixed(1))
+        : 0;
+
+      // Monthly trend
+      const monthNames = ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agu","Sep","Okt","Nov","Des"];
+      const monthlyTrend = monthNames.map((month, i) => {
+        const ms = surveys.filter((s: any) => s.createdAt && new Date(s.createdAt).getMonth() === i);
+        const mAvg = ms.length > 0 ? ms.reduce((sum: number, s: any) => sum + calcIkm(s), 0) / ms.length : 0;
+        return { month, total: ms.length, ikm: parseFloat((mAvg / 4 * 100).toFixed(1)) };
+      });
+
+      // Gender / education distribution
+      const genderMap: Record<string, number> = {};
+      const eduMap: Record<string, number> = {};
+      surveys.forEach((s: any) => {
+        genderMap[s.gender] = (genderMap[s.gender] || 0) + 1;
+        eduMap[s.education] = (eduMap[s.education] || 0) + 1;
+      });
+      const genderDist = Object.entries(genderMap).map(([name, value]) => ({ name, value }));
+      const educationDist = Object.entries(eduMap).map(([name, value]) => ({ name, value })).sort((a, b) => b.value - a.value);
+
+      // Recent 5
+      const recent = surveys.slice(0, 5).map((s: any) => ({
+        id: s.id,
+        respondentName: s.respondentName,
+        age: s.age,
+        gender: s.gender,
+        education: s.education,
+        occupation: s.occupation,
+        ikm: parseFloat((calcIkm(s) / 4 * 100).toFixed(1)),
+        createdAt: s.createdAt,
+      }));
+
+      // Suggestions
+      const suggestionResult = await db.listSuggestions({ page: 1, limit: 5 });
+      const suggTotal = (await db.listSuggestions({ limit: 9999 })).total;
+
+      return res.json({
+        year, total, overallIkm, qAvgs, monthlyTrend, genderDist, educationDist, recent,
+        suggestions: { total: suggTotal, recent: suggestionResult.items },
+      });
+    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+  });
 
   // ─── PPID Keberatan (Admin) ──────────────────────────────────────────────────
   app.get("/api/admin/ppid/objections", authMiddleware, requireRole("super_admin", "admin_bpp"), async (req, res) => {
@@ -2070,6 +2145,46 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       ws.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF1E3A5F" } };
       res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
       res.setHeader("Content-Disposition", `attachment; filename="LaporanAkhir-${new Date().getFullYear()}.xlsx"`);
+      await wb.xlsx.write(res);
+    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+  });
+
+  // ─── Export Survei IKM ────────────────────────────────────────────────────
+  app.get("/api/admin/export/ikm-surveys", authMiddleware, requireRole("super_admin", "admin_rida"), async (req, res) => {
+    try {
+      const ExcelJS = require("exceljs");
+      const { db: rawDb } = await import("./db");
+      const schema = await import("../shared/schema");
+      const rows = await rawDb.select().from(schema.surveys).orderBy(schema.surveys.createdAt);
+      const calcIkm = (s: any) => {
+        const sum = [s.q1,s.q2,s.q3,s.q4,s.q5,s.q6,s.q7,s.q8,s.q9].reduce((a: number, b: number) => a + (Number(b)||0), 0);
+        return parseFloat(((sum / 9) / 4 * 100).toFixed(1));
+      };
+      const wb = new ExcelJS.Workbook();
+      const ws = wb.addWorksheet("Respons Survei IKM");
+      ws.columns = [
+        { header: "Nama Responden", key: "respondentName", width: 28 },
+        { header: "Usia", key: "age", width: 10 },
+        { header: "Jenis Kelamin", key: "gender", width: 16 },
+        { header: "Pendidikan", key: "education", width: 20 },
+        { header: "Pekerjaan", key: "occupation", width: 22 },
+        { header: "Q1", key: "q1", width: 8 }, { header: "Q2", key: "q2", width: 8 },
+        { header: "Q3", key: "q3", width: 8 }, { header: "Q4", key: "q4", width: 8 },
+        { header: "Q5", key: "q5", width: 8 }, { header: "Q6", key: "q6", width: 8 },
+        { header: "Q7", key: "q7", width: 8 }, { header: "Q8", key: "q8", width: 8 },
+        { header: "Q9", key: "q9", width: 8 },
+        { header: "Nilai IKM (%)", key: "ikm", width: 14 },
+        { header: "Saran", key: "suggestion", width: 50 },
+        { header: "Tanggal", key: "createdAt", width: 20 },
+      ];
+      const fmt = (d: any) => d ? new Date(d).toLocaleDateString("id-ID") : "-";
+      rows.forEach((s: any) => {
+        ws.addRow({ ...s, ikm: calcIkm(s), createdAt: fmt(s.createdAt) });
+      });
+      ws.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
+      ws.getRow(1).fill = { type: "pattern", pattern: "solid", fgColor: { argb: "FF4F46E5" } };
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      res.setHeader("Content-Disposition", `attachment; filename="SurveiIKM-${new Date().getFullYear()}.xlsx"`);
       await wb.xlsx.write(res);
     } catch (e: any) { return res.status(500).json({ error: e.message }); }
   });

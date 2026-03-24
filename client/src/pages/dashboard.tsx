@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
@@ -137,6 +137,44 @@ function getUserInitials(name: string) {
   return name?.split(" ").slice(0, 2).map(n => n[0]).join("").toUpperCase() || "U";
 }
 
+// ─── Helper: download with auth token ────────────────────────────────────────
+async function downloadWithAuth(endpoint: string, toast: (opts: any) => void) {
+  try {
+    const token = localStorage.getItem("token");
+    const res = await fetch(endpoint, { headers: { Authorization: `Bearer ${token}` } });
+    if (!res.ok) {
+      const msg = await res.text().catch(() => "Unauthorized");
+      toast({ title: "Gagal export", description: msg, variant: "destructive" });
+      return;
+    }
+    const blob = await res.blob();
+    const cd = res.headers.get("Content-Disposition");
+    const filename = cd?.match(/filename="([^"]+)"/)?.[1] || "export.xlsx";
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = url; a.download = filename;
+    document.body.appendChild(a); a.click(); a.remove();
+    URL.revokeObjectURL(url);
+  } catch (err: any) {
+    toast({ title: "Gagal export", description: err.message, variant: "destructive" });
+  }
+}
+
+function ExportBtn({ endpoint, icon, label, testId }: { endpoint: string; icon: ReactNode; label: string; testId: string }) {
+  const { toast } = useToast();
+  const [loading, setLoading] = useState(false);
+  return (
+    <Button
+      size="sm" variant="outline"
+      className="gap-1.5 text-xs h-8"
+      disabled={loading}
+      onClick={async () => { setLoading(true); await downloadWithAuth(endpoint, toast); setLoading(false); }}
+      data-testid={testId}
+    >
+      {icon} {label}
+    </Button>
+  );
+}
+
 function getRoleLabel(role: string) {
   if (role === "super_admin") return "Super Administrator";
   if (role === "admin_bpp") return "Admin BAPPEDA";
@@ -174,6 +212,19 @@ export default function Dashboard() {
   });
   const { data: surveyStats, isLoading: surveyLoading } = useQuery<SurveyStats>({
     queryKey: ["/api/admin/stats/survey-satisfaction", selectedYear],
+    enabled: !!user && (user.role === "super_admin" || user.role === "admin_rida"),
+  });
+
+  const { data: ikmData, isLoading: ikmLoading } = useQuery<any>({
+    queryKey: ["/api/admin/stats/ikm-dashboard", selectedYear],
+    queryFn: async () => {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`/api/admin/stats/ikm-dashboard?year=${selectedYear}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
     enabled: !!user && (user.role === "super_admin" || user.role === "admin_rida"),
   });
 
@@ -384,121 +435,66 @@ export default function Dashboard() {
         </Card>
       )}
 
-      {/* ── Export Data ──────────────────────────────────────── */}
-      <div className="flex items-center gap-2 flex-wrap bg-muted/40 rounded-xl px-4 py-3 border">
-        <div className="flex items-center gap-2 text-sm text-muted-foreground mr-2">
-          <Download className="w-4 h-4" />
-          <span className="font-semibold">Export Data:</span>
-        </div>
-        {isBPP && (
-          <>
-            <Button
-              size="sm" variant="outline"
-              className="gap-1.5 text-xs h-8"
-              onClick={() => {
-                const a = document.createElement("a");
-                a.href = "/api/admin/export/news";
-                a.click();
-              }}
-              data-testid="button-export-news"
-            >
-              <Newspaper className="w-3.5 h-3.5" /> Berita
-            </Button>
-            <Button
-              size="sm" variant="outline"
-              className="gap-1.5 text-xs h-8"
-              onClick={() => {
-                const a = document.createElement("a");
-                a.href = "/api/admin/export/ppid-info-requests";
-                a.click();
-              }}
-              data-testid="button-export-info-requests"
-            >
-              <FileText className="w-3.5 h-3.5" /> Permohonan Informasi
-            </Button>
-            <Button
-              size="sm" variant="outline"
-              className="gap-1.5 text-xs h-8"
-              onClick={() => {
-                const a = document.createElement("a");
-                a.href = "/api/admin/export/ppid-objections";
-                a.click();
-              }}
-              data-testid="button-export-objections"
-            >
-              <ClipboardList className="w-3.5 h-3.5" /> Keberatan PPID
-            </Button>
-            <Button
-              size="sm" variant="outline"
-              className="gap-1.5 text-xs h-8"
-              onClick={() => {
-                const a = document.createElement("a");
-                a.href = "/api/admin/export/surveys";
-                a.click();
-              }}
-              data-testid="button-export-surveys"
-            >
-              <Star className="w-3.5 h-3.5" /> Survei
-            </Button>
-          </>
-        )}
-        {isRIDA && (
-          <>
-            <Button
-              size="sm" variant="outline"
-              className="gap-1.5 text-xs h-8"
-              onClick={() => {
-                const a = document.createElement("a");
-                a.href = "/api/admin/export/permits";
-                a.click();
-              }}
-              data-testid="button-export-permits"
-            >
-              <FileText className="w-3.5 h-3.5" /> Izin Penelitian
-            </Button>
-            <Button
-              size="sm" variant="outline"
-              className="gap-1.5 text-xs h-8"
-              onClick={() => {
-                const a = document.createElement("a");
-                a.href = "/api/admin/export/final-reports";
-                a.click();
-              }}
-              data-testid="button-export-final-reports"
-            >
-              <ClipboardList className="w-3.5 h-3.5" /> Laporan Akhir
-            </Button>
-          </>
-        )}
-      </div>
+      {/* ── Filter Grafik (Card dengan shadow) ───────────────── */}
+      <Card className="shadow-sm border">
+        <CardContent className="py-3 px-4">
+          <div className="flex items-center gap-3 flex-wrap">
+            <div className="flex items-center gap-2 text-sm font-semibold text-foreground">
+              <Activity className="w-4 h-4 text-primary" />
+              Filter Grafik:
+            </div>
+            <Select value={selectedYear.toString()} onValueChange={(v) => setSelectedYear(parseInt(v))}>
+              <SelectTrigger className="w-28 h-8 text-sm">
+                <SelectValue placeholder="Tahun" />
+              </SelectTrigger>
+              <SelectContent>
+                {years.map(year => (
+                  <SelectItem key={year} value={year.toString()}>{year}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <Select value={selectedMonth} onValueChange={setSelectedMonth}>
+              <SelectTrigger className="w-36 h-8 text-sm">
+                <SelectValue placeholder="Bulan" />
+              </SelectTrigger>
+              <SelectContent>
+                {months.map(month => (
+                  <SelectItem key={month} value={month}>{month}</SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <span className="text-xs text-muted-foreground ml-auto hidden sm:block">
+              Pilih tahun &amp; bulan untuk memfilter grafik dan data ekspor
+            </span>
+          </div>
+        </CardContent>
+      </Card>
 
-      {/* ── Filter Tahun & Bulan ──────────────────────────────── */}
-      <div className="flex items-center gap-3 flex-wrap">
-        <div className="flex items-center gap-2 text-sm text-muted-foreground">
-          <Activity className="w-4 h-4" />
-          <span className="font-medium">Filter Data:</span>
-        </div>
-        <Select value={selectedYear.toString()} onValueChange={(v) => setSelectedYear(parseInt(v))}>
-          <SelectTrigger className="w-28 h-8 text-sm">
-            <SelectValue placeholder="Tahun" />
-          </SelectTrigger>
-          <SelectContent>
-            {years.map(year => (
-              <SelectItem key={year} value={year.toString()}>{year}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-        <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-          <SelectTrigger className="w-36 h-8 text-sm">
-            <SelectValue placeholder="Bulan" />
-          </SelectTrigger>
-          <SelectContent>
-            {months.map(month => (
-              <SelectItem key={month} value={month}>{month}</SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
-      </div>
+      {/* ── Export Data (Card dengan shadow, pakai fetch+auth) ── */}
+      <Card className="shadow-sm border">
+        <CardContent className="py-3 px-4">
+          <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-2 text-sm font-semibold text-foreground mr-1">
+              <Download className="w-4 h-4 text-primary" />
+              Export Data:
+            </div>
+            {isBPP && (
+              <>
+                <ExportBtn endpoint="/api/admin/export/news" icon={<Newspaper className="w-3.5 h-3.5" />} label="Berita" testId="button-export-news" />
+                <ExportBtn endpoint="/api/admin/export/ppid-info-requests" icon={<FileText className="w-3.5 h-3.5" />} label="Permohonan Informasi" testId="button-export-info-requests" />
+                <ExportBtn endpoint="/api/admin/export/ppid-objections" icon={<ClipboardList className="w-3.5 h-3.5" />} label="Keberatan PPID" testId="button-export-objections" />
+              </>
+            )}
+            {isRIDA && (
+              <>
+                <ExportBtn endpoint="/api/admin/export/permits" icon={<FileText className="w-3.5 h-3.5" />} label="Izin Penelitian" testId="button-export-permits" />
+                <ExportBtn endpoint="/api/admin/export/final-reports" icon={<ClipboardList className="w-3.5 h-3.5" />} label="Laporan Akhir" testId="button-export-final-reports" />
+                <ExportBtn endpoint="/api/admin/export/ikm-surveys" icon={<Star className="w-3.5 h-3.5" />} label="Survei IKM" testId="button-export-surveys" />
+              </>
+            )}
+          </div>
+        </CardContent>
+      </Card>
 
       {/* ── Charts ───────────────────────────────────────────── */}
       <Tabs defaultValue={isBPP ? "news" : "permits"} className="space-y-4">
@@ -511,6 +507,9 @@ export default function Dashboard() {
           </TabsTrigger>
           <TabsTrigger value="surveys" disabled={!isRIDA} className="data-[state=active]:bg-white data-[state=active]:shadow-sm">
             <BarChart2 className="w-4 h-4 mr-1.5" />{t("surveyTab")}
+          </TabsTrigger>
+          <TabsTrigger value="ikm" disabled={!isRIDA} className="data-[state=active]:bg-white data-[state=active]:shadow-sm">
+            <Star className="w-4 h-4 mr-1.5" />Survei IKM
           </TabsTrigger>
         </TabsList>
 
@@ -875,6 +874,219 @@ export default function Dashboard() {
               </Card>
             )}
           </div>
+        </TabsContent>
+
+        {/* ─ Tab: Survei IKM ─ */}
+        <TabsContent value="ikm" className="space-y-4">
+          {ikmLoading ? (
+            <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
+              {[...Array(3)].map((_, i) => <ChartSkeleton key={i} />)}
+            </div>
+          ) : ikmData ? (
+            <>
+              {/* KPI Cards */}
+              <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+                <Card className="border-0 shadow-md bg-gradient-to-br from-indigo-600 to-purple-600 text-white">
+                  <CardContent className="pt-5 pb-4">
+                    <p className="text-xs font-medium text-white/70 mb-1">Total Responden</p>
+                    <p className="text-3xl font-bold">{ikmData.total}</p>
+                    <p className="text-xs text-white/60 mt-1">{selectedYear}</p>
+                  </CardContent>
+                </Card>
+                <Card className="border-0 shadow-md bg-gradient-to-br from-emerald-500 to-teal-600 text-white">
+                  <CardContent className="pt-5 pb-4">
+                    <p className="text-xs font-medium text-white/70 mb-1">Rata-rata IKM</p>
+                    <p className="text-3xl font-bold">{ikmData.overallIkm}%</p>
+                    <p className="text-xs text-white/60 mt-1">Indeks Kepuasan Masyarakat</p>
+                  </CardContent>
+                </Card>
+                <Card className="border-0 shadow-md bg-gradient-to-br from-amber-500 to-orange-500 text-white">
+                  <CardContent className="pt-5 pb-4">
+                    <p className="text-xs font-medium text-white/70 mb-1">Kotak Saran</p>
+                    <p className="text-3xl font-bold">{ikmData.suggestions?.total || 0}</p>
+                    <p className="text-xs text-white/60 mt-1">Total pesan masuk</p>
+                  </CardContent>
+                </Card>
+                <Card className="border-0 shadow-md bg-gradient-to-br from-pink-500 to-rose-500 text-white">
+                  <CardContent className="pt-5 pb-4">
+                    <p className="text-xs font-medium text-white/70 mb-1">Nilai Terendah</p>
+                    <p className="text-3xl font-bold">
+                      {ikmData.qAvgs?.length > 0 ? `${Math.min(...ikmData.qAvgs.map((q: any) => q.ikm))}%` : "—"}
+                    </p>
+                    <p className="text-xs text-white/60 mt-1">Perlu peningkatan</p>
+                  </CardContent>
+                </Card>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Per-question IKM Bar Chart */}
+                <Card className="border-0 shadow-md overflow-hidden">
+                  <div className="h-1 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500" />
+                  <CardHeader className="pb-3">
+                    <CardTitle className="flex items-center gap-2 text-base">
+                      <div className="w-8 h-8 rounded-lg bg-indigo-100 dark:bg-indigo-950 flex items-center justify-center">
+                        <BarChart2 className="w-4 h-4 text-indigo-500" />
+                      </div>
+                      Nilai IKM per Kategori
+                    </CardTitle>
+                    <CardDescription>Skor per aspek pelayanan (0–100%) &middot; {selectedYear}</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {(ikmData.qAvgs?.length || 0) === 0 ? (
+                      <div className="h-72 flex items-center justify-center text-muted-foreground text-sm">Belum ada data survei</div>
+                    ) : (
+                      <div className="h-72">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart data={ikmData.qAvgs} layout="vertical" barSize={16} margin={{ left: 8, right: 16 }}>
+                            <defs>
+                              <linearGradient id="ikmGrad" x1="0" y1="0" x2="1" y2="0">
+                                <stop offset="0%" stopColor="#6366f1" />
+                                <stop offset="100%" stopColor="#a855f7" />
+                              </linearGradient>
+                            </defs>
+                            <CartesianGrid strokeDasharray="3 3" horizontal={false} stroke="#f0f0f0" />
+                            <XAxis type="number" domain={[0, 100]} tick={{ fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={(v) => `${v}%`} />
+                            <YAxis type="category" dataKey="label" tick={{ fontSize: 10 }} axisLine={false} tickLine={false} width={120} />
+                            <Tooltip formatter={(v: any) => [`${v}%`, "IKM"]} contentStyle={{ borderRadius: "10px", border: "none", boxShadow: "0 4px 20px rgba(0,0,0,0.1)" }} />
+                            <Bar dataKey="ikm" fill="url(#ikmGrad)" radius={[0, 4, 4, 0]} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* Monthly Trend */}
+                <Card className="border-0 shadow-md overflow-hidden">
+                  <div className="h-1 bg-gradient-to-r from-emerald-500 via-teal-400 to-cyan-400" />
+                  <CardHeader className="pb-3">
+                    <CardTitle className="flex items-center gap-2 text-base">
+                      <div className="w-8 h-8 rounded-lg bg-emerald-100 dark:bg-emerald-950 flex items-center justify-center">
+                        <TrendingUp className="w-4 h-4 text-emerald-500" />
+                      </div>
+                      Trend IKM Bulanan
+                    </CardTitle>
+                    <CardDescription>Perkembangan nilai IKM per bulan &middot; {selectedYear}</CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="h-72">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <AreaChart data={ikmData.monthlyTrend}>
+                          <defs>
+                            <linearGradient id="ikmAreaGrad" x1="0" y1="0" x2="0" y2="1">
+                              <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3} />
+                              <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
+                            </linearGradient>
+                          </defs>
+                          <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f0f0f0" />
+                          <XAxis dataKey="month" tick={{ fontSize: 10 }} axisLine={false} tickLine={false} />
+                          <YAxis domain={[0, 100]} tick={{ fontSize: 10 }} axisLine={false} tickLine={false} tickFormatter={(v) => `${v}%`} />
+                          <Tooltip formatter={(v: any) => [`${v}%`, "IKM"]} contentStyle={{ borderRadius: "10px", border: "none", boxShadow: "0 4px 20px rgba(0,0,0,0.1)" }} />
+                          <Area type="monotone" dataKey="ikm" name="IKM" stroke="#6366f1" strokeWidth={2} fill="url(#ikmAreaGrad)" dot={{ fill: "#6366f1", r: 3 }} />
+                        </AreaChart>
+                      </ResponsiveContainer>
+                    </div>
+                  </CardContent>
+                </Card>
+              </div>
+
+              <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
+                {/* Recent Respondents Table */}
+                <Card className="border-0 shadow-md overflow-hidden">
+                  <div className="h-1 bg-gradient-to-r from-blue-500 via-sky-400 to-cyan-400" />
+                  <CardHeader className="pb-3">
+                    <CardTitle className="flex items-center gap-2 text-base">
+                      <div className="w-8 h-8 rounded-lg bg-blue-100 dark:bg-blue-950 flex items-center justify-center">
+                        <Users className="w-4 h-4 text-blue-500" />
+                      </div>
+                      Responden Terbaru
+                    </CardTitle>
+                    <CardDescription>5 responden terakhir &middot; {selectedYear}</CardDescription>
+                  </CardHeader>
+                  <CardContent className="p-0">
+                    {(ikmData.recent?.length || 0) === 0 ? (
+                      <p className="text-sm text-muted-foreground px-4 py-6 text-center">Belum ada data responden</p>
+                    ) : (
+                      <div className="overflow-x-auto">
+                        <table className="w-full text-sm">
+                          <thead>
+                            <tr className="border-b bg-muted/30">
+                              <th className="px-4 py-2 text-left font-medium text-muted-foreground text-xs">Responden</th>
+                              <th className="px-4 py-2 text-center font-medium text-muted-foreground text-xs">Usia</th>
+                              <th className="px-4 py-2 text-center font-medium text-muted-foreground text-xs">Kelamin</th>
+                              <th className="px-4 py-2 text-center font-medium text-muted-foreground text-xs">Pendidikan</th>
+                              <th className="px-4 py-2 text-right font-medium text-muted-foreground text-xs">Nilai IKM</th>
+                            </tr>
+                          </thead>
+                          <tbody>
+                            {ikmData.recent.map((r: any, i: number) => (
+                              <tr key={r.id} className={`border-b last:border-0 ${i % 2 === 0 ? "" : "bg-muted/10"}`}>
+                                <td className="px-4 py-2.5">
+                                  <div className="font-medium text-xs">{r.respondentName}</div>
+                                  <div className="text-xs text-muted-foreground">{r.occupation}</div>
+                                </td>
+                                <td className="px-4 py-2.5 text-center text-xs">{r.age}</td>
+                                <td className="px-4 py-2.5 text-center text-xs">{r.gender}</td>
+                                <td className="px-4 py-2.5 text-center text-xs">{r.education}</td>
+                                <td className="px-4 py-2.5 text-right">
+                                  <Badge className="text-xs font-bold bg-indigo-100 text-indigo-700 border-indigo-200">
+                                    {r.ikm}%
+                                  </Badge>
+                                </td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+
+                {/* Kotak Saran */}
+                <Card className="border-0 shadow-md overflow-hidden">
+                  <div className="h-1 bg-gradient-to-r from-amber-500 via-orange-400 to-yellow-400" />
+                  <CardHeader className="pb-3">
+                    <CardTitle className="flex items-center gap-2 text-base">
+                      <div className="w-8 h-8 rounded-lg bg-amber-100 dark:bg-amber-950 flex items-center justify-center">
+                        <ClipboardList className="w-4 h-4 text-amber-500" />
+                      </div>
+                      Kotak Saran
+                    </CardTitle>
+                    <CardDescription>
+                      Total: {ikmData.suggestions?.total || 0} pesan &middot; 5 terbaru ditampilkan
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    {(ikmData.suggestions?.recent?.length || 0) === 0 ? (
+                      <div className="flex flex-col items-center justify-center py-8 text-muted-foreground gap-2">
+                        <ClipboardList className="w-8 h-8 opacity-30" />
+                        <p className="text-sm">Belum ada saran masuk</p>
+                      </div>
+                    ) : (
+                      <div className="flex flex-col gap-3">
+                        {ikmData.suggestions.recent.map((s: any) => (
+                          <div key={s.id} className="rounded-lg bg-muted/30 border px-3 py-2.5 flex flex-col gap-1">
+                            <div className="flex items-center justify-between gap-2">
+                              <span className="text-xs font-medium">{s.name || "Anonim"}</span>
+                              <span className="text-[10px] text-muted-foreground">
+                                {s.createdAt ? format(new Date(s.createdAt), "d MMM yyyy", { locale: id }) : ""}
+                              </span>
+                            </div>
+                            <p className="text-xs text-muted-foreground line-clamp-2">{s.message}</p>
+                            {s.email && <span className="text-[10px] text-primary/60">{s.email}</span>}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              </div>
+            </>
+          ) : (
+            <Card>
+              <CardContent className="pt-6 text-center text-muted-foreground">Gagal memuat data Survei IKM</CardContent>
+            </Card>
+          )}
         </TabsContent>
       </Tabs>
     </div>
