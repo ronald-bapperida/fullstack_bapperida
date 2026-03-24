@@ -37,50 +37,84 @@ export async function sendMail(opts: {
 
 // ─── Template helpers ──────────────────────────────────────────────────────────
 
-function wrapHtml(title: string, body: string) {
+const GMAP_URL = "https://maps.google.com/?q=Jl.+Diponegoro+No.60+Panarung+Palangka+Raya+Kalimantan+Tengah";
+const BAPPERIDA_ADDRESS = "Jl. Diponegoro No.60, Panarung, Kec. Pahandut, Kota Palangka Raya, Kalimantan Tengah 73112";
+
+function wrapHtml(title: string, body: string, accentColor = "#1e3a5f") {
   return `<!DOCTYPE html>
 <html lang="id">
 <head>
   <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <style>
-    body { font-family: Arial, sans-serif; background: #f4f4f4; margin: 0; padding: 0; }
-    .container { max-width: 600px; margin: 32px auto; background: #fff; border-radius: 8px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.08); }
-    .header { background: #1e3a5f; color: #fff; padding: 24px 32px; }
-    .header h1 { margin: 0; font-size: 18px; }
-    .header p { margin: 4px 0 0; font-size: 12px; opacity: 0.8; }
-    .body { padding: 24px 32px; color: #333; font-size: 14px; line-height: 1.6; }
-    .body h2 { color: #1e3a5f; font-size: 16px; margin: 0 0 12px; }
-    .info-table { width: 100%; border-collapse: collapse; margin: 12px 0; }
-    .info-table td { padding: 6px 8px; border-bottom: 1px solid #eee; vertical-align: top; }
-    .info-table td:first-child { color: #666; width: 40%; font-weight: 600; }
-    .badge { display: inline-block; padding: 4px 10px; border-radius: 4px; font-weight: 700; font-size: 12px; }
-    .badge-pending { background: #fef9c3; color: #713f12; }
-    .badge-approved { background: #dcfce7; color: #166534; }
-    .badge-rejected { background: #fee2e2; color: #991b1b; }
-    .badge-review { background: #dbeafe; color: #1e40af; }
-    .token-box { background: #f0f4ff; border: 1px solid #c7d7ff; border-radius: 6px; padding: 12px 16px; margin: 16px 0; font-size: 20px; font-weight: 700; letter-spacing: 2px; color: #1e3a5f; text-align: center; font-family: monospace; }
-    .footer { background: #f9fafb; padding: 16px 32px; font-size: 11px; color: #888; text-align: center; border-top: 1px solid #eee; }
-    .btn { display: inline-block; padding: 10px 20px; background: #1e3a5f; color: #fff; border-radius: 5px; text-decoration: none; font-weight: 600; font-size: 13px; margin-top: 12px; }
-    .divider { border: none; border-top: 1px solid #eee; margin: 20px 0; }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Arial, sans-serif; background: #f0f2f5; color: #333; }
+    .wrap { max-width: 620px; margin: 28px auto; background: #fff; border-radius: 10px; overflow: hidden; box-shadow: 0 4px 16px rgba(0,0,0,0.10); }
+    .header { background: linear-gradient(135deg, ${accentColor} 0%, #2a5298 100%); color: #fff; padding: 28px 32px 20px; }
+    .header-top { display: flex; align-items: center; gap: 14px; margin-bottom: 8px; }
+    .logo-badge { width: 48px; height: 48px; background: rgba(255,255,255,0.18); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 24px; flex-shrink: 0; }
+    .org-name { font-size: 17px; font-weight: 700; letter-spacing: 0.3px; }
+    .org-sub { font-size: 11px; opacity: 0.80; margin-top: 2px; }
+    .header h2 { font-size: 14px; font-weight: 400; opacity: 0.85; border-top: 1px solid rgba(255,255,255,0.25); padding-top: 10px; margin-top: 10px; }
+    .body { padding: 28px 32px; font-size: 14px; line-height: 1.7; color: #374151; }
+    .body h3 { color: ${accentColor}; font-size: 16px; margin-bottom: 14px; }
+    .info-table { width: 100%; border-collapse: collapse; margin: 16px 0; border-radius: 6px; overflow: hidden; border: 1px solid #e5e7eb; }
+    .info-table td { padding: 9px 12px; border-bottom: 1px solid #f3f4f6; vertical-align: top; }
+    .info-table tr:last-child td { border-bottom: none; }
+    .info-table td:first-child { color: #6b7280; font-size: 12px; font-weight: 600; width: 38%; background: #f9fafb; text-transform: uppercase; letter-spacing: 0.3px; }
+    .status-pill { display: inline-block; padding: 5px 14px; border-radius: 20px; font-weight: 700; font-size: 13px; }
+    .token-box { background: #eff6ff; border: 2px solid #bfdbfe; border-radius: 8px; padding: 14px 20px; margin: 18px 0; font-size: 22px; font-weight: 800; letter-spacing: 3px; color: #1e40af; text-align: center; font-family: 'Courier New', monospace; }
+    .privacy-box { background: #fff7ed; border-left: 4px solid #f59e0b; border-radius: 0 6px 6px 0; padding: 12px 16px; margin: 20px 0; font-size: 12.5px; color: #78350f; line-height: 1.6; }
+    .privacy-box strong { color: #92400e; }
+    .address-box { background: #f0fdf4; border: 1px solid #bbf7d0; border-radius: 6px; padding: 12px 16px; margin: 12px 0; font-size: 12.5px; color: #166534; }
+    .address-box a { color: #16a34a; font-weight: 600; text-decoration: none; }
+    .address-box a:hover { text-decoration: underline; }
+    .footer { background: #f9fafb; padding: 18px 32px; font-size: 11px; color: #9ca3af; text-align: center; border-top: 1px solid #e5e7eb; }
+    .footer a { color: #6b7280; text-decoration: none; }
+    .divider { border: none; border-top: 1px solid #e5e7eb; margin: 20px 0; }
+    .note-box { background: #f8fafc; border: 1px solid #e2e8f0; border-radius: 6px; padding: 12px 16px; font-style: italic; color: #64748b; font-size: 13px; margin: 12px 0; }
   </style>
 </head>
 <body>
-  <div class="container">
+  <div class="wrap">
     <div class="header">
-      <h1>BAPPERIDA Kalimantan Tengah</h1>
-      <p>Badan Perencanaan Pembangunan, Riset dan Inovasi Daerah</p>
+      <div class="header-top">
+        <div class="logo-badge">🏛️</div>
+        <div>
+          <div class="org-name">BAPPERIDA Kalimantan Tengah</div>
+          <div class="org-sub">Badan Perencanaan Pembangunan, Riset dan Inovasi Daerah</div>
+        </div>
+      </div>
+      <h2>${title}</h2>
     </div>
     <div class="body">
-      <h2>${title}</h2>
       ${body}
     </div>
     <div class="footer">
-      Email ini dikirim secara otomatis. Jangan membalas email ini.<br/>
-      &copy; ${new Date().getFullYear()} BAPPERIDA Kalimantan Tengah
+      Email ini dikirim otomatis oleh sistem BAPPERIDA Kalimantan Tengah &mdash; jangan membalas email ini.<br/>
+      &copy; ${new Date().getFullYear()} BAPPERIDA Kalimantan Tengah &bull; <a href="${GMAP_URL}" target="_blank">Lihat Lokasi</a>
     </div>
   </div>
 </body>
 </html>`;
+}
+
+function privacyNotice() {
+  return `
+    <div class="privacy-box">
+      <strong>🔒 Perhatian Kerahasiaan Data</strong><br/>
+      Mohon untuk tidak memberikan data atau informasi pribadi Anda kepada pihak lain.
+      BAPPERIDA tidak pernah meminta data sensitif melalui email atau telepon di luar prosedur resmi.
+    </div>`;
+}
+
+function addressBlock() {
+  return `
+    <div class="address-box">
+      📍 <strong>Kontak &amp; Alamat BAPPERIDA:</strong><br/>
+      ${BAPPERIDA_ADDRESS}<br/>
+      <a href="${GMAP_URL}" target="_blank">📌 Buka di Google Maps</a>
+    </div>`;
 }
 
 // ─── Izin Penelitian: Konfirmasi pengajuan ─────────────────────────────────────
@@ -92,108 +126,166 @@ export async function sendPermitSubmittedEmail(opts: {
   researchTitle: string;
 }) {
   const body = `
+    <h3>Permohonan Izin Penelitian Diterima</h3>
     <p>Yth. <strong>${opts.fullName}</strong>,</p>
-    <p>Terima kasih telah mengajukan permohonan Izin Penelitian. Permohonan Anda telah kami terima dan sedang dalam proses peninjauan.</p>
+    <p>Terima kasih telah mengajukan permohonan Izin Penelitian kepada BAPPERIDA Kalimantan Tengah. Permohonan Anda telah kami terima dan sedang dalam proses peninjauan.</p>
     <table class="info-table">
       <tr><td>Nomor Permohonan</td><td><strong>${opts.requestNumber}</strong></td></tr>
       <tr><td>Nama Pemohon</td><td>${opts.fullName}</td></tr>
       <tr><td>Asal Institusi</td><td>${opts.institution}</td></tr>
       <tr><td>Judul Penelitian</td><td>${opts.researchTitle}</td></tr>
-      <tr><td>Status Awal</td><td><span class="badge badge-pending">Diajukan</span></td></tr>
+      <tr><td>Status</td><td><span class="status-pill" style="background:#fef9c3;color:#713f12;">📋 Diajukan</span></td></tr>
     </table>
-    <p>Anda dapat memantau status permohonan melalui aplikasi BAPPERIDA dengan menggunakan nomor permohonan di atas.</p>
-    <p>Kami akan mengirimkan notifikasi email ketika status permohonan Anda berubah.</p>
-    <hr class="divider"/>
-    <p style="color:#888;font-size:12px;">Jika Anda memiliki pertanyaan, silakan hubungi kantor BAPPERIDA Kalimantan Tengah.</p>
+    <p>Anda dapat memantau status permohonan melalui aplikasi BAPPERIDA menggunakan <strong>Nomor Permohonan</strong> di atas. Kami akan mengirimkan notifikasi email ketika status permohonan Anda berubah.</p>
+    ${privacyNotice()}
+    ${addressBlock()}
   `;
   return sendMail({
     to: opts.to,
-    subject: `[BAPPERIDA] Permohonan Izin Penelitian Diterima - ${opts.requestNumber}`,
-    html: wrapHtml("Permohonan Izin Penelitian Diterima", body),
+    subject: `[BAPPERIDA] Permohonan Izin Penelitian Diterima — ${opts.requestNumber}`,
+    html: wrapHtml("Konfirmasi Pengajuan Izin Penelitian", body),
   });
 }
 
-// ─── Izin Penelitian: Status berubah (generic) ────────────────────────────────
+// ─── Izin Penelitian: Status berubah ─────────────────────────────────────────
 export async function sendPermitStatusEmail(opts: {
   to: string;
   fullName: string;
   requestNumber: string;
   status: string;
   note?: string;
+  pdfAttachment?: Buffer;
+  pdfFileName?: string;
 }) {
-  const statusLabel: Record<string, string> = {
-    in_review: "Sedang Ditinjau",
-    revision_requested: "Perlu Revisi",
-    approved: "Disetujui",
-    generated_letter: "Surat Dibuat",
-    sent: "Terkirim",
-    rejected: "Ditolak",
+  const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; emoji: string; message: string }> = {
+    in_review: {
+      label: "Sedang Dalam Review",
+      color: "#1e40af", bg: "#dbeafe", emoji: "🔍",
+      message: "Permohonan Izin Penelitian Anda sedang dalam proses peninjauan oleh tim BAPPERIDA. Kami akan segera memproses permohonan Anda.",
+    },
+    revision_requested: {
+      label: "Perlu Revisi",
+      color: "#92400e", bg: "#fef3c7", emoji: "✏️",
+      message: "Permohonan Anda memerlukan perbaikan. Mohon perbaiki dokumen sesuai catatan di bawah dan ajukan kembali.",
+    },
+    approved: {
+      label: "Disetujui",
+      color: "#065f46", bg: "#d1fae5", emoji: "✅",
+      message: "Selamat! Permohonan Izin Penelitian Anda telah disetujui oleh BAPPERIDA Kalimantan Tengah.",
+    },
+    generated_letter: {
+      label: "Surat Izin Dibuat",
+      color: "#065f46", bg: "#d1fae5", emoji: "📄",
+      message: "Surat Izin Penelitian Anda telah diterbitkan. Terlampir file PDF Surat Izin Penelitian resmi dari BAPPERIDA Kalimantan Tengah.",
+    },
+    sent: {
+      label: "Surat Terkirim",
+      color: "#1e3a8a", bg: "#dbeafe", emoji: "📬",
+      message: "Surat Izin Penelitian Anda telah dikirimkan. Harap simpan surat izin ini sebagai bukti persetujuan.",
+    },
+    rejected: {
+      label: "Ditolak",
+      color: "#991b1b", bg: "#fee2e2", emoji: "❌",
+      message: "Mohon maaf, permohonan Izin Penelitian Anda tidak dapat kami setujui saat ini. Silakan hubungi kantor BAPPERIDA untuk informasi lebih lanjut.",
+    },
   };
-  const statusClass: Record<string, string> = {
-    approved: "badge-approved",
-    rejected: "badge-rejected",
-    in_review: "badge-review",
-    generated_letter: "badge-approved",
-    sent: "badge-approved",
+
+  const cfg = STATUS_CONFIG[opts.status] || {
+    label: opts.status, color: "#374151", bg: "#f3f4f6", emoji: "ℹ️",
+    message: "Status permohonan Anda telah diperbarui.",
   };
-  const label = statusLabel[opts.status] || opts.status;
-  const cls = statusClass[opts.status] || "badge-pending";
+
+  const accentColor = opts.status === "rejected" ? "#991b1b"
+    : opts.status === "approved" || opts.status === "generated_letter" || opts.status === "sent" ? "#065f46"
+    : "#1e3a5f";
 
   const body = `
+    <h3>${cfg.emoji} Status Permohonan: ${cfg.label}</h3>
     <p>Yth. <strong>${opts.fullName}</strong>,</p>
-    <p>Terdapat pembaruan status untuk permohonan Izin Penelitian Anda:</p>
+    <p>${cfg.message}</p>
     <table class="info-table">
       <tr><td>Nomor Permohonan</td><td><strong>${opts.requestNumber}</strong></td></tr>
-      <tr><td>Status Terbaru</td><td><span class="badge ${cls}">${label}</span></td></tr>
-      ${opts.note ? `<tr><td>Catatan</td><td>${opts.note}</td></tr>` : ""}
+      <tr><td>Status Terbaru</td>
+        <td><span class="status-pill" style="background:${cfg.bg};color:${cfg.color};">${cfg.emoji} ${cfg.label}</span></td>
+      </tr>
+      ${opts.note ? `<tr><td>Catatan</td><td><em>${opts.note}</em></td></tr>` : ""}
     </table>
-    ${opts.status === "revision_requested" ? `<p><strong>Tindakan diperlukan:</strong> Silakan perbaiki dokumen Anda sesuai catatan di atas dan ajukan kembali.</p>` : ""}
-    ${opts.status === "rejected" ? `<p>Mohon maaf, permohonan Anda tidak dapat disetujui. Silakan hubungi kantor BAPPERIDA untuk informasi lebih lanjut.</p>` : ""}
-    <hr class="divider"/>
-    <p style="color:#888;font-size:12px;">Jika Anda memiliki pertanyaan, silakan hubungi kantor BAPPERIDA Kalimantan Tengah.</p>
+    ${opts.pdfAttachment ? `<p>📎 <strong>Surat Izin Penelitian (PDF)</strong> terlampir bersama email ini. Harap simpan sebagai bukti resmi.</p>` : ""}
+    ${opts.status === "revision_requested" ? `
+      <div class="note-box">Tindakan diperlukan: Perbaiki dokumen sesuai catatan di atas, lalu unggah kembali melalui aplikasi BAPPERIDA.</div>` : ""}
+    ${privacyNotice()}
+    ${addressBlock()}
   `;
+
+  const attachments: MailAttachment[] = [];
+  if (opts.pdfAttachment && opts.pdfFileName) {
+    attachments.push({
+      filename: opts.pdfFileName,
+      content: opts.pdfAttachment,
+      contentType: "application/pdf",
+    });
+  }
+
   return sendMail({
     to: opts.to,
-    subject: `[BAPPERIDA] Update Status Izin Penelitian ${opts.requestNumber} — ${label}`,
-    html: wrapHtml(`Status Permohonan: ${label}`, body),
+    subject: `[BAPPERIDA] Status Izin Penelitian ${opts.requestNumber} — ${cfg.label}`,
+    html: wrapHtml(`Status Permohonan: ${cfg.label}`, body, accentColor),
+    attachments,
   });
 }
 
-// ─── Izin Penelitian: Kirim surat (approved) ──────────────────────────────────
+// ─── Izin Penelitian: Kirim surat via email (status → sent) ───────────────────
 export async function sendPermitLetterEmail(opts: {
   to: string;
   fullName: string;
   requestNumber: string;
   filePath: string;
   fileName: string;
+  pdfBuffer?: Buffer;
+  pdfName?: string;
 }) {
   const body = `
+    <h3>📄 Surat Izin Penelitian Anda Telah Terbit</h3>
     <p>Yth. <strong>${opts.fullName}</strong>,</p>
-    <p>Dengan hormat, bersama email ini kami sampaikan Surat Izin Penelitian Anda telah <strong>disetujui</strong>. Terlampir file surat izin penelitian resmi dari BAPPERIDA Kalimantan Tengah.</p>
+    <p>Dengan hormat, bersama email ini kami sampaikan bahwa Surat Izin Penelitian Anda telah <strong>diterbitkan dan dikirimkan</strong> secara resmi oleh BAPPERIDA Kalimantan Tengah.</p>
     <table class="info-table">
       <tr><td>Nomor Permohonan</td><td><strong>${opts.requestNumber}</strong></td></tr>
       <tr><td>Nama Pemohon</td><td>${opts.fullName}</td></tr>
-      <tr><td>Status</td><td><span class="badge badge-approved">Disetujui</span></td></tr>
+      <tr><td>Status</td><td><span class="status-pill" style="background:#d1fae5;color:#065f46;">✅ Surat Terkirim</span></td></tr>
     </table>
-    <p>Harap simpan surat izin ini dengan baik sebagai bukti persetujuan penelitian Anda di wilayah Kalimantan Tengah.</p>
-    <hr class="divider"/>
-    <p style="color:#888;font-size:12px;">Jika Anda memiliki pertanyaan, silakan hubungi kantor BAPPERIDA Kalimantan Tengah.</p>
+    <p>📎 Terlampir file Surat Izin Penelitian resmi. Harap simpan surat ini dengan baik sebagai bukti persetujuan penelitian di wilayah Kalimantan Tengah.</p>
+    ${privacyNotice()}
+    ${addressBlock()}
   `;
+
+  const attachments: MailAttachment[] = [];
+
+  // Prioritas: PDF terlebih dahulu, fallback ke DOCX
+  if (opts.pdfBuffer && opts.pdfName) {
+    attachments.push({
+      filename: opts.pdfName,
+      content: opts.pdfBuffer,
+      contentType: "application/pdf",
+    });
+  } else if (fs.existsSync(opts.filePath)) {
+    attachments.push({
+      filename: opts.fileName,
+      content: fs.readFileSync(opts.filePath),
+      contentType: opts.fileName.endsWith(".pdf")
+        ? "application/pdf"
+        : "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    });
+  }
+
   return sendMail({
     to: opts.to,
-    subject: `[BAPPERIDA] Surat Izin Penelitian - ${opts.requestNumber}`,
-    html: wrapHtml("Surat Izin Penelitian Disetujui", body),
-    attachments: [
-      {
-        filename: opts.fileName,
-        content: fs.readFileSync(opts.filePath),
-        contentType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-      },
-    ],
+    subject: `[BAPPERIDA] Surat Izin Penelitian Resmi — ${opts.requestNumber}`,
+    html: wrapHtml("Surat Izin Penelitian Resmi", body, "#065f46"),
+    attachments,
   });
 }
 
-// ─── PPID Permohonan Informasi: Konfirmasi + Token ────────────────────────────
+// ─── PPID Permohonan Informasi: Konfirmasi + Request Code ─────────────────────
 export async function sendPpidInfoRequestConfirmation(opts: {
   to: string;
   fullName: string;
@@ -201,27 +293,28 @@ export async function sendPpidInfoRequestConfirmation(opts: {
   informationDetail: string;
 }) {
   const body = `
+    <h3>📋 Permohonan Informasi Diterima</h3>
     <p>Yth. <strong>${opts.fullName}</strong>,</p>
-    <p>Terima kasih telah mengajukan <strong>Permohonan Informasi</strong> kepada PPID BAPPERIDA Kalimantan Tengah. Permohonan Anda telah kami terima.</p>
-    <p>Berikut adalah <strong>Token Pelacakan</strong> permohonan Anda. Simpan token ini untuk memeriksa status permohonan:</p>
+    <p>Terima kasih telah mengajukan <strong>Permohonan Informasi</strong> kepada PPID BAPPERIDA Kalimantan Tengah. Permohonan Anda telah kami terima dan sedang diproses.</p>
+    <p>Berikut adalah <strong>Kode Permohonan</strong> Anda. Simpan kode ini untuk melacak status atau mengajukan keberatan jika diperlukan:</p>
     <div class="token-box">${opts.token}</div>
     <table class="info-table">
       <tr><td>Nama</td><td>${opts.fullName}</td></tr>
       <tr><td>Informasi yang Diminta</td><td>${opts.informationDetail}</td></tr>
-      <tr><td>Status</td><td><span class="badge badge-pending">Menunggu</span></td></tr>
+      <tr><td>Status</td><td><span class="status-pill" style="background:#fef9c3;color:#713f12;">⏳ Menunggu</span></td></tr>
     </table>
-    <p>Gunakan token di atas untuk memeriksa status permohonan Anda melalui aplikasi BAPPERIDA.</p>
-    <hr class="divider"/>
-    <p style="color:#888;font-size:12px;">Kami akan merespons permohonan Anda dalam waktu 10 hari kerja sesuai ketentuan yang berlaku.</p>
+    <p>Gunakan <strong>Kode Permohonan</strong> di atas untuk memeriksa status permohonan atau mengajukan keberatan melalui aplikasi BAPPERIDA.</p>
+    ${privacyNotice()}
+    ${addressBlock()}
   `;
   return sendMail({
     to: opts.to,
-    subject: `[PPID BAPPERIDA] Konfirmasi Permohonan Informasi - Token: ${opts.token}`,
-    html: wrapHtml("Permohonan Informasi Diterima", body),
+    subject: `[PPID BAPPERIDA] Konfirmasi Permohonan Informasi — Kode: ${opts.token}`,
+    html: wrapHtml("Konfirmasi Permohonan Informasi PPID", body),
   });
 }
 
-// ─── PPID Permohonan Informasi: Balasan Admin (dengan/tanpa file) ─────────────
+// ─── PPID Permohonan Informasi: Balasan Admin ─────────────────────────────────
 export async function sendPpidInfoRequestReply(opts: {
   to: string;
   fullName: string;
@@ -231,31 +324,44 @@ export async function sendPpidInfoRequestReply(opts: {
   attachmentPath?: string;
   attachmentName?: string;
 }) {
-  const statusLabel: Record<string, string> = {
-    resolved: "Selesai / Informasi Tersedia",
-    rejected: "Ditolak",
-    in_review: "Sedang Diproses",
+  const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; emoji: string; message: string }> = {
+    resolved: {
+      label: "Selesai / Informasi Tersedia",
+      color: "#065f46", bg: "#d1fae5", emoji: "✅",
+      message: "Permohonan informasi Anda telah selesai diproses. Informasi yang diminta tersedia dan terlampir atau dapat diambil sesuai metode yang dipilih.",
+    },
+    rejected: {
+      label: "Ditolak",
+      color: "#991b1b", bg: "#fee2e2", emoji: "❌",
+      message: "Mohon maaf, permohonan informasi Anda tidak dapat dipenuhi. Jika Anda tidak setuju, Anda dapat mengajukan Keberatan menggunakan Kode Permohonan Anda.",
+    },
+    in_review: {
+      label: "Sedang Diproses",
+      color: "#1e40af", bg: "#dbeafe", emoji: "🔍",
+      message: "Permohonan informasi Anda sedang dalam proses peninjauan oleh tim PPID BAPPERIDA.",
+    },
   };
-  const statusClass: Record<string, string> = {
-    resolved: "badge-approved",
-    rejected: "badge-rejected",
-    in_review: "badge-review",
+
+  const cfg = STATUS_CONFIG[opts.status] || {
+    label: opts.status, color: "#374151", bg: "#f3f4f6", emoji: "ℹ️",
+    message: "Status permohonan informasi Anda telah diperbarui.",
   };
-  const label = statusLabel[opts.status] || opts.status;
-  const cls = statusClass[opts.status] || "badge-pending";
 
   const body = `
+    <h3>${cfg.emoji} Tanggapan Permohonan Informasi PPID</h3>
     <p>Yth. <strong>${opts.fullName}</strong>,</p>
-    <p>Terdapat pembaruan untuk <strong>Permohonan Informasi</strong> Anda:</p>
-    <div class="token-box" style="font-size:14px;">${opts.token}</div>
+    <p>${cfg.message}</p>
+    <p><strong>Kode Permohonan Anda:</strong></p>
+    <div class="token-box" style="font-size:16px;">${opts.token}</div>
     <table class="info-table">
-      <tr><td>Status</td><td><span class="badge ${cls}">${label}</span></td></tr>
-      ${opts.reviewNote ? `<tr><td>Tanggapan Admin</td><td>${opts.reviewNote}</td></tr>` : ""}
+      <tr><td>Status</td><td><span class="status-pill" style="background:${cfg.bg};color:${cfg.color};">${cfg.emoji} ${cfg.label}</span></td></tr>
+      ${opts.reviewNote ? `<tr><td>Tanggapan</td><td>${opts.reviewNote}</td></tr>` : ""}
     </table>
-    ${opts.attachmentPath ? `<p>Terlampir file informasi yang Anda minta.</p>` : ""}
-    ${opts.status === "rejected" ? `<p>Jika Anda tidak setuju dengan keputusan ini, Anda dapat mengajukan <strong>Keberatan</strong> melalui aplikasi BAPPERIDA dengan mencantumkan nomor token Anda.</p>` : ""}
-    <hr class="divider"/>
-    <p style="color:#888;font-size:12px;">Jika Anda memiliki pertanyaan, silakan hubungi kantor BAPPERIDA Kalimantan Tengah.</p>
+    ${opts.attachmentPath ? `<p>📎 File informasi yang Anda minta terlampir bersama email ini.</p>` : ""}
+    ${opts.status === "rejected" ? `
+      <div class="note-box">Jika Anda tidak setuju dengan keputusan ini, Anda dapat mengajukan <strong>Keberatan</strong> melalui aplikasi BAPPERIDA dengan mencantumkan Kode Permohonan Anda.</div>` : ""}
+    ${privacyNotice()}
+    ${addressBlock()}
   `;
 
   const attachments: MailAttachment[] = [];
@@ -268,8 +374,8 @@ export async function sendPpidInfoRequestReply(opts: {
 
   return sendMail({
     to: opts.to,
-    subject: `[PPID BAPPERIDA] Tanggapan Permohonan Informasi — ${label}`,
-    html: wrapHtml(`Status Permohonan: ${label}`, body),
+    subject: `[PPID BAPPERIDA] Tanggapan Permohonan Informasi — ${cfg.label}`,
+    html: wrapHtml(`Tanggapan Permohonan: ${cfg.label}`, body),
     attachments,
   });
 }

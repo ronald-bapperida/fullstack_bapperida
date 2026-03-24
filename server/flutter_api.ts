@@ -1314,6 +1314,43 @@ export function registerFlutterApiRoutes(app: express.Express) {
   );
 
   /**
+   * @route   GET /api/v1/ppid/information-requests/by-token/:token
+   * @desc    Lookup permohonan informasi by request code/token (for keberatan pre-fill)
+   * @note    MUST be registered BEFORE /:id route to avoid conflict
+   * @access  Public
+   */
+  flutterRouter.get("/v1/ppid/information-requests/by-token/:token", async (req: Request, res: Response) => {
+    try {
+      const item = await db.getPpidInfoRequestByToken(req.params.token);
+      if (!item) return res.status(404).json({ success: false, message: "Kode permohonan tidak ditemukan" });
+      // Return fields needed for keberatan pre-fill + status tracking
+      return res.json({
+        success: true,
+        data: {
+          id:                item.id,
+          token:             item.token,
+          fullName:          item.fullName,
+          nik:               item.nik,
+          address:           item.address,
+          phone:             item.phone,
+          email:             item.email,
+          occupation:        item.occupation,
+          ktpFileUrl:        item.ktpFileUrl,
+          informationDetail: item.informationDetail,
+          requestPurpose:    item.requestPurpose,
+          retrievalMethod:   item.retrievalMethod,
+          status:            item.status,
+          reviewNote:        item.reviewNote,
+          responseFileUrl:   item.responseFileUrl,
+          createdAt:         item.createdAt,
+        },
+      });
+    } catch (error: any) {
+      return res.status(500).json({ success: false, message: error.message });
+    }
+  });
+
+  /**
    * @route   GET /api/flutter/ppid/information-requests/:id
    * @desc    Get detail permohonan informasi by ID (public – untuk cek status)
    * @access  Public
@@ -1322,17 +1359,6 @@ export function registerFlutterApiRoutes(app: express.Express) {
     try {
       const item = await db.getPpidInfoRequest(req.params.id);
       if (!item) return res.status(404).json({ success: false, message: "Tidak ditemukan" });
-      return res.json({ success: true, data: item });
-    } catch (error: any) {
-      return res.status(500).json({ success: false, message: error.message });
-    }
-  });
-
-  // Cek status via token
-  flutterRouter.get("/v1/ppid/information-requests/by-token/:token", async (req: Request, res: Response) => {
-    try {
-      const item = await db.getPpidInfoRequestByToken(req.params.token);
-      if (!item) return res.status(404).json({ success: false, message: "Token tidak ditemukan" });
       return res.json({ success: true, data: item });
     } catch (error: any) {
       return res.status(500).json({ success: false, message: error.message });

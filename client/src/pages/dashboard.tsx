@@ -5,6 +5,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
+import { Button } from "@/components/ui/button";
 import {
   Newspaper, ClipboardList, BarChart2, Image, FileText, Clock,
   CheckCircle, Trash2, TrendingUp, Download, MapPin, Users, PieChart,
@@ -382,6 +383,94 @@ export default function Dashboard() {
           <CardContent className="pt-6 text-center text-muted-foreground">{t("failedStats")}</CardContent>
         </Card>
       )}
+
+      {/* ── Export Data ──────────────────────────────────────── */}
+      <div className="flex items-center gap-2 flex-wrap bg-muted/40 rounded-xl px-4 py-3 border">
+        <div className="flex items-center gap-2 text-sm text-muted-foreground mr-2">
+          <Download className="w-4 h-4" />
+          <span className="font-semibold">Export Data:</span>
+        </div>
+        {isBPP && (
+          <>
+            <Button
+              size="sm" variant="outline"
+              className="gap-1.5 text-xs h-8"
+              onClick={() => {
+                const a = document.createElement("a");
+                a.href = "/api/admin/export/news";
+                a.click();
+              }}
+              data-testid="button-export-news"
+            >
+              <Newspaper className="w-3.5 h-3.5" /> Berita
+            </Button>
+            <Button
+              size="sm" variant="outline"
+              className="gap-1.5 text-xs h-8"
+              onClick={() => {
+                const a = document.createElement("a");
+                a.href = "/api/admin/export/ppid-info-requests";
+                a.click();
+              }}
+              data-testid="button-export-info-requests"
+            >
+              <FileText className="w-3.5 h-3.5" /> Permohonan Informasi
+            </Button>
+            <Button
+              size="sm" variant="outline"
+              className="gap-1.5 text-xs h-8"
+              onClick={() => {
+                const a = document.createElement("a");
+                a.href = "/api/admin/export/ppid-objections";
+                a.click();
+              }}
+              data-testid="button-export-objections"
+            >
+              <ClipboardList className="w-3.5 h-3.5" /> Keberatan PPID
+            </Button>
+            <Button
+              size="sm" variant="outline"
+              className="gap-1.5 text-xs h-8"
+              onClick={() => {
+                const a = document.createElement("a");
+                a.href = "/api/admin/export/surveys";
+                a.click();
+              }}
+              data-testid="button-export-surveys"
+            >
+              <Star className="w-3.5 h-3.5" /> Survei
+            </Button>
+          </>
+        )}
+        {isRIDA && (
+          <>
+            <Button
+              size="sm" variant="outline"
+              className="gap-1.5 text-xs h-8"
+              onClick={() => {
+                const a = document.createElement("a");
+                a.href = "/api/admin/export/permits";
+                a.click();
+              }}
+              data-testid="button-export-permits"
+            >
+              <FileText className="w-3.5 h-3.5" /> Izin Penelitian
+            </Button>
+            <Button
+              size="sm" variant="outline"
+              className="gap-1.5 text-xs h-8"
+              onClick={() => {
+                const a = document.createElement("a");
+                a.href = "/api/admin/export/final-reports";
+                a.click();
+              }}
+              data-testid="button-export-final-reports"
+            >
+              <ClipboardList className="w-3.5 h-3.5" /> Laporan Akhir
+            </Button>
+          </>
+        )}
+      </div>
 
       {/* ── Filter Tahun & Bulan ──────────────────────────────── */}
       <div className="flex items-center gap-3 flex-wrap">
