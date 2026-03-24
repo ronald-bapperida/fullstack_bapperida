@@ -819,7 +819,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // ─── Research Permits ────────────────────────────────────────────────────────
-  const permitUpload = getMulter("permits", 10);
+  const permitUpload = getMulter("permits", 40);
 
   // Public: Submit permit
   app.post("/api/permits", permitUpload.fields([
@@ -979,7 +979,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Multer untuk menerima template DOCX langsung dari frontend
-  const tempTemplateUpload = getMulterDocx("temp-templates");
+  const tempTemplateUpload = getMulterDocx("temp-templates", 5);
 
   app.post(
     "/api/admin/permits/:id/generate-letter-docx",
@@ -1531,7 +1531,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     "/api/admin/letter-templates/upload-docx",
     authMiddleware,
     requireRole("super_admin", "admin_bpp", "admin_rida"),
-    getMulterDocx("letter-templates").single("file"),
+    getMulterDocx("letter-templates", 5).single("file"),
     async (req: any, res) => {
       try {
         if (!req.file) return res.status(400).json({ error: "No file" });
@@ -1726,7 +1726,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // ─── Final Reports ────────────────────────────────────────────────────────────
-  const reportUpload = getMulter("reports", 1);
+  const reportUpload = getMulter("reports", 10);
   app.post("/api/final-reports", reportUpload.single("file"), async (req: any, res) => {
     try {
       const data = { ...req.body };
