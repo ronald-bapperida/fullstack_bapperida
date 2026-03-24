@@ -29,7 +29,7 @@ export const bannerLinkTypeValues = ["external", "page", "news"] as const;
 export const menuLocationValues = ["header", "footer", "mobile"] as const;
 export const menuItemTypeValues = ["route", "url", "page", "news"] as const;
 export const accessLevelValues = ["terbuka", "terbatas", "rahasia"] as const;
-export const genderValues = ["laki_laki", "perempuan"] as const;
+export const genderValues = ["laki-laki", "perempuan"] as const;
 export const citizenshipValues = ["WNI", "WNA"] as const;
 
 // --- mysql enum helpers (column factories) ---
