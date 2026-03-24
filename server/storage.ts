@@ -60,28 +60,29 @@ async function updateAndGet<T>(
 // ─── Request Number Generator ─────────────────────────────────────────────────
 async function generateRequestNumber(): Promise<string> {
   const year = new Date().getFullYear();
+  const MAX_RETRY = 10;
 
-  const seq = await db.transaction(async (tx) => {
-    const [existing] = await tx
-      .select()
-      .from(schema.requestSequences)
-      .where(eq(schema.requestSequences.year, year))
-      .for("update");
+  for (let i = 0; i < MAX_RETRY; i++) {
+    const random = Math.floor(100000 + Math.random() * 900000);
+    const requestNumber = `BAPPERIDA-RID-${year}-${random}`;
 
-    if (existing) {
-      const newSeq = (existing.lastSeq ?? 0) + 1;
-      await tx
-        .update(schema.requestSequences)
-        .set({ lastSeq: newSeq })
-        .where(eq(schema.requestSequences.id, existing.id));
-      return newSeq;
+    const existing = await db
+      .select({ id: schema.researchPermitRequests.id })
+      .from(schema.researchPermitRequests)
+      .where(
+        and(
+          eq(schema.researchPermitRequests.requestNumber, requestNumber),
+          isNull(schema.researchPermitRequests.deletedAt)
+        )
+      )
+      .limit(1);
+
+    if (existing.length === 0) {
+      return requestNumber;
     }
+  }
 
-    await tx.insert(schema.requestSequences).values({ year, lastSeq: 1 });
-    return 1;
-  });
-
-  return `BAPPERIDA-RID-${year}-${String(seq).padStart(6, "0")}`;
+  throw new Error("Failed to generate unique request number");
 }
 
 export interface IStorage {
@@ -715,41 +716,40 @@ export class DatabaseStorage implements IStorage {
   }
 
   async createPermit(data: InsertResearchPermit) {
-    const MAX_RETRY = 5;
+    const requestNumber = await generateRequestNumber();
   
-    for (let attempt = 0; attempt < MAX_RETRY; attempt++) {
-      const requestNumber = await generateRequestNumber();
+    try {
+      const permit = await insertAndGet<ResearchPermit>(
+        schema.researchPermitRequests,
+        schema.researchPermitRequests.id,
+        { ...data, requestNumber }
+      );
   
-      try {
+      await this.addPermitStatusHistory({
+        permitId: permit.id,
+        fromStatus: null,
+        toStatus: "submitted",
+      });
+  
+      return permit;
+  
+    } catch (err: any) {
+      // fallback safety (race condition)
+      if (err?.errno === 1062 || err?.code === "ER_DUP_ENTRY") {
+        // retry sekali lagi saja (rare case)
+        const retryRequestNumber = await generateRequestNumber();
+  
         const permit = await insertAndGet<ResearchPermit>(
           schema.researchPermitRequests,
           schema.researchPermitRequests.id,
-          { ...data, requestNumber }
+          { ...data, requestNumber: retryRequestNumber }
         );
   
-        await this.addPermitStatusHistory({
-          permitId: permit.id,
-          fromStatus: null,
-          toStatus: "submitted",
-        });
-  
         return permit;
-  
-      } catch (err: any) {
-  
-        if (err?.errno === 1062 || err?.code === "ER_DUP_ENTRY") {
-          if (attempt === MAX_RETRY - 1) {
-            throw new Error("Failed to generate unique request number after retries");
-          }
-  
-          continue; 
-        }
-  
-        throw err;
       }
-    }
   
-    throw new Error("Unexpected error creating permit");
+      throw err;
+    }
   }
 
   async updatePermitStatus(id: string, status: string, note?: string, processedBy?: string) {
