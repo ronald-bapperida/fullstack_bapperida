@@ -248,10 +248,10 @@ function GenerateCard({ permit, permitId }: { permit: any; permitId: string }) {
           <div className="flex items-center gap-2 rounded-md bg-green-50 border border-green-200 px-3 py-2.5">
             <CheckCircle className="w-4 h-4 text-green-600 shrink-0" />
             <span className="text-xs text-green-700 font-medium">Surat sudah digenerate:</span>
-            <a href={permit.generatedLetter.fileUrl} target="_blank" rel="noopener noreferrer"
+            {/* <a href={permit.generatedLetter.fileUrl} target="_blank" rel="noopener noreferrer"
               className="text-xs text-primary flex items-center gap-1 hover:underline ml-auto">
               <ExternalLink className="w-3 h-3" /> Buka file tersimpan
-            </a>
+            </a> */}
           </div>
         )}
 

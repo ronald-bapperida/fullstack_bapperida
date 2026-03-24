@@ -15,7 +15,7 @@ declare module "http" {
 }
 
 app.use(cors({
-  origin: "http://localhost:8080",
+  origin: ["http://localhost:8080", "https://izin-penelitian.myst-al.my.id"],
   methods: ["GET","POST","PUT","DELETE","OPTIONS"],
   allowedHeaders: ["Content-Type","Authorization"]
 }));
