@@ -115,6 +115,114 @@ function FileLink({ label, url }: { label: string; url: string | null | undefine
   );
 }
 
+// ─── Admin Letter Fields Card ─────────────────────────────────────────────────
+
+function AdminLetterFieldsCard({ permit, permitId }: { permit: any; permitId: string }) {
+  const { toast } = useToast();
+  const [issuedLetterNumber, setIssuedLetterNumber] = useState(permit.issuedLetterNumber || "");
+  const [issuedLetterDate, setIssuedLetterDate] = useState(
+    permit.issuedLetterDate ? format(new Date(permit.issuedLetterDate), "yyyy-MM-dd") : ""
+  );
+  const [recipientName, setRecipientName] = useState(permit.recipientName || "");
+  const [recipientCity, setRecipientCity] = useState(permit.recipientCity || "");
+  const [researchStartDate, setResearchStartDate] = useState(
+    permit.researchStartDate ? format(new Date(permit.researchStartDate), "yyyy-MM-dd") : ""
+  );
+  const [researchEndDate, setResearchEndDate] = useState(
+    permit.researchEndDate ? format(new Date(permit.researchEndDate), "yyyy-MM-dd") : ""
+  );
+
+  const saveMutation = useMutation({
+    mutationFn: () => apiRequest("PATCH", `/api/admin/permits/${permitId}/detail`, {
+      issuedLetterNumber, issuedLetterDate, recipientName, recipientCity, researchStartDate, researchEndDate,
+    }),
+    onSuccess: () => {
+      toast({ title: "Data surat berhasil disimpan" });
+      queryClient.invalidateQueries({ queryKey: [`/api/admin/permits/${permitId}`] });
+    },
+    onError: (e: any) => toast({ title: "Gagal menyimpan", description: e.message, variant: "destructive" }),
+  });
+
+  return (
+    <Card className="border-amber-200 dark:border-amber-800">
+      <CardHeader className="pb-3">
+        <CardTitle className="text-base flex items-center gap-2">
+          <FileText className="w-4 h-4 text-amber-600" />
+          Data Surat Izin (Diisi Admin)
+        </CardTitle>
+      </CardHeader>
+      <CardContent className="flex flex-col gap-3">
+        <div className="grid grid-cols-2 gap-3">
+          <div className="flex flex-col gap-1.5 col-span-2">
+            <Label className="text-xs">Nomor Surat Izin</Label>
+            <Input
+              value={issuedLetterNumber}
+              onChange={(e) => setIssuedLetterNumber(e.target.value)}
+              placeholder="Contoh: 070/123/BAPPERIDA/2025"
+              data-testid="input-issued-letter-number"
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-xs">Tanggal Surat Izin Ditetapkan</Label>
+            <Input
+              type="date"
+              value={issuedLetterDate}
+              onChange={(e) => setIssuedLetterDate(e.target.value)}
+              data-testid="input-issued-letter-date"
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-xs">Kota/Kabupaten Tujuan</Label>
+            <Input
+              value={recipientCity}
+              onChange={(e) => setRecipientCity(e.target.value)}
+              placeholder="Palangka Raya"
+              data-testid="input-recipient-city"
+            />
+          </div>
+          <div className="flex flex-col gap-1.5 col-span-2">
+            <Label className="text-xs">Tujuan Kepada (Penerima Surat)</Label>
+            <Input
+              value={recipientName}
+              onChange={(e) => setRecipientName(e.target.value)}
+              placeholder="Nama / jabatan penerima surat"
+              data-testid="input-recipient-name"
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-xs">Tanggal Mulai Penelitian</Label>
+            <Input
+              type="date"
+              value={researchStartDate}
+              onChange={(e) => setResearchStartDate(e.target.value)}
+              data-testid="input-research-start-date"
+            />
+          </div>
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-xs">Tanggal Selesai Penelitian</Label>
+            <Input
+              type="date"
+              value={researchEndDate}
+              onChange={(e) => setResearchEndDate(e.target.value)}
+              data-testid="input-research-end-date"
+            />
+          </div>
+        </div>
+        <Button
+          size="sm"
+          onClick={() => saveMutation.mutate()}
+          disabled={saveMutation.isPending}
+          className="self-end"
+          data-testid="button-save-letter-fields"
+        >
+          {saveMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-2" /> : null}
+          Simpan Data Surat
+        </Button>
+      </CardContent>
+    </Card>
+  );
+}
+
 // ─── Generate Card ────────────────────────────────────────────────────────────
 
 function GenerateCard({ permit, permitId }: { permit: any; permitId: string }) {
@@ -618,6 +726,9 @@ export default function PermitDetailPage() {
               )}
             </CardContent>
           </Card>
+
+          {/* Admin Fields: Data Surat Izin */}
+          <AdminLetterFieldsCard permit={permit} permitId={permitId} />
 
           {/* Riwayat Status */}
           <Card>

@@ -52,6 +52,7 @@ interface Template {
   id: string;
   name: string;
   type: string | null;
+  category: string | null;
   content: string;
   placeholders: string | null; // JSON array string: ["<<NAMA>>", "<<NIM>>", ...]
   isActive: boolean;
@@ -131,6 +132,7 @@ function UploadModal({ open, onClose, onSuccess }: UploadModalProps) {
   const { toast } = useToast();
   const fileInputRef = useRef<HTMLInputElement>(null);
   const [name, setName] = useState("");
+  const [category, setCategory] = useState("surat_izin");
   const [file, setFile] = useState<File | null>(null);
   const [isDragging, setIsDragging] = useState(false);
   const [previewPlaceholders, setPreviewPlaceholders] = useState<string[]>([]);
@@ -138,6 +140,7 @@ function UploadModal({ open, onClose, onSuccess }: UploadModalProps) {
 
   const reset = () => {
     setName("");
+    setCategory("surat_izin");
     setFile(null);
     setPreviewPlaceholders([]);
     setParsing(false);
@@ -182,6 +185,7 @@ function UploadModal({ open, onClose, onSuccess }: UploadModalProps) {
       const fd = new FormData();
       fd.append("file", file);
       fd.append("name", name.trim());
+      fd.append("category", category);
       const res = await fetch("/api/admin/letter-templates/upload-docx", {
         method: "POST",
         headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
@@ -215,15 +219,30 @@ function UploadModal({ open, onClose, onSuccess }: UploadModalProps) {
         </DialogHeader>
 
         <div className="flex flex-col gap-4">
-          {/* Name field */}
-          <div className="flex flex-col gap-1.5">
-            <Label htmlFor="tpl-name">Nama Template</Label>
-            <Input
-              id="tpl-name"
-              placeholder="Contoh: Surat Izin Penelitian 2026"
-              value={name}
-              onChange={(e) => setName(e.target.value)}
-            />
+          {/* Name & Category */}
+          <div className="grid grid-cols-2 gap-3">
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="tpl-name">Nama Template</Label>
+              <Input
+                id="tpl-name"
+                placeholder="Contoh: Surat Izin Penelitian 2026"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+              />
+            </div>
+            <div className="flex flex-col gap-1.5">
+              <Label htmlFor="tpl-category">Kategori Surat</Label>
+              <select
+                id="tpl-category"
+                value={category}
+                onChange={(e) => setCategory(e.target.value)}
+                className="flex h-9 w-full rounded-md border border-input bg-transparent px-3 py-1 text-sm shadow-sm transition-colors focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
+                data-testid="select-upload-category"
+              >
+                <option value="surat_izin">Surat Izin</option>
+                <option value="rekomendasi">Surat Rekomendasi</option>
+              </select>
+            </div>
           </div>
 
           {/* Drop zone */}
@@ -595,6 +614,17 @@ export default function LetterTemplatesPage() {
                           className="text-xs shrink-0"
                         >
                           {t.isActive ? "Aktif" : "Nonaktif"}
+                        </Badge>
+                        <Badge
+                          variant="outline"
+                          className={`text-xs shrink-0 ${
+                            t.category === "rekomendasi"
+                              ? "border-purple-300 text-purple-700 bg-purple-50 dark:bg-purple-950/30 dark:text-purple-300"
+                              : "border-blue-300 text-blue-700 bg-blue-50 dark:bg-blue-950/30 dark:text-blue-300"
+                          }`}
+                          data-testid={`badge-category-${t.id}`}
+                        >
+                          {t.category === "rekomendasi" ? "Rekomendasi" : "Surat Izin"}
                         </Badge>
                         {t.type && t.type !== "research_permit" && (
                           <Badge variant="outline" className="text-xs shrink-0">

@@ -3,6 +3,7 @@ import { registerRoutes } from "./routes";
 import { serveStatic } from "./static";
 import { createServer } from "http";
 import { registerFlutterApiRoutes } from "./flutter_api";
+import { runMigrations } from "./migrate";
 import cors from "cors";
 
 const app = express();
@@ -69,6 +70,7 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  await runMigrations();
   await registerRoutes(httpServer, app);
 
   registerFlutterApiRoutes(app);

@@ -315,6 +315,36 @@ export async function sendPpidInfoRequestConfirmation(opts: {
 }
 
 // ─── PPID Permohonan Informasi: Balasan Admin ─────────────────────────────────
+export async function sendKeberatanConfirmation(opts: {
+  to: string;
+  fullName: string;
+  objectionId: string;
+  requestCode?: string;
+}) {
+  const body = `
+    <h3>📨 Keberatan PPID Berhasil Dikirim</h3>
+    <p>Yth. <strong>${opts.fullName}</strong>,</p>
+    <p>Keberatan Anda terhadap permohonan informasi PPID BAPPERIDA Kalimantan Tengah telah berhasil diterima dan sedang dalam proses peninjauan.</p>
+    <table class="info-table">
+      <tr><td>ID Keberatan</td><td>${opts.objectionId}</td></tr>
+      ${opts.requestCode ? `<tr><td>Kode Permohonan Asal</td><td>${opts.requestCode}</td></tr>` : ""}
+      <tr><td>Status</td><td><span class="status-pill" style="background:#dbeafe;color:#1e40af;">🔍 Dalam Peninjauan</span></td></tr>
+    </table>
+    <div class="note-box">
+      Tim PPID akan meninjau keberatan Anda dan memberikan tanggapan dalam waktu yang ditentukan sesuai peraturan perundang-undangan yang berlaku.
+      Harap simpan email ini sebagai bukti pengajuan keberatan Anda.
+    </div>
+    ${privacyNotice()}
+    ${addressBlock()}
+  `;
+
+  return sendMail({
+    to: opts.to,
+    subject: `[PPID BAPPERIDA] Keberatan Anda Telah Diterima`,
+    html: wrapHtml("Konfirmasi Penerimaan Keberatan", body),
+  });
+}
+
 export async function sendPpidInfoRequestReply(opts: {
   to: string;
   fullName: string;

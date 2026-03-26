@@ -8,6 +8,7 @@ import { AppSidebar } from "@/components/app-sidebar";
 import { AuthProvider, useAuth } from "@/contexts/auth";
 import { LanguageProvider, useLang } from "@/contexts/language";
 import { Button } from "@/components/ui/button";
+import { NotificationBell } from "@/components/notification-bell";
 
 import LoginPage from "@/pages/login";
 import Dashboard from "@/pages/dashboard";
@@ -76,6 +77,7 @@ function AdminLayout({ children }: { children: React.ReactNode }) {
             <SidebarTrigger data-testid="button-sidebar-toggle" />
             <div className="flex-1" />
             <span className="text-xs text-muted-foreground hidden sm:block">{t("portal")}</span>
+            <NotificationBell />
             <LangSwitcher />
           </header>
           <main className="flex-1 overflow-y-auto bg-background">

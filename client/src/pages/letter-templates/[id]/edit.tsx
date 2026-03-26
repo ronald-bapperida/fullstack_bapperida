@@ -33,6 +33,7 @@ export default function LetterTemplateEditPage() {
       return {
         name:             t?.name             ?? "",
         type:             t?.type             ?? "research_permit",
+        category:         t?.category         ?? "surat_izin",
         content:          t?.content          ?? t?.contentHtml ?? t?.html ?? t?.template ?? "",
         officialName:     t?.officialName     ?? "",
         officialPosition: t?.officialPosition ?? "",

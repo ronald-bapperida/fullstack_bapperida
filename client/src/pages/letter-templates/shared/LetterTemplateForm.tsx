@@ -75,6 +75,7 @@ const SOURCE_LABELS: Record<string, string> = {
 type FormValues = {
   name: string;
   type: string;
+  category: string;
   content: string;
   officialName: string;
   officialPosition: string;
@@ -107,6 +108,7 @@ export default function LetterTemplateForm({
     defaultValues: {
       name:             initial?.name             || "",
       type:             initial?.type             || "research_permit",
+      category:         initial?.category         || "surat_izin",
       content:          initial?.content          || "",
       officialName:     initial?.officialName     || "",
       officialPosition: initial?.officialPosition || "",
@@ -183,8 +185,8 @@ export default function LetterTemplateForm({
 
   return (
     <form onSubmit={handleSubmit((d) => mutation.mutate(d))} className="space-y-6">
-      {/* Nama & Tipe */}
-      <div className="grid grid-cols-2 gap-4">
+      {/* Nama & Tipe & Kategori */}
+      <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
         <div className="space-y-2">
           <Label>Nama Template *</Label>
           <Input {...register("name", { required: true })} placeholder="Template Izin Penelitian Default" />
@@ -200,6 +202,22 @@ export default function LetterTemplateForm({
                 <SelectContent>
                   <SelectItem value="research_permit">Izin Penelitian</SelectItem>
                   <SelectItem value="general">Umum</SelectItem>
+                </SelectContent>
+              </Select>
+            )}
+          />
+        </div>
+        <div className="space-y-2">
+          <Label>Kategori Surat</Label>
+          <Controller
+            name="category"
+            control={control}
+            render={({ field }) => (
+              <Select value={field.value} onValueChange={field.onChange}>
+                <SelectTrigger data-testid="select-category"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="surat_izin">Surat Izin</SelectItem>
+                  <SelectItem value="rekomendasi">Surat Rekomendasi</SelectItem>
                 </SelectContent>
               </Select>
             )}

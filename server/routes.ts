@@ -198,8 +198,9 @@ function buildLetterReplacements(permit: any, template?: any): Record<string, st
   return {
     // Dari data permit
     "NAMA":                  permit.fullName         ?? "-",
-    // Kepada: pakai field kepada dari template (bisa multi-baris), fallback ke nama pemohon
-    "KEPADA":                (template?.kepada || permit.fullName) ?? "-",
+    // Kepada: pakai field kepada dari template (bisa multi-baris), fallback ke recipientName atau nama pemohon
+    "KEPADA":                (permit.recipientName || template?.kepada || permit.fullName) ?? "-",
+    "TUJUAN KEPADA":         permit.recipientName    ?? (template?.kepada || permit.fullName) ?? "-",
     "NIM":                   permit.nimNik            ?? "-",
     "NIK":                   permit.nimNik            ?? "-",
     "NIM/NIK":               permit.nimNik            ?? "-",
@@ -209,10 +210,17 @@ function buildLetterReplacements(permit: any, template?: any): Record<string, st
     "JUDUL PENELITIAN":      permit.researchTitle    ?? "-",
     "LOKASI PENELITIAN":     permit.researchLocation ?? "-",
     "DURASI PENELITIAN":     permit.researchDuration ?? "-",
-    "NOMOR SURAT":           permit.introLetterNumber ?? "-",
+    "NOMOR SURAT PENGANTAR": permit.introLetterNumber ?? "-",
+    "NOMOR SURAT":           permit.issuedLetterNumber || permit.introLetterNumber || "-",
+    "NOMOR SURAT IZIN":      permit.issuedLetterNumber ?? "-",
     "NOMOR PENGAJUAN":       permit.requestNumber    ?? "-",
-    "TANGGAL SURAT":         formatDate(permit.introLetterDate),
+    "TANGGAL SURAT PENGANTAR": formatDate(permit.introLetterDate),
+    "TANGGAL SURAT":         permit.issuedLetterDate ? formatDate(permit.issuedLetterDate) : formatDate(permit.introLetterDate),
+    "TANGGAL SURAT IZIN":    formatDate(permit.issuedLetterDate),
     "TANGGAL PENGAJUAN":     formatDate(permit.createdAt),
+    "TANGGAL MULAI PENELITIAN": formatDate(permit.researchStartDate),
+    "TANGGAL SELESAI PENELITIAN": formatDate(permit.researchEndDate),
+    "KOTA PENELITIAN":       permit.recipientCity    ?? city,
     "TANDA TANGAN":          permit.workUnit || permit.institution || "-",
     "TELEPON":               permit.phone            ?? "-",
     "EMAIL":                 permit.email            ?? "-",
@@ -484,7 +492,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   // Quill image upload (standalone, before :id routes to avoid conflict)
-  const newsImageUpload = getMulter("news", 5);
+  const newsImageUpload = getMulter("news", 1);
   app.post("/api/admin/news/upload-image", authMiddleware, newsImageUpload.single("image"), async (req: any, res) => {
     try {
       if (!req.file) return res.status(400).json({ error: "No file" });
@@ -498,7 +506,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     catch (e: any) { return res.status(500).json({ error: e.message }); }
   });
 
-  const mediaUpload = getMulter("news-media", 5);
+  const mediaUpload = getMulter("news-media", 1);
   app.post("/api/admin/news/:id/media", authMiddleware, requireRole("super_admin", "admin_bpp"),
     mediaUpload.single("file"), async (req: any, res) => {
       try {
@@ -530,11 +538,6 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ─── Banners ─────────────────────────────────────────────────────────────────
   app.get("/api/banners/active", async (req, res) => {
     try { return res.json(await db.getActiveBanners()); }
-    catch (e: any) { return res.status(500).json({ error: e.message }); }
-  });
-
-  app.post("/api/banners/:id/track-view", async (req, res) => {
-    try { await db.trackBannerView(req.params.id); return res.json({ ok: true }); }
     catch (e: any) { return res.status(500).json({ error: e.message }); }
   });
 
@@ -865,6 +868,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (data.introLetterDate) data.introLetterDate = new Date(data.introLetterDate);
       data.agreementFinalReport = data.agreementFinalReport === "true";
       const permit = await db.createPermit(data);
+      // Buat notifikasi untuk admin RIDA
+      db.createNotification({
+        type: "new_permit",
+        title: "Permohonan Izin Penelitian Baru",
+        message: `${permit.fullName} dari ${permit.institution} mengajukan izin penelitian baru.`,
+        resourceId: permit.id,
+        resourceType: "permit",
+        targetRole: "admin_rida",
+      }).catch(() => {});
       // Kirim email konfirmasi ke pemohon
       if (permit.email) {
         sendPermitSubmittedEmail({
@@ -978,6 +990,22 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     } catch (e: any) { return res.status(500).json({ error: e.message }); }
   });
 
+  // Update permit admin fields (nomor surat, tanggal, penerima, dll.)
+  app.patch("/api/admin/permits/:id/detail", authMiddleware, requireRole("super_admin", "admin_rida"), async (req: any, res) => {
+    try {
+      const { issuedLetterNumber, issuedLetterDate, recipientName, recipientCity, researchStartDate, researchEndDate } = req.body;
+      const updateData: Record<string, any> = {};
+      if (issuedLetterNumber !== undefined) updateData.issuedLetterNumber = issuedLetterNumber || null;
+      if (issuedLetterDate !== undefined) updateData.issuedLetterDate = issuedLetterDate ? new Date(issuedLetterDate) : null;
+      if (recipientName !== undefined) updateData.recipientName = recipientName || null;
+      if (recipientCity !== undefined) updateData.recipientCity = recipientCity || null;
+      if (researchStartDate !== undefined) updateData.researchStartDate = researchStartDate ? new Date(researchStartDate) : null;
+      if (researchEndDate !== undefined) updateData.researchEndDate = researchEndDate ? new Date(researchEndDate) : null;
+      const p = await db.updatePermit(req.params.id, updateData);
+      return res.json(p);
+    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+  });
+
   // Generate letter HTML
   app.post("/api/admin/permits/:id/generate-letter", authMiddleware, requireRole("super_admin", "admin_rida"), async (req: any, res) => {
     try {
@@ -1070,10 +1098,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         const letterDir = path.join(uploadDir, "letters");
         if (!fs.existsSync(letterDir)) fs.mkdirSync(letterDir, { recursive: true });
 
-        // Format nama file: BAPPERIDA-TanggalHariIni-XXXXX.docx
-        const todayStr = new Date().toLocaleDateString("id-ID", { day: "2-digit", month: "2-digit", year: "numeric" }).replace(/\//g, "-");
-        const rand5 = String(Math.floor(10000 + Math.random() * 90000));
-        const fileName = `BAPPERIDA-${todayStr}-${rand5}.docx`;
+        // Format nama file: {NomorSuratIzin}_{NamaPemohon}_Jenis Surat.docx
+        const safeStr = (s: string) => s.replace(/[^a-zA-Z0-9\u00C0-\u024F_\- ]/g, "").trim().replace(/\s+/g, "_");
+        const nomorSurat = safeStr(permit.issuedLetterNumber || permit.requestNumber || "BAPPERIDA");
+        const namaPemohon = safeStr(permit.fullName || "Pemohon");
+        const jenisSurat = templateConfig?.category === "rekomendasi" ? "Surat_Rekomendasi" : "Surat_Izin_Penelitian";
+        const fileName = `${nomorSurat}_${namaPemohon}_${jenisSurat}.docx`;
         const filePath = path.join(letterDir, fileName);
         fs.writeFileSync(filePath, outputBuffer);
 
@@ -1601,7 +1631,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       try {
         if (!req.file) return res.status(400).json({ error: "No file" });
   
-        const { name } = req.body;
+        const { name, category } = req.body;
   
         // Baca isi XML untuk extract placeholder otomatis
         const zip = new PizZip(fs.readFileSync(req.file.path));
@@ -1614,6 +1644,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         const template = await db.createTemplate({
           name: name || req.file.originalname.replace(".docx", ""),
           content: "", // Tidak pakai HTML editor, template dari file
+          category: category || "surat_izin",
         });
   
         // Simpan file
@@ -2251,6 +2282,41 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
       res.setHeader("Content-Disposition", `attachment; filename="SurveiIKM-${new Date().getFullYear()}.xlsx"`);
       await wb.xlsx.write(res);
+    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+  });
+
+  // ─── Notifications API ────────────────────────────────────────────────────────
+  app.get("/api/admin/notifications", authMiddleware, async (req: any, res) => {
+    try {
+      const role = req.user.role;
+      const notifications = await db.listNotifications({ targetRole: role, limit: 50 });
+      const userId = req.user.id;
+      const formatted = notifications.map(n => ({
+        ...n,
+        isReadByMe: n.readBy ? JSON.parse(n.readBy).includes(userId) : false,
+      }));
+      return res.json(formatted);
+    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+  });
+
+  app.get("/api/admin/notifications/unread-count", authMiddleware, async (req: any, res) => {
+    try {
+      const count = await db.countUnreadNotifications(req.user.role, req.user.id);
+      return res.json({ count });
+    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+  });
+
+  app.patch("/api/admin/notifications/:id/read", authMiddleware, async (req: any, res) => {
+    try {
+      await db.markNotificationRead(req.params.id, req.user.id);
+      return res.json({ ok: true });
+    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+  });
+
+  app.patch("/api/admin/notifications/read-all", authMiddleware, async (req: any, res) => {
+    try {
+      await db.markAllNotificationsRead(req.user.role, req.user.id);
+      return res.json({ ok: true });
     } catch (e: any) { return res.status(500).json({ error: e.message }); }
   });
 

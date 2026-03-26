@@ -24,7 +24,20 @@ Admin panel untuk BAPPERIDA (Badan Perencanaan, Penelitian dan Pengembangan Daer
 - **admin_bpp**: BAPPEDA modules (News, Categories, Banners, Menus, Documents, Document Masters)
 - **admin_rida**: RIDA modules (Research Permits, Surveys, Final Reports, Letter Templates, Suggestions)
 
+## CRITICAL: Database Driver
+The project uses **PostgreSQL** (Replit built-in) via `drizzle-orm/node-postgres` + `pg` package.
+- **server/db.ts**: Uses `Pool` from `pg` and `drizzle` from `drizzle-orm/node-postgres`
+- **shared/schema.ts**: Uses `pgTable`, `pgEnum` from `drizzle-orm/pg-core`
+- **drizzle.config.ts**: Uses `dialect: "postgresql"`
+- **server/migrate.ts**: Uses `pg.Pool` for migration queries
+- For any schema changes, use `psql "$DATABASE_URL"` — do NOT use `drizzle-kit push` (was set up wrong for MySQL)
+- PostgreSQL enum types already exist: `role`, `news_status`, `permit_status`, `banner_link_type`, `menu_location`, `menu_item_type`, `access_level`, `gender`, `citizenship`
+
 ## Recent Changes
+- **DB Driver Fix**: Migrated entire codebase from `drizzle-orm/mysql-core` + `mysql2` to `drizzle-orm/pg-core` + `node-postgres`. This was the root cause of `ECONNREFUSED :3306` errors. All schema, db.ts, migrate.ts, drizzle.config.ts updated.
+- **Template Categories (T005)**: Added `category` field (surat_izin/rekomendasi) to template create/edit form and upload modal; category badge shown in template list (blue=Surat Izin, purple=Rekomendasi).
+- **Notifications**: Bell component in header with polling for unread count; CRUD at `/api/admin/notifications`.
+- **Permit Admin Fields (T004)**: `AdminLetterFieldsCard` in permit detail — issued letter number/date, recipient name/city, research start/end dates; PATCH endpoint `/api/admin/permits/:id/detail`.
 - **UI Sprint (Session 3)**: Sidebar renamed "Layanan PPID" → "Layanan Informasi"; submenu order changed (Permohonan Informasi first, Keberatan second). Permit detail page rewritten: `LetterActionButtons` widget at top-right (Preview, Download DOCX, Kirim ke Email — shown only when letter exists); `GenerateCard` and `UploadSuratCard` are now separate cards. PPID info-request detail shows token and supports file upload response via multipart. Export Excel buttons added to permits, permohonan informasi, and keberatan list pages.
 - **PPID Layanan PPID (Keberatan + Permohonan Informasi)**: Added two new PPID service modules — Formulir Keberatan and Permohonan Informasi. Each has: DB tables (`ppid_objections`, `ppid_information_requests`), Flutter/public POST API, admin list+detail pages with status update panel, sidebar nav under "Layanan PPID" (admin_bpp + superadmin). Flutter endpoints: `POST /api/ppid/objections`, `POST /api/ppid/information-requests`.
 - **Letter Template `<<KEPADA>>` Multi-line**: Added `kepada` config field — supports multi-line recipient address; `\n` converted to DOCX `<w:br/>`. DOCX newline support applies to all variables including `<<TEMBUSAN>>`.

@@ -8,7 +8,7 @@ import { randomUUID } from "crypto";
 import { and, eq, isNull, desc, sql } from "drizzle-orm";
 import { db as drizzleDb } from "./db";
 import * as schema from "@shared/schema";
-import { sendPpidInfoRequestConfirmation } from "./email";
+import { sendPpidInfoRequestConfirmation, sendKeberatanConfirmation } from "./email";
 
 function generateToken(): string {
   const chars = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789";
@@ -98,12 +98,6 @@ export function registerFlutterApiRoutes(app: express.Express) {
   flutterRouter.get("/v1/banners", async (req: Request, res: Response) => {
     try {
       const banners = await db.getActiveBanners();
-      
-      // Track view (optional)
-      banners.forEach(banner => {
-        db.trackBannerView(banner.id).catch(() => {});
-      });
-      
       const formattedBanners = banners.map(banner => ({
         id: banner.id,
         title: banner.title,
@@ -1236,6 +1230,24 @@ export function registerFlutterApiRoutes(app: express.Express) {
         };
 
         const result = await db.createPpidObjection(data);
+        // Buat notifikasi untuk admin BPP
+        db.createNotification({
+          type: "new_objection",
+          title: "Keberatan PPID Baru",
+          message: `${fullName} mengajukan keberatan PPID baru.`,
+          resourceId: result.id,
+          resourceType: "ppid_objection",
+          targetRole: "admin_bpp",
+        }).catch(() => {});
+        // Kirim email konfirmasi ke pemohon (jika ada email)
+        if (email) {
+          sendKeberatanConfirmation({
+            to: email,
+            fullName,
+            objectionId: result.id,
+            requestCode: requestCode || undefined,
+          }).catch((err: any) => console.error("Keberatan email failed:", err));
+        }
         return res.status(201).json({ success: true, message: "Keberatan berhasil dikirim", data: result });
       } catch (error: any) {
         return res.status(500).json({ success: false, message: "Gagal mengirim keberatan", error: error.message });
@@ -1297,6 +1309,15 @@ export function registerFlutterApiRoutes(app: express.Express) {
         };
 
         const result = await db.createPpidInfoRequest(data);
+        // Buat notifikasi untuk admin BPP
+        db.createNotification({
+          type: "new_info_request",
+          title: "Permohonan Informasi PPID Baru",
+          message: `${fullName} mengajukan permohonan informasi publik baru.`,
+          resourceId: result.id,
+          resourceType: "ppid_info_request",
+          targetRole: "admin_bpp",
+        }).catch(() => {});
         // Kirim email konfirmasi dengan token jika email tersedia
         if (email) {
           sendPpidInfoRequestConfirmation({

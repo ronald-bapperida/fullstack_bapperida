@@ -180,7 +180,7 @@ export interface IStorage {
   // Letter Templates
   listTemplates(): Promise<any[]>;
   getTemplate(id: string): Promise<any>;
-  createTemplate(data: { name: string; content: string }): Promise<any>;
+  createTemplate(data: { name: string; content: string; category?: string }): Promise<any>;
   updateTemplate(id: string, data: any): Promise<any>;
   deleteTemplate(id: string): Promise<void>;
   createLetterTemplateFile(data: {
@@ -220,6 +220,13 @@ export interface IStorage {
    getDocumentDownloadsStats(year?: number, month?: string): Promise<any>;
    getPermitOriginStats(year?: number): Promise<any[]>;
    getSurveySatisfactionStats(year?: number): Promise<any>;
+
+  // Notifications
+  createNotification(data: { type: string; title: string; message: string; resourceId?: string; resourceType?: string; targetRole?: string }): Promise<schema.Notification>;
+  listNotifications(opts: { targetRole: string; limit?: number }): Promise<schema.Notification[]>;
+  markNotificationRead(id: string, userId: string): Promise<void>;
+  markAllNotificationsRead(targetRole: string, userId: string): Promise<void>;
+  countUnreadNotifications(targetRole: string, userId: string): Promise<number>;
 }
 
 export class DatabaseStorage implements IStorage {
@@ -804,7 +811,7 @@ export class DatabaseStorage implements IStorage {
     return r;
   }
 
-  async createTemplate(data: { name: string; content: string }) {
+  async createTemplate(data: { name: string; content: string; category?: string }) {
     return insertAndGet<any>(schema.letterTemplates, schema.letterTemplates.id, data);
   }
 
@@ -1219,6 +1226,65 @@ export class DatabaseStorage implements IStorage {
       processedAt: new Date(),
       updatedAt: new Date(),
     });
+  }
+
+  // ── Notifications ────────────────────────────────────────────────────────────
+  async createNotification(data: { type: string; title: string; message: string; resourceId?: string; resourceType?: string; targetRole?: string }): Promise<schema.Notification> {
+    const id = randomUUID();
+    await db.insert(schema.notifications).values({
+      id,
+      type: data.type,
+      title: data.title,
+      message: data.message,
+      resourceId: data.resourceId || null,
+      resourceType: data.resourceType || null,
+      targetRole: data.targetRole || "all",
+      isRead: false,
+      readBy: null,
+    });
+    const [n] = await db.select().from(schema.notifications).where(eq(schema.notifications.id, id));
+    return n;
+  }
+
+  async listNotifications(opts: { targetRole: string; limit?: number }): Promise<schema.Notification[]> {
+    const { targetRole, limit: lim = 50 } = opts;
+    const rows = await db.select().from(schema.notifications)
+      .where(
+        sql`(${schema.notifications.targetRole} = 'all' OR ${schema.notifications.targetRole} = ${targetRole})`
+      )
+      .orderBy(desc(schema.notifications.createdAt))
+      .limit(lim);
+    return rows;
+  }
+
+  async markNotificationRead(id: string, userId: string): Promise<void> {
+    const [notif] = await db.select().from(schema.notifications).where(eq(schema.notifications.id, id));
+    if (!notif) return;
+    const existing: string[] = notif.readBy ? JSON.parse(notif.readBy) : [];
+    if (!existing.includes(userId)) existing.push(userId);
+    await db.update(schema.notifications).set({ isRead: true, readBy: JSON.stringify(existing) }).where(eq(schema.notifications.id, id));
+  }
+
+  async markAllNotificationsRead(targetRole: string, userId: string): Promise<void> {
+    const rows = await db.select().from(schema.notifications)
+      .where(sql`(${schema.notifications.targetRole} = 'all' OR ${schema.notifications.targetRole} = ${targetRole})`);
+    for (const notif of rows) {
+      const existing: string[] = notif.readBy ? JSON.parse(notif.readBy) : [];
+      if (!existing.includes(userId)) {
+        existing.push(userId);
+        await db.update(schema.notifications).set({ isRead: true, readBy: JSON.stringify(existing) }).where(eq(schema.notifications.id, notif.id));
+      }
+    }
+  }
+
+  async countUnreadNotifications(targetRole: string, userId: string): Promise<number> {
+    const rows = await db.select().from(schema.notifications)
+      .where(sql`(${schema.notifications.targetRole} = 'all' OR ${schema.notifications.targetRole} = ${targetRole})`);
+    return rows.filter(n => {
+      if (!n.readBy) return true;
+      const readers: string[] = JSON.parse(n.readBy);
+      return !readers.includes(userId);
+    }).length;
   }
 }
 
