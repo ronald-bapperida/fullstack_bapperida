@@ -1,4 +1,4 @@
-import { Pool } from "pg";
+import mysql from "mysql2/promise";
 
 const MIGRATIONS = [
   // Permit: research date fields
@@ -13,7 +13,7 @@ const MIGRATIONS = [
   `ALTER TABLE letter_templates ADD COLUMN IF NOT EXISTS category VARCHAR(50) NOT NULL DEFAULT 'surat_izin'`,
   // Notifications table
   `CREATE TABLE IF NOT EXISTS notifications (
-    id VARCHAR(36) NOT NULL DEFAULT gen_random_uuid(),
+    id VARCHAR(36) NOT NULL DEFAULT (UUID()),
     type VARCHAR(50) NOT NULL,
     title VARCHAR(255) NOT NULL,
     message TEXT NOT NULL,
@@ -28,15 +28,15 @@ const MIGRATIONS = [
 ];
 
 export async function runMigrations() {
-  const pool = new Pool({ connectionString: process.env.DATABASE_URL as string });
+  let pool: mysql.Pool | null = null;
   try {
+    pool = mysql.createPool(process.env.DATABASE_URL as string);
     for (const sql of MIGRATIONS) {
       try {
         await pool.query(sql);
         console.log("[migrate] OK:", sql.slice(0, 60));
       } catch (err: any) {
-        // "column already exists" = 42701, "relation already exists" = 42P07
-        if (err.code === "42701" || err.code === "42P07") {
+        if (err.code === "ER_DUP_FIELDNAME" || err.code === "ER_TABLE_EXISTS_ERROR") {
           // already exists, skip
         } else {
           console.warn("[migrate] WARN:", err.message, "| SQL:", sql.slice(0, 80));
@@ -45,6 +45,6 @@ export async function runMigrations() {
     }
     console.log("[migrate] All migrations applied.");
   } finally {
-    await pool.end();
+    if (pool) await pool.end();
   }
 }

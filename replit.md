@@ -6,7 +6,7 @@ Admin panel untuk BAPPERIDA (Badan Perencanaan, Penelitian dan Pengembangan Daer
 ## Tech Stack
 - **Frontend**: React + TypeScript, Wouter (routing), TanStack Query, Shadcn UI, Tailwind CSS, **react-quill-new** (rich text editor)
 - **Node.js Backend**: Express.js + TypeScript, JWT Auth (port 5000 - serves React admin panel)
-- **Database**: PostgreSQL (Replit built-in) + Drizzle ORM
+- **Database**: **MySQL** + Drizzle ORM (`drizzle-orm/mysql-core` + `mysql2`)
 - **File Storage**: Local filesystem (`/uploads`)
 
 ## Architecture
@@ -24,17 +24,18 @@ Admin panel untuk BAPPERIDA (Badan Perencanaan, Penelitian dan Pengembangan Daer
 - **admin_bpp**: BAPPEDA modules (News, Categories, Banners, Menus, Documents, Document Masters)
 - **admin_rida**: RIDA modules (Research Permits, Surveys, Final Reports, Letter Templates, Suggestions)
 
-## CRITICAL: Database Driver
-The project uses **PostgreSQL** (Replit built-in) via `drizzle-orm/node-postgres` + `pg` package.
-- **server/db.ts**: Uses `Pool` from `pg` and `drizzle` from `drizzle-orm/node-postgres`
-- **shared/schema.ts**: Uses `pgTable`, `pgEnum` from `drizzle-orm/pg-core`
-- **drizzle.config.ts**: Uses `dialect: "postgresql"`
-- **server/migrate.ts**: Uses `pg.Pool` for migration queries
-- For any schema changes, use `psql "$DATABASE_URL"` — do NOT use `drizzle-kit push` (was set up wrong for MySQL)
-- PostgreSQL enum types already exist: `role`, `news_status`, `permit_status`, `banner_link_type`, `menu_location`, `menu_item_type`, `access_level`, `gender`, `citizenship`
+## CRITICAL: Database Setup (MySQL)
+Aplikasi ini menggunakan **MySQL** via `drizzle-orm/mysql-core` + `mysql2`.
+- **server/db.ts**: Menggunakan `mysql2.createPool` dan `drizzle` dari `drizzle-orm/mysql2`
+- **shared/schema.ts**: Menggunakan `mysqlTable`, `mysqlEnum`, `int` dari `drizzle-orm/mysql-core`
+- **drizzle.config.ts**: Menggunakan `dialect: "mysql"`
+- **server/migrate.ts**: Menggunakan `mysql2.Pool` untuk migration queries
+- Set `DATABASE_URL` ke MySQL connection string, contoh: `mysql://user:password@host:3306/dbname`
+- Untuk schema changes: gunakan `npm run db:push` atau jalankan SQL migration secara manual
+- Migration otomatis berjalan saat startup via `runMigrations()` di `server/index.ts`
 
 ## Recent Changes
-- **DB Driver Fix**: Migrated entire codebase from `drizzle-orm/mysql-core` + `mysql2` to `drizzle-orm/pg-core` + `node-postgres`. This was the root cause of `ECONNREFUSED :3306` errors. All schema, db.ts, migrate.ts, drizzle.config.ts updated.
+- **DB Revert to MySQL**: Kembali menggunakan `drizzle-orm/mysql-core` + `mysql2` sesuai kebutuhan. Set `DATABASE_URL` ke MySQL connection string.
 - **Template Categories (T005)**: Added `category` field (surat_izin/rekomendasi) to template create/edit form and upload modal; category badge shown in template list (blue=Surat Izin, purple=Rekomendasi).
 - **Notifications**: Bell component in header with polling for unread count; CRUD at `/api/admin/notifications`.
 - **Permit Admin Fields (T004)**: `AdminLetterFieldsCard` in permit detail — issued letter number/date, recipient name/city, research start/end dates; PATCH endpoint `/api/admin/permits/:id/detail`.
