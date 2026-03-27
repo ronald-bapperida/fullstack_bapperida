@@ -438,9 +438,9 @@ function UploadSuratCard({ permit, permitId }: { permit: any; permitId: string }
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         <p className="text-xs text-muted-foreground">
-          Upload file surat untuk mengganti atau menambahkan berkas. Digunakan jika berkas bermasalah dan perlu penggantian manual.
+          Upload file surat PDF untuk mengganti atau menambahkan berkas. Digunakan jika berkas bermasalah dan perlu penggantian manual.
           Riwayat akan mencatat berkas ini sebagai <strong>upload manual (bukan dari generate template)</strong>.
-          Format: DOCX Maks. 5 MB.
+          Format: <strong>PDF saja</strong>, Maks. 5 MB. Nama file otomatis disesuaikan dengan konvensi penamaan surat.
         </p>
         {/* {hasLetter && (
           <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/30 px-3 py-2 rounded">
@@ -453,7 +453,7 @@ function UploadSuratCard({ permit, permitId }: { permit: any; permitId: string }
           </div>
         )} */}
         <div className="flex items-center gap-2">
-          <Input type="file" accept=".pdf,.docx,.jpg,.jpeg,.png"
+          <Input type="file" accept=".pdf"
             onChange={(e) => setOverwriteFile(e.target.files?.[0] || null)} className="flex-1" />
           <Button onClick={() => overwriteMutation.mutate()} disabled={!overwriteFile || overwriteMutation.isPending}
             variant="outline" className="gap-2 shrink-0">

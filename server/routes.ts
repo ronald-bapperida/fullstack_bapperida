@@ -1109,17 +1109,30 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
         const generatedFileUrl = `/uploads/letters/${fileName}`;
 
+        // Generate PDF dari DOCX (async, tidak block response jika gagal)
+        let pdfFileUrl: string | undefined;
+        try {
+          const pdfBuffer = await convertDocxToPdf(outputBuffer, `Surat ${permit.requestNumber}`);
+          const pdfFileName = fileName.replace(/\.docx$/i, ".pdf");
+          const pdfFilePath = path.join(letterDir, pdfFileName);
+          fs.writeFileSync(pdfFilePath, pdfBuffer);
+          pdfFileUrl = `/uploads/letters/${pdfFileName}`;
+        } catch (pdfErr: any) {
+          console.warn("PDF generation failed (non-fatal):", pdfErr.message);
+        }
+
         // Simpan record ke generated_letters
         await db.createGeneratedLetter({
           permitId: permit.id,
           templateId: req.body.templateId ?? undefined,
           fileUrl: generatedFileUrl,
+          pdfFileUrl,
         });
 
         // Jika saveOnly=true, kembalikan JSON (tidak download, tidak update status)
         // Status diupdate secara manual oleh admin setelah preview
         if (req.body.saveOnly === "true" || req.body.saveOnly === true) {
-          return res.json({ fileUrl: generatedFileUrl, fileName });
+          return res.json({ fileUrl: generatedFileUrl, pdfFileUrl, fileName });
         }
 
         // Jika download langsung (bukan saveOnly), tetap tidak auto-update status
@@ -1173,7 +1186,21 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         } else {
           // Pakai file surat yang sudah tersimpan
           const letter = await (db as any).getGeneratedLetter(permit.id);
-          if (!letter?.fileUrl) return res.status(400).json({ error: "Surat belum digenerate" });
+          if (!letter?.fileUrl && !letter?.pdfFileUrl) return res.status(400).json({ error: "Surat belum digenerate" });
+
+          // Jika PDF sudah tersimpan, serve langsung tanpa konversi ulang
+          if (letter?.pdfFileUrl) {
+            const pdfPath = path.join(process.cwd(), letter.pdfFileUrl.replace(/^\//, ""));
+            if (fs.existsSync(pdfPath)) {
+              const pdfBuf = fs.readFileSync(pdfPath);
+              res.setHeader("Content-Type", "application/pdf");
+              res.setHeader("Content-Disposition", `inline; filename="${path.basename(pdfPath)}"`);
+              return res.send(pdfBuf);
+            }
+          }
+
+          // Fallback: konversi dari DOCX
+          if (!letter?.fileUrl) return res.status(400).json({ error: "File surat tidak ada" });
           const filePath = path.join(process.cwd(), letter.fileUrl.replace(/^\//, ""));
           if (!fs.existsSync(filePath)) return res.status(400).json({ error: "File surat tidak ada di disk" });
           docxBuffer = fs.readFileSync(filePath);
@@ -1182,14 +1209,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
         // Coba PDF via Chrome; fallback ke HTML jika Chrome tidak ada
         try {
-          const pdfBuffer = await convertDocxToPdf(docxBuffer, `Surat Izin ${permit.requestNumber}`);
+          const pdfBuffer = await convertDocxToPdf(docxBuffer!, `Surat Izin ${permit.requestNumber}`);
           res.setHeader("Content-Type", "application/pdf");
           res.setHeader("Content-Disposition", `inline; filename="${baseName}.pdf"`);
           return res.send(pdfBuffer);
         } catch (pdfErr: any) {
           console.warn("PDF preview fallback to HTML:", pdfErr.message);
           // Fallback: serve HTML langsung — browser bisa tampilkan & print
-          const htmlContent = await convertDocxToHtml(docxBuffer);
+          const htmlContent = await convertDocxToHtml(docxBuffer!);
           res.setHeader("Content-Type", "text/html; charset=utf-8");
           return res.send(htmlContent);
         }
@@ -1207,14 +1234,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     storage: multer.diskStorage({
       destination: (_, __, cb) => cb(null, letterFilesDir),
       filename: (_, file, cb) => {
-        const ext = path.extname(file.originalname).toLowerCase();
-        cb(null, `${randomUUID()}${ext}`);
+        // Simpan dengan UUID dulu; akan di-rename di route handler
+        cb(null, `${randomUUID()}.pdf`);
       },
     }),
     limits: { fileSize: 10 * 1024 * 1024 },
     fileFilter: (_, file, cb) => {
       const ext = path.extname(file.originalname).toLowerCase();
-      cb(null, [".pdf", ".docx", ".doc"].includes(ext));
+      if (ext !== ".pdf") {
+        return cb(new Error("Hanya file PDF yang diizinkan"));
+      }
+      cb(null, true);
     },
   });
   app.post(
@@ -1224,20 +1254,32 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     generatedLetterUpload.single("file"),
     async (req: any, res) => {
       try {
-        if (!req.file) return res.status(400).json({ error: "No file uploaded" });
+        if (!req.file) return res.status(400).json({ error: "No file uploaded — hanya PDF yang diizinkan" });
         const permit = await db.getPermit(req.params.id);
         if (!permit) return res.status(404).json({ error: "Permit tidak ditemukan" });
-        const newUrl = fileUrl("letters", req.file.filename);
-        await db.updateGeneratedLetterFile(permit.id, newUrl);
-        // Tambah history upload tanpa mengubah status — admin update status manual setelah preview
+
+        // Terapkan naming convention: {NomorSurat}_{NamaPemohon}_{JenisSurat}.pdf
+        const safeStr = (s: string) => s.replace(/[^a-zA-Z0-9\u00C0-\u024F_\- ]/g, "").trim().replace(/\s+/g, "_");
+        const nomorSurat = safeStr(permit.issuedLetterNumber || permit.requestNumber || "BAPPERIDA");
+        const namaPemohon = safeStr(permit.fullName || "Pemohon");
+        const jenisSurat = "Surat_Izin_Penelitian";
+        const finalFileName = `${nomorSurat}_${namaPemohon}_${jenisSurat}.pdf`;
+        const oldPath = req.file.path;
+        const newPath = path.join(letterFilesDir, finalFileName);
+        fs.renameSync(oldPath, newPath);
+
+        const newUrl = `/uploads/letters/${finalFileName}`;
+        // Upload PDF manual → simpan ke pdfFileUrl (bukan fileUrl DOCX)
+        await db.updateGeneratedLetterPdf(permit.id, newUrl);
+        // Tambah history upload tanpa mengubah status
         await (db as any).addPermitStatusHistory({
           permitId: permit.id,
           fromStatus: permit.status,
           toStatus: permit.status,
-          note: "Berkas surat ditimpa/diupload manual (bukan dari generate template)",
+          note: "File PDF surat diupload manual oleh admin",
           changedBy: req.user.id,
         });
-        return res.json({ fileUrl: newUrl });
+        return res.json({ fileUrl: newUrl, pdfFileUrl: newUrl });
       } catch (e: any) {
         return res.status(500).json({ error: e.message });
       }
@@ -1257,17 +1299,27 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
         // Cari file surat yang sudah digenerate
         const letter = await (db as any).getGeneratedLetter(permit.id);
-        if (!letter?.fileUrl) return res.status(400).json({ error: "Surat belum digenerate" });
+        if (!letter?.fileUrl && !letter?.pdfFileUrl) return res.status(400).json({ error: "Surat belum digenerate" });
 
-        const filePath = path.join(process.cwd(), letter.fileUrl.replace(/^\//, ""));
+        // Tentukan file utama (DOCX atau PDF)
+        const mainFileUrl = letter.fileUrl || letter.pdfFileUrl;
+        const filePath = path.join(process.cwd(), mainFileUrl.replace(/^\//, ""));
         if (!fs.existsSync(filePath)) return res.status(400).json({ error: "File surat tidak ditemukan di server" });
 
         const fileName = path.basename(filePath);
 
         // Generate PDF dari DOCX jika file adalah .docx
+        // Gunakan PDF yang sudah tersimpan jika ada
         let pdfBuffer: Buffer | undefined;
         let pdfName: string | undefined;
-        if (filePath.endsWith(".docx")) {
+        if (letter.pdfFileUrl) {
+          const savedPdfPath = path.join(process.cwd(), letter.pdfFileUrl.replace(/^\//, ""));
+          if (fs.existsSync(savedPdfPath)) {
+            pdfBuffer = fs.readFileSync(savedPdfPath);
+            pdfName = path.basename(savedPdfPath);
+          }
+        }
+        if (!pdfBuffer && filePath.endsWith(".docx")) {
           try {
             const docxBuf = fs.readFileSync(filePath);
             pdfBuffer = await convertDocxToPdf(docxBuf, `Surat Izin ${permit.requestNumber}`);
@@ -1275,6 +1327,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           } catch (pdfErr: any) {
             console.warn("PDF generation for email failed, sending DOCX instead:", pdfErr.message);
           }
+        }
+        // Jika file utama adalah PDF, kirim langsung
+        if (!pdfBuffer && filePath.endsWith(".pdf")) {
+          pdfBuffer = fs.readFileSync(filePath);
+          pdfName = fileName;
         }
 
         await sendPermitLetterEmail({
@@ -1800,6 +1857,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // 4. INSERT
       // =========================
       const result = await db.createSurvey(finalData);
+
+      // Notifikasi ke admin RIDA
+      db.createNotification({
+        type: "new_survey",
+        title: "Survei IKM Baru",
+        message: `${finalData.respondentName} mengisi formulir survei kepuasan layanan.`,
+        resourceId: (result as any).id,
+        resourceType: "survey",
+        targetRole: "admin_rida",
+      }).catch(() => {});
   
       return res.json({
         success: true,
@@ -1827,7 +1894,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const data = { ...req.body };
       if (req.file) data.fileUrl = fileUrl("reports", req.file.filename);
-      return res.json(await db.createFinalReport(data));
+      const report = await db.createFinalReport(data);
+      // Notifikasi ke admin RIDA
+      db.createNotification({
+        type: "new_final_report",
+        title: "Laporan Akhir Baru",
+        message: `${data.fullName || "Pemohon"} mengunggah laporan akhir penelitian.`,
+        resourceId: (report as any).id,
+        resourceType: "final_report",
+        targetRole: "admin_rida",
+      }).catch(() => {});
+      return res.json(report);
     } catch (e: any) { return res.status(500).json({ error: e.message }); }
   });
 
@@ -2071,10 +2148,26 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   );
 
   // ─── Export Excel / CSV ───────────────────────────────────────────────────────
+  // Helper: filter by date range from query params
+  function filterByDateRange(items: any[], fromStr?: string, toStr?: string) {
+    if (!fromStr && !toStr) return items;
+    const from = fromStr ? new Date(fromStr) : null;
+    const to = toStr ? new Date(toStr + "T23:59:59") : null;
+    return items.filter((item: any) => {
+      const d = item.createdAt ? new Date(item.createdAt) : null;
+      if (!d) return true;
+      if (from && d < from) return false;
+      if (to && d > to) return false;
+      return true;
+    });
+  }
+
   app.get("/api/admin/export/permits", authMiddleware, requireRole("super_admin", "admin_rida"), async (req, res) => {
     try {
       const ExcelJS = require("exceljs");
-      const permits = await db.listPermits({ limit: 9999 });
+      const { from, to } = req.query as any;
+      const all = await db.listPermits({ limit: 9999 });
+      const items = filterByDateRange(all.items, from, to);
       const wb = new ExcelJS.Workbook();
       const ws = wb.addWorksheet("Izin Penelitian");
       ws.columns = [
@@ -2093,7 +2186,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         submitted: "Diajukan", in_review: "Dalam Review", revision_requested: "Perlu Revisi",
         approved: "Disetujui", generated_letter: "Surat Dibuat", sent: "Terkirim", rejected: "Ditolak",
       };
-      permits.items.forEach((p: any) => {
+      items.forEach((p: any) => {
         ws.addRow({
           ...p,
           status: statusLabel[p.status] || p.status,
@@ -2109,7 +2202,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/admin/export/ppid-objections", authMiddleware, requireRole("super_admin", "admin_bpp"), async (req, res) => {
     try {
       const ExcelJS = require("exceljs");
-      const data = await db.listPpidObjections({ limit: 9999 });
+      const { from, to } = req.query as any;
+      const all = await db.listPpidObjections({ limit: 9999 });
+      const items = filterByDateRange(all.items, from, to);
       const wb = new ExcelJS.Workbook();
       const ws = wb.addWorksheet("Keberatan PPID");
       ws.columns = [
@@ -2124,7 +2219,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         { header: "Tanggal", key: "createdAt", width: 20 },
       ];
       const statusLabel: Record<string,string> = { pending: "Menunggu", in_review: "Diproses", resolved: "Selesai", rejected: "Ditolak" };
-      data.items.forEach((d: any) => {
+      items.forEach((d: any) => {
         ws.addRow({ ...d, status: statusLabel[d.status] || d.status, createdAt: d.createdAt ? new Date(d.createdAt).toLocaleDateString("id-ID") : "" });
       });
       res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
@@ -2136,7 +2231,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/admin/export/ppid-info-requests", authMiddleware, requireRole("super_admin", "admin_bpp"), async (req, res) => {
     try {
       const ExcelJS = require("exceljs");
-      const data = await db.listPpidInfoRequests({ limit: 9999 });
+      const { from, to } = req.query as any;
+      const all = await db.listPpidInfoRequests({ limit: 9999 });
+      const items = filterByDateRange(all.items, from, to);
       const wb = new ExcelJS.Workbook();
       const ws = wb.addWorksheet("Permohonan Informasi PPID");
       ws.columns = [
@@ -2153,7 +2250,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         { header: "Tanggal", key: "createdAt", width: 20 },
       ];
       const statusLabel: Record<string,string> = { pending: "Menunggu", in_review: "Diproses", resolved: "Selesai", rejected: "Ditolak" };
-      data.items.forEach((d: any) => {
+      items.forEach((d: any) => {
         ws.addRow({ ...d, status: statusLabel[d.status] || d.status, createdAt: d.createdAt ? new Date(d.createdAt).toLocaleDateString("id-ID") : "" });
       });
       res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
@@ -2166,7 +2263,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/admin/export/news", authMiddleware, requireRole("super_admin", "admin_bpp"), async (req, res) => {
     try {
       const ExcelJS = require("exceljs");
-      const data = await db.listNews({ limit: 9999, status: undefined });
+      const { from, to } = req.query as any;
+      const all = await db.listNews({ limit: 9999, status: undefined });
+      const items = filterByDateRange(all.items, from, to);
       const wb = new ExcelJS.Workbook();
       const ws = wb.addWorksheet("Berita");
       ws.columns = [
@@ -2180,7 +2279,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         { header: "Tanggal Buat", key: "createdAt", width: 20 },
       ];
       const fmt = (d: any) => d ? new Date(d).toLocaleDateString("id-ID") : "-";
-      data.items.forEach((n: any) => {
+      items.forEach((n: any) => {
         ws.addRow({ ...n, publishedAt: fmt(n.publishedAt), createdAt: fmt(n.createdAt) });
       });
       // Style header row
@@ -2197,7 +2296,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/admin/export/surveys", authMiddleware, requireRole("super_admin", "admin_bpp"), async (req, res) => {
     try {
       const ExcelJS = require("exceljs");
-      const data = await db.listSurveys({ limit: 9999 });
+      const { from, to } = req.query as any;
+      const all = await db.listSurveys({ limit: 9999 });
+      const data = { items: filterByDateRange(all.items, from, to) };
       const wb = new ExcelJS.Workbook();
       const ws = wb.addWorksheet("Respons Survei");
       ws.columns = [
@@ -2222,7 +2323,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/admin/export/final-reports", authMiddleware, requireRole("super_admin", "admin_rida"), async (req, res) => {
     try {
       const ExcelJS = require("exceljs");
-      const data = await db.listFinalReports({ limit: 9999 });
+      const { from, to } = req.query as any;
+      const all = await db.listFinalReports({ limit: 9999 });
+      const data = { items: filterByDateRange(all.items, from, to) };
       const wb = new ExcelJS.Workbook();
       const ws = wb.addWorksheet("Laporan Akhir");
       ws.columns = [
@@ -2249,9 +2352,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   app.get("/api/admin/export/ikm-surveys", authMiddleware, requireRole("super_admin", "admin_rida"), async (req, res) => {
     try {
       const ExcelJS = require("exceljs");
+      const { from, to } = req.query as any;
       const { db: rawDb } = await import("./db");
       const schema = await import("../shared/schema");
-      const rows = await rawDb.select().from(schema.surveys).orderBy(schema.surveys.createdAt);
+      const allRows = await rawDb.select().from(schema.surveys).orderBy(schema.surveys.createdAt);
+      const rows = filterByDateRange(allRows, from, to);
       const calcIkm = (s: any) => {
         const sum = [s.q1,s.q2,s.q3,s.q4,s.q5,s.q6,s.q7,s.q8,s.q9].reduce((a: number, b: number) => a + (Number(b)||0), 0);
         return parseFloat(((sum / 9) / 4 * 100).toFixed(1));

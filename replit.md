@@ -35,6 +35,10 @@ Aplikasi ini menggunakan **MySQL** via `drizzle-orm/mysql-core` + `mysql2`.
 - Migration otomatis berjalan saat startup via `runMigrations()` di `server/index.ts`
 
 ## Recent Changes
+- **T001 (PDF Letters)**: Upload surat di permit detail sekarang hanya menerima `.pdf`; deskripsi kartu diperbarui; Flutter endpoints `GET /api/v1/permits/:id/status` dan `GET /api/v1/my-permits` (login required) mengembalikan status + `pdfFileUrl`.
+- **T002 (Notifications)**: Notifikasi dihasilkan saat submit survei IKM + laporan akhir; superadmin melihat semua notifikasi.
+- **T003 (Dashboard Chart - Year Only)**: Filter grafik dashboard kini hanya tahun (bulan dihapus); deskripsi chart updated ke "Tahun XXXX"; top news/dokumen diambil dari bulan terbaik sepanjang tahun.
+- **T004 (Export Date Range)**: Filter tanggal dari-sampai tersedia di card Export Data di dashboard; semua 6 endpoint export mendukung `?from=&to=` param; IKM surveys export juga ditambahkan.
 - **DB Revert to MySQL**: Kembali menggunakan `drizzle-orm/mysql-core` + `mysql2` sesuai kebutuhan. Set `DATABASE_URL` ke MySQL connection string.
 - **Template Categories (T005)**: Added `category` field (surat_izin/rekomendasi) to template create/edit form and upload modal; category badge shown in template list (blue=Surat Izin, purple=Rekomendasi).
 - **Notifications**: Bell component in header with polling for unread count; CRUD at `/api/admin/notifications`.

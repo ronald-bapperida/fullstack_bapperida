@@ -3,13 +3,15 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Newspaper, ClipboardList, BarChart2, Image, FileText, Clock,
   CheckCircle, Trash2, TrendingUp, Download, MapPin, Users, PieChart,
-  Activity, Star, ArrowUpRight, CalendarDays, Building2, Layers,
+  Activity, Star, ArrowUpRight, CalendarDays, Building2, Layers, CalendarIcon,
 } from "lucide-react";
 import { useAuth } from "@/contexts/auth";
 import { useToast } from "@/hooks/use-toast";
@@ -138,10 +140,15 @@ function getUserInitials(name: string) {
 }
 
 // ─── Helper: download with auth token ────────────────────────────────────────
-async function downloadWithAuth(endpoint: string, toast: (opts: any) => void) {
+async function downloadWithAuth(endpoint: string, toast: (opts: any) => void, params?: Record<string, string>) {
   try {
     const token = localStorage.getItem("token");
-    const res = await fetch(endpoint, { headers: { Authorization: `Bearer ${token}` } });
+    let url = endpoint;
+    if (params) {
+      const qs = new URLSearchParams(params).toString();
+      if (qs) url += (url.includes("?") ? "&" : "?") + qs;
+    }
+    const res = await fetch(url, { headers: { Authorization: `Bearer ${token}` } });
     if (!res.ok) {
       const msg = await res.text().catch(() => "Unauthorized");
       toast({ title: "Gagal export", description: msg, variant: "destructive" });
@@ -150,24 +157,30 @@ async function downloadWithAuth(endpoint: string, toast: (opts: any) => void) {
     const blob = await res.blob();
     const cd = res.headers.get("Content-Disposition");
     const filename = cd?.match(/filename="([^"]+)"/)?.[1] || "export.xlsx";
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a"); a.href = url; a.download = filename;
+    const dlUrl = URL.createObjectURL(blob);
+    const a = document.createElement("a"); a.href = dlUrl; a.download = filename;
     document.body.appendChild(a); a.click(); a.remove();
-    URL.revokeObjectURL(url);
+    URL.revokeObjectURL(dlUrl);
   } catch (err: any) {
     toast({ title: "Gagal export", description: err.message, variant: "destructive" });
   }
 }
 
-function ExportBtn({ endpoint, icon, label, testId }: { endpoint: string; icon: ReactNode; label: string; testId: string }) {
+function ExportBtn({ endpoint, icon, label, testId, dateFrom, dateTo }: {
+  endpoint: string; icon: ReactNode; label: string; testId: string;
+  dateFrom?: string; dateTo?: string;
+}) {
   const { toast } = useToast();
   const [loading, setLoading] = useState(false);
+  const params: Record<string, string> = {};
+  if (dateFrom) params.from = dateFrom;
+  if (dateTo) params.to = dateTo;
   return (
     <Button
       size="sm" variant="outline"
       className="gap-1.5 text-xs h-8"
       disabled={loading}
-      onClick={async () => { setLoading(true); await downloadWithAuth(endpoint, toast); setLoading(false); }}
+      onClick={async () => { setLoading(true); await downloadWithAuth(endpoint, toast, params); setLoading(false); }}
       data-testid={testId}
     >
       {icon} {label}
@@ -192,18 +205,21 @@ export default function Dashboard() {
   const { user } = useAuth();
   const { t } = useLang();
   const [selectedYear, setSelectedYear] = useState(new Date().getFullYear());
-  const [selectedMonth, setSelectedMonth] = useState(format(new Date(), "MMMM", { locale: id }));
+  const [exportFrom, setExportFrom] = useState<Date | undefined>(undefined);
+  const [exportTo, setExportTo] = useState<Date | undefined>(undefined);
 
   const years = Array.from({ length: new Date().getFullYear() - 2019 }, (_, i) => 2020 + i);
-  const months = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
+
+  const exportFromStr = exportFrom ? format(exportFrom, "yyyy-MM-dd") : undefined;
+  const exportToStr = exportTo ? format(exportTo, "yyyy-MM-dd") : undefined;
 
   const { data: stats, isLoading: statsLoading } = useQuery<Stats>({ queryKey: ["/api/admin/dashboard"] });
   const { data: newsViews, isLoading: newsLoading } = useQuery<NewsViewStats>({
-    queryKey: ["/api/admin/stats/news-views", selectedYear, selectedMonth],
+    queryKey: ["/api/admin/stats/news-views", selectedYear],
     enabled: !!user && (user.role === "super_admin" || user.role === "admin_bpp"),
   });
   const { data: documentDownloads, isLoading: docsLoading } = useQuery<DocumentDownloadStats>({
-    queryKey: ["/api/admin/stats/document-downloads", selectedYear, selectedMonth],
+    queryKey: ["/api/admin/stats/document-downloads", selectedYear],
     enabled: !!user && (user.role === "super_admin" || user.role === "admin_bpp"),
   });
   const { data: permitOrigins, isLoading: permitsLoading } = useQuery<PermitOriginStats[]>({
@@ -231,14 +247,17 @@ export default function Dashboard() {
   const isBPP = user?.role === "super_admin" || user?.role === "admin_bpp";
   const isRIDA = user?.role === "super_admin" || user?.role === "admin_rida";
 
-  const selectedMonthNews = newsViews?.monthly?.find(m => m.month === selectedMonth);
-  const newsViewsData = selectedMonthNews?.top_news?.map((item, index) => ({
+  // Bulan terbaik (terbanyak views) sebagai referensi top news
+  const bestMonthNews = newsViews?.monthly?.reduce((best: any, m: any) =>
+    !best || m.total_views > best.total_views ? m : best, null);
+  const newsViewsData = bestMonthNews?.top_news?.map((item: any) => ({
     name: item.title.length > 28 ? item.title.substring(0, 28) + "…" : item.title,
     views: item.views,
   })) || [];
 
-  const selectedMonthDocs = documentDownloads?.monthly?.find(m => m.month === selectedMonth);
-  const documentData = selectedMonthDocs?.top_documents?.map((item, index) => ({
+  const bestMonthDocs = documentDownloads?.monthly?.reduce((best: any, m: any) =>
+    !best || m.total_downloads > best.total_downloads ? m : best, null);
+  const documentData = bestMonthDocs?.top_documents?.map((item: any) => ({
     name: item.title.length > 28 ? item.title.substring(0, 28) + "…" : item.title,
     downloads: item.downloads,
   })) || [];
@@ -435,7 +454,7 @@ export default function Dashboard() {
         </Card>
       )}
 
-      {/* ── Filter Grafik (Card dengan shadow) ───────────────── */}
+      {/* ── Filter Grafik (hanya tahun) ───────────────────────── */}
       <Card className="shadow-sm border">
         <CardContent className="py-3 px-4">
           <div className="flex items-center gap-3 flex-wrap">
@@ -444,7 +463,7 @@ export default function Dashboard() {
               Filter Grafik:
             </div>
             <Select value={selectedYear.toString()} onValueChange={(v) => setSelectedYear(parseInt(v))}>
-              <SelectTrigger className="w-28 h-8 text-sm">
+              <SelectTrigger className="w-28 h-8 text-sm" data-testid="select-year">
                 <SelectValue placeholder="Tahun" />
               </SelectTrigger>
               <SelectContent>
@@ -453,24 +472,14 @@ export default function Dashboard() {
                 ))}
               </SelectContent>
             </Select>
-            <Select value={selectedMonth} onValueChange={setSelectedMonth}>
-              <SelectTrigger className="w-36 h-8 text-sm">
-                <SelectValue placeholder="Bulan" />
-              </SelectTrigger>
-              <SelectContent>
-                {months.map(month => (
-                  <SelectItem key={month} value={month}>{month}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
             <span className="text-xs text-muted-foreground ml-auto hidden sm:block">
-              Pilih tahun &amp; bulan untuk memfilter grafik dan data ekspor
+              Pilih tahun untuk memfilter grafik (data ditampilkan per bulan sepanjang tahun)
             </span>
           </div>
         </CardContent>
       </Card>
 
-      {/* ── Export Data (Card dengan shadow, pakai fetch+auth) ── */}
+      {/* ── Export Data dengan filter tanggal ──────────────────── */}
       <Card className="shadow-sm border">
         <CardContent className="py-3 px-4">
           <div className="flex items-center gap-2 flex-wrap">
@@ -478,18 +487,47 @@ export default function Dashboard() {
               <Download className="w-4 h-4 text-primary" />
               Export Data:
             </div>
+            {/* Date range picker */}
+            <div className="flex items-center gap-1.5 border rounded-md px-2 py-1 bg-muted/30">
+              <CalendarIcon className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button className="text-xs text-muted-foreground hover:text-foreground min-w-[80px]" data-testid="button-export-from">
+                    {exportFrom ? format(exportFrom, "dd MMM yyyy", { locale: id }) : "Dari tanggal"}
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar mode="single" selected={exportFrom} onSelect={setExportFrom} initialFocus />
+                </PopoverContent>
+              </Popover>
+              <span className="text-xs text-muted-foreground">–</span>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <button className="text-xs text-muted-foreground hover:text-foreground min-w-[80px]" data-testid="button-export-to">
+                    {exportTo ? format(exportTo, "dd MMM yyyy", { locale: id }) : "Sampai tanggal"}
+                  </button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0" align="start">
+                  <Calendar mode="single" selected={exportTo} onSelect={setExportTo} initialFocus />
+                </PopoverContent>
+              </Popover>
+              {(exportFrom || exportTo) && (
+                <button onClick={() => { setExportFrom(undefined); setExportTo(undefined); }}
+                  className="text-xs text-muted-foreground hover:text-destructive ml-1" title="Reset">✕</button>
+              )}
+            </div>
             {isBPP && (
               <>
-                <ExportBtn endpoint="/api/admin/export/news" icon={<Newspaper className="w-3.5 h-3.5" />} label="Berita" testId="button-export-news" />
-                <ExportBtn endpoint="/api/admin/export/ppid-info-requests" icon={<FileText className="w-3.5 h-3.5" />} label="Permohonan Informasi" testId="button-export-info-requests" />
-                <ExportBtn endpoint="/api/admin/export/ppid-objections" icon={<ClipboardList className="w-3.5 h-3.5" />} label="Keberatan PPID" testId="button-export-objections" />
+                <ExportBtn endpoint="/api/admin/export/news" icon={<Newspaper className="w-3.5 h-3.5" />} label="Berita" testId="button-export-news" dateFrom={exportFromStr} dateTo={exportToStr} />
+                <ExportBtn endpoint="/api/admin/export/ppid-info-requests" icon={<FileText className="w-3.5 h-3.5" />} label="Permohonan Informasi" testId="button-export-info-requests" dateFrom={exportFromStr} dateTo={exportToStr} />
+                <ExportBtn endpoint="/api/admin/export/ppid-objections" icon={<ClipboardList className="w-3.5 h-3.5" />} label="Keberatan PPID" testId="button-export-objections" dateFrom={exportFromStr} dateTo={exportToStr} />
               </>
             )}
             {isRIDA && (
               <>
-                <ExportBtn endpoint="/api/admin/export/permits" icon={<FileText className="w-3.5 h-3.5" />} label="Izin Penelitian" testId="button-export-permits" />
-                <ExportBtn endpoint="/api/admin/export/final-reports" icon={<ClipboardList className="w-3.5 h-3.5" />} label="Laporan Akhir" testId="button-export-final-reports" />
-                <ExportBtn endpoint="/api/admin/export/ikm-surveys" icon={<Star className="w-3.5 h-3.5" />} label="Survei IKM" testId="button-export-surveys" />
+                <ExportBtn endpoint="/api/admin/export/permits" icon={<FileText className="w-3.5 h-3.5" />} label="Izin Penelitian" testId="button-export-permits" dateFrom={exportFromStr} dateTo={exportToStr} />
+                <ExportBtn endpoint="/api/admin/export/final-reports" icon={<ClipboardList className="w-3.5 h-3.5" />} label="Laporan Akhir" testId="button-export-final-reports" dateFrom={exportFromStr} dateTo={exportToStr} />
+                <ExportBtn endpoint="/api/admin/export/ikm-surveys" icon={<Star className="w-3.5 h-3.5" />} label="Survei IKM" testId="button-export-surveys" dateFrom={exportFromStr} dateTo={exportToStr} />
               </>
             )}
           </div>
@@ -527,7 +565,7 @@ export default function Dashboard() {
                     Views Berita Terbanyak
                   </CardTitle>
                   <CardDescription>
-                    {selectedMonth} {selectedYear} &middot; Total: {newsViews?.monthly?.reduce((acc, m) => acc + m.total_views, 0).toLocaleString() || 0} views
+                    Tahun {selectedYear} &middot; Total: {newsViews?.monthly?.reduce((acc, m) => acc + m.total_views, 0).toLocaleString() || 0} views
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
@@ -607,7 +645,7 @@ export default function Dashboard() {
                     Dokumen Paling Banyak Diunduh
                   </CardTitle>
                   <CardDescription>
-                    {selectedMonth} {selectedYear} &middot; Total: {documentDownloads?.monthly?.reduce((acc, m) => acc + m.total_downloads, 0).toLocaleString() || 0} downloads
+                    Tahun {selectedYear} &middot; Total: {documentDownloads?.monthly?.reduce((acc, m) => acc + m.total_downloads, 0).toLocaleString() || 0} downloads
                   </CardDescription>
                 </CardHeader>
                 <CardContent>

@@ -11,6 +11,8 @@ const MIGRATIONS = [
   `ALTER TABLE research_permit_requests ADD COLUMN IF NOT EXISTS recipient_city VARCHAR(100) NULL DEFAULT NULL`,
   // Letter templates: category
   `ALTER TABLE letter_templates ADD COLUMN IF NOT EXISTS category VARCHAR(50) NOT NULL DEFAULT 'surat_izin'`,
+  // Generated letters: PDF file URL
+  `ALTER TABLE generated_letters ADD COLUMN IF NOT EXISTS pdf_file_url TEXT NULL DEFAULT NULL`,
   // Notifications table
   `CREATE TABLE IF NOT EXISTS notifications (
     id VARCHAR(36) NOT NULL DEFAULT (UUID()),

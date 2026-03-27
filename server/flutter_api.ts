@@ -1386,6 +1386,92 @@ export function registerFlutterApiRoutes(app: express.Express) {
     }
   });
 
+  // ─── Izin Penelitian: cek status & URL PDF surat ──────────────────────────
+  flutterRouter.get("/v1/permits/:id/status", async (req: Request, res: Response) => {
+    try {
+      const permit = await db.getPermit(req.params.id);
+      if (!permit) return res.status(404).json({ success: false, message: "Izin penelitian tidak ditemukan" });
+
+      // Ambil generated letter terbaru untuk permit ini
+      const letter = await db.getGeneratedLetter(permit.id);
+
+      const statusLabels: Record<string, string> = {
+        submitted: "Permohonan Diterima",
+        in_review: "Sedang Direview",
+        revision_requested: "Perlu Revisi",
+        approved: "Disetujui",
+        generated_letter: "Surat Diterbitkan",
+        sent: "Surat Terkirim",
+        rejected: "Ditolak",
+      };
+
+      return res.json({
+        success: true,
+        data: {
+          id: permit.id,
+          requestNumber: permit.requestNumber,
+          status: permit.status,
+          statusLabel: statusLabels[permit.status] || permit.status,
+          fullName: permit.fullName,
+          institution: permit.institution,
+          researchTitle: permit.researchTitle,
+          createdAt: permit.createdAt,
+          reviewNote: permit.reviewNote,
+          // URL surat (PDF diutamakan)
+          letterFileUrl: letter?.pdfFileUrl || letter?.fileUrl || null,
+          letterPdfUrl: letter?.pdfFileUrl || null,
+          letterDocxUrl: letter?.fileUrl || null,
+          letterGeneratedAt: letter?.createdAt || null,
+        },
+      });
+    } catch (error: any) {
+      return res.status(500).json({ success: false, message: error.message });
+    }
+  });
+
+  // ─── Daftar izin penelitian user yang login ────────────────────────────────
+  flutterRouter.get("/v1/my-permits", authMiddleware, async (req: any, res: Response) => {
+    try {
+      const userId = req.user.id;
+      const { db: drizzle } = await import("./db");
+      const schema = await import("../shared/schema");
+      const { eq, isNull, desc } = await import("drizzle-orm");
+
+      const permits = await drizzle
+        .select()
+        .from(schema.researchPermitRequests)
+        .where(eq(schema.researchPermitRequests.userId, userId))
+        .orderBy(desc(schema.researchPermitRequests.createdAt));
+
+      // Ambil generated letters untuk setiap permit
+      const results = await Promise.all(permits.map(async (p) => {
+        const letter = await db.getGeneratedLetter(p.id);
+        const statusLabels: Record<string, string> = {
+          submitted: "Permohonan Diterima", in_review: "Sedang Direview",
+          revision_requested: "Perlu Revisi", approved: "Disetujui",
+          generated_letter: "Surat Diterbitkan", sent: "Surat Terkirim", rejected: "Ditolak",
+        };
+        return {
+          id: p.id,
+          requestNumber: p.requestNumber,
+          status: p.status,
+          statusLabel: statusLabels[p.status] || p.status,
+          fullName: p.fullName,
+          institution: p.institution,
+          researchTitle: p.researchTitle,
+          createdAt: p.createdAt,
+          reviewNote: p.reviewNote,
+          letterFileUrl: letter?.pdfFileUrl || letter?.fileUrl || null,
+          letterPdfUrl: letter?.pdfFileUrl || null,
+        };
+      }));
+
+      return res.json({ success: true, data: results });
+    } catch (error: any) {
+      return res.status(500).json({ success: false, message: error.message });
+    }
+  });
+
   // Mount the router
   app.use("/api", flutterRouter);
 }

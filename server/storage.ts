@@ -193,9 +193,10 @@ export interface IStorage {
   listLetterTemplateFiles(templateId: string): Promise<any[]>;
 
   // Generated Letters
-  createGeneratedLetter(data: { permitId: string; templateId?: string; fileUrl?: string }): Promise<any>;
+  createGeneratedLetter(data: { permitId: string; templateId?: string; fileUrl?: string; pdfFileUrl?: string }): Promise<any>;
   getGeneratedLetter(permitId: string): Promise<any>;
   updateGeneratedLetterFile(permitId: string, newFileUrl: string): Promise<any>;
+  updateGeneratedLetterPdf(permitId: string, pdfFileUrl: string): Promise<any>;
 
   listLetterTemplateFiles(templateId: string): Promise<any[]>;
   getTemplateByType(type: string): Promise<any>;
@@ -862,7 +863,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // ── Generated Letters ───────────────────────────────────────────────────────
-  async createGeneratedLetter(data: { permitId: string; templateId?: string; fileUrl?: string }) {
+  async createGeneratedLetter(data: { permitId: string; templateId?: string; fileUrl?: string; pdfFileUrl?: string }) {
     return insertAndGet<any>(schema.generatedLetters, schema.generatedLetters.id, data);
   }
 
@@ -882,6 +883,17 @@ export class DatabaseStorage implements IStorage {
       return { ...existing, fileUrl: newFileUrl };
     }
     return this.createGeneratedLetter({ permitId, fileUrl: newFileUrl });
+  }
+
+  async updateGeneratedLetterPdf(permitId: string, pdfFileUrl: string) {
+    const existing = await this.getGeneratedLetter(permitId);
+    if (existing) {
+      await db.update(schema.generatedLetters)
+        .set({ pdfFileUrl })
+        .where(eq(schema.generatedLetters.id, existing.id));
+      return { ...existing, pdfFileUrl };
+    }
+    return this.createGeneratedLetter({ permitId, pdfFileUrl });
   }
 
   // ── Surveys ─────────────────────────────────────────────────────────────────
@@ -1248,10 +1260,12 @@ export class DatabaseStorage implements IStorage {
 
   async listNotifications(opts: { targetRole: string; limit?: number }): Promise<schema.Notification[]> {
     const { targetRole, limit: lim = 50 } = opts;
-    const rows = await db.select().from(schema.notifications)
-      .where(
-        sql`(${schema.notifications.targetRole} = 'all' OR ${schema.notifications.targetRole} = ${targetRole})`
-      )
+    // Superadmin melihat semua notifikasi
+    const whereClause = targetRole === "super_admin"
+      ? undefined
+      : sql`(${schema.notifications.targetRole} = 'all' OR ${schema.notifications.targetRole} = ${targetRole})`;
+    const query = db.select().from(schema.notifications);
+    const rows = await (whereClause ? query.where(whereClause) : query)
       .orderBy(desc(schema.notifications.createdAt))
       .limit(lim);
     return rows;
@@ -1266,8 +1280,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   async markAllNotificationsRead(targetRole: string, userId: string): Promise<void> {
-    const rows = await db.select().from(schema.notifications)
-      .where(sql`(${schema.notifications.targetRole} = 'all' OR ${schema.notifications.targetRole} = ${targetRole})`);
+    const whereClause = targetRole === "super_admin"
+      ? undefined
+      : sql`(${schema.notifications.targetRole} = 'all' OR ${schema.notifications.targetRole} = ${targetRole})`;
+    const query = db.select().from(schema.notifications);
+    const rows = await (whereClause ? query.where(whereClause) : query);
     for (const notif of rows) {
       const existing: string[] = notif.readBy ? JSON.parse(notif.readBy) : [];
       if (!existing.includes(userId)) {
@@ -1278,8 +1295,11 @@ export class DatabaseStorage implements IStorage {
   }
 
   async countUnreadNotifications(targetRole: string, userId: string): Promise<number> {
-    const rows = await db.select().from(schema.notifications)
-      .where(sql`(${schema.notifications.targetRole} = 'all' OR ${schema.notifications.targetRole} = ${targetRole})`);
+    const whereClause = targetRole === "super_admin"
+      ? undefined
+      : sql`(${schema.notifications.targetRole} = 'all' OR ${schema.notifications.targetRole} = ${targetRole})`;
+    const query = db.select().from(schema.notifications);
+    const rows = await (whereClause ? query.where(whereClause) : query);
     return rows.filter(n => {
       if (!n.readBy) return true;
       const readers: string[] = JSON.parse(n.readBy);

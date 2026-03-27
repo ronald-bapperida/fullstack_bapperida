@@ -412,6 +412,7 @@ export const generatedLetters = mysqlTable("generated_letters", {
   permitId: varchar("permit_id", { length: 36 }).notNull().references(() => researchPermitRequests.id),
   templateId: varchar("template_id", { length: 36 }).references(() => letterTemplates.id),
   fileUrl: text("file_url"),
+  pdfFileUrl: text("pdf_file_url"),
   letterNumber: text("letter_number"),
   letterDate: timestamp("letter_date"),
   dataSnapshot: text("data_snapshot"),
