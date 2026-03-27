@@ -291,14 +291,14 @@ export default function Dashboard() {
       iconBgClass: "bg-white/20",
       textClass: "text-white",
     },
-    {
-      title: t("trashNews"),
-      value: stats.newsTrash,
-      icon: Trash2,
-      bgClass: "bg-gradient-to-br from-red-500 to-rose-500",
-      iconBgClass: "bg-white/20",
-      textClass: "text-white",
-    },
+    // {
+    //   title: t("trashNews"),
+    //   value: stats.newsTrash,
+    //   icon: Trash2,
+    //   bgClass: "bg-gradient-to-br from-red-500 to-rose-500",
+    //   iconBgClass: "bg-white/20",
+    //   textClass: "text-white",
+    // },
     {
       title: t("activeBanners"),
       value: stats.banners,
@@ -359,6 +359,11 @@ export default function Dashboard() {
       subLabel: "dari 100",
     },
   ] : [];
+
+  const months = [
+    "Jan", "Feb", "Mar", "Apr", "Mei", "Jun",
+    "Jul", "Agu", "Sep", "Okt", "Nov", "Des"
+  ];
 
   return (
     <div className="flex flex-col gap-6 p-6 min-h-screen bg-gradient-to-b from-muted/40 via-background to-background">

@@ -101,11 +101,11 @@ export function NotificationBell() {
   if (!user) return null;
 
   return (
-    <div className="relative" ref={panelRef}>
+    <div className="relative px-5" ref={panelRef}>
       <Button
         variant="ghost"
         size="icon"
-        className="relative"
+        className="relative gap-0"
         onClick={() => setOpen(v => !v)}
         data-testid="button-notification-bell"
       >

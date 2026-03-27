@@ -915,8 +915,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (!permit) {
         return res.status(404).json({ error: "Permit not found" });
       }
+
+      const letter = await db.getGeneratedLetter(permit.id);
   
-      return res.json(permit);
+      return res.json({
+        ...permit,
+        fileUrl: letter?.fileUrl,
+      });
   
     } catch (e: any) {
       return res.status(500).json({ error: e.message });
