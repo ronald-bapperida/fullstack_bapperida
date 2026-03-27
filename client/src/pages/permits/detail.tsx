@@ -370,18 +370,18 @@ function GenerateCard({ permit, permitId }: { permit: any; permitId: string }) {
           </div>
         ) : (
           <div className="flex flex-wrap items-center gap-2 pt-1 border-t">
-            <Button variant="outline" onClick={handlePreview} disabled={previewLoading} className="gap-2">
+            {/* <Button variant="outline" onClick={handlePreview} disabled={previewLoading} className="gap-2">
               {previewLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Eye className="w-4 h-4" />}
               Preview (Tab Baru)
-            </Button>
+            </Button> */}
             <Button variant="secondary" onClick={() => generateMutation.mutate()} disabled={generateMutation.isPending} className="gap-2">
               {generateMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileCheck className="w-4 h-4" />}
               Generate & Simpan
             </Button>
-            <Button onClick={() => downloadDocxMutation.mutate()} disabled={downloadDocxMutation.isPending} className="gap-2 ml-auto">
+            {/* <Button onClick={() => downloadDocxMutation.mutate()} disabled={downloadDocxMutation.isPending} className="gap-2 ml-auto">
               {downloadDocxMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
               Download DOCX
-            </Button>
+            </Button> */}
           </div>
         )}
 
@@ -440,9 +440,9 @@ function UploadSuratCard({ permit, permitId }: { permit: any; permitId: string }
         <p className="text-xs text-muted-foreground">
           Upload file surat untuk mengganti atau menambahkan berkas. Digunakan jika berkas bermasalah dan perlu penggantian manual.
           Riwayat akan mencatat berkas ini sebagai <strong>upload manual (bukan dari generate template)</strong>.
-          Format: PDF, DOCX, JPG, PNG. Maks. 5 MB.
+          Format: DOCX Maks. 5 MB.
         </p>
-        {hasLetter && (
+        {/* {hasLetter && (
           <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/30 px-3 py-2 rounded">
             <FileText className="w-3.5 h-3.5 shrink-0" />
             File saat ini:{" "}
@@ -451,7 +451,7 @@ function UploadSuratCard({ permit, permitId }: { permit: any; permitId: string }
               <ExternalLink className="w-3 h-3" /> Lihat file tersimpan
             </a>
           </div>
-        )}
+        )} */}
         <div className="flex items-center gap-2">
           <Input type="file" accept=".pdf,.docx,.jpg,.jpeg,.png"
             onChange={(e) => setOverwriteFile(e.target.files?.[0] || null)} className="flex-1" />
