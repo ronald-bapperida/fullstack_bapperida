@@ -200,7 +200,6 @@ function buildLetterReplacements(permit: any, template?: any): Record<string, st
     "NAMA":                  permit.fullName         ?? "-",
     "KEPADA":                (permit.recipientName || template?.kepada || permit.fullName) ?? "-",
     "TUJUAN KEPADA":         permit.recipientName    ?? (template?.kepada || permit.fullName) ?? "-",
-    "PEJABAT SURAT PENGANTAR": permit.recipientName  ?? "-",
     "NIM":                   permit.nimNik            ?? "-",
     "NIK":                   permit.nimNik            ?? "-",
     "NIM/NIK":               permit.nimNik            ?? "-",
@@ -213,6 +212,8 @@ function buildLetterReplacements(permit: any, template?: any): Record<string, st
     "NOMOR SURAT PENGANTAR": permit.introLetterNumber ?? "-",
     "NOMOR SURAT":           permit.issuedLetterNumber || permit.introLetterNumber || "-",
     "NOMOR SURAT IZIN":      permit.issuedLetterNumber ?? "-",
+    // Pejabat Surat Pengantar = jabatan yang menandatangani surat pengantar (dari data pemohon)
+    "PEJABAT SURAT PENGANTAR": permit.signerPosition   ?? permit.recipientName ?? "-",
     "NOMOR PENGAJUAN":       permit.requestNumber    ?? "-",
     "TANGGAL SURAT PENGANTAR": formatDate(permit.introLetterDate),
     "TANGGAL SURAT":         permit.issuedLetterDate ? formatDate(permit.issuedLetterDate) : formatDate(permit.introLetterDate),

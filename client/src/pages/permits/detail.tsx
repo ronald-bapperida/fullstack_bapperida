@@ -92,20 +92,28 @@ function FileLink({ label, url }: { label: string; url: string | null | undefine
 interface AdminLetterFields {
   issuedLetterNumber: string;
   issuedLetterDate: string;
-  recipientName: string;
   researchStartDate: string;
   researchEndDate: string;
 }
 
+const LETTER_NUMBER_PREFIX = "072/";
+const LETTER_NUMBER_SUFFIX = "/1/I/Bapprida";
+
 function AdminLetterFieldsCard({
   fields,
   onChange,
+  permit,
 }: {
   fields: AdminLetterFields;
   onChange: (fields: AdminLetterFields) => void;
+  permit: any;
 }) {
   const set = (key: keyof AdminLetterFields) => (e: React.ChangeEvent<HTMLInputElement>) =>
     onChange({ ...fields, [key]: e.target.value });
+
+  const fullLetterNumber = fields.issuedLetterNumber
+    ? `${LETTER_NUMBER_PREFIX}${fields.issuedLetterNumber}${LETTER_NUMBER_SUFFIX}`
+    : "-";
 
   return (
     <Card className="border-amber-200 dark:border-amber-800">
@@ -116,15 +124,30 @@ function AdminLetterFieldsCard({
         </CardTitle>
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
+        {/* Read-only fields from applicant */}
+        <div className="rounded-md bg-muted/40 border px-3 py-2.5 flex flex-col gap-1.5">
+          <p className="text-xs text-muted-foreground font-medium">Data dari Pemohon (tidak dapat diubah)</p>
+          <InfoRow label="No. Surat Pengantar" value={permit.introLetterNumber} />
+          <InfoRow label="Pejabat Surat Pengantar" value={permit.signerPosition} />
+        </div>
+
         <div className="grid grid-cols-2 gap-3">
           <div className="flex flex-col gap-1.5 col-span-2">
-            <Label className="text-xs">Nomor Surat Izin <span className="text-muted-foreground">(hanya bagian tengah)</span></Label>
-            <Input
-              value={fields.issuedLetterNumber}
-              onChange={set("issuedLetterNumber")}
-              placeholder="Contoh: 001"
-              data-testid="input-issued-letter-number"
-            />
+            <Label className="text-xs">Nomor Surat Izin <span className="text-muted-foreground">(isi bagian tengah saja)</span></Label>
+            <div className="flex items-center gap-1">
+              <span className="text-sm text-muted-foreground whitespace-nowrap">{LETTER_NUMBER_PREFIX}</span>
+              <Input
+                value={fields.issuedLetterNumber}
+                onChange={set("issuedLetterNumber")}
+                placeholder="001"
+                className="flex-1"
+                data-testid="input-issued-letter-number"
+              />
+              <span className="text-sm text-muted-foreground whitespace-nowrap">{LETTER_NUMBER_SUFFIX}</span>
+            </div>
+            {fields.issuedLetterNumber && (
+              <p className="text-xs text-muted-foreground">Hasil: <span className="font-mono font-medium">{fullLetterNumber}</span></p>
+            )}
           </div>
           <div className="flex flex-col gap-1.5">
             <Label className="text-xs">Tanggal Surat Izin Ditetapkan</Label>
@@ -133,15 +156,6 @@ function AdminLetterFieldsCard({
               value={fields.issuedLetterDate}
               onChange={set("issuedLetterDate")}
               data-testid="input-issued-letter-date"
-            />
-          </div>
-          <div className="flex flex-col gap-1.5">
-            <Label className="text-xs">Pejabat Surat Pengantar</Label>
-            <Input
-              value={fields.recipientName}
-              onChange={set("recipientName")}
-              placeholder="Nama pejabat surat pengantar"
-              data-testid="input-recipient-name"
             />
           </div>
           <div className="flex flex-col gap-1.5">
@@ -195,17 +209,28 @@ function GenerateCard({
   const selectedTemplate = templates.find((t) => t.id === selectedTemplateId) ?? null;
   const placeholders = parsePlaceholders(selectedTemplate?.placeholders);
 
+  // Build full letter number from middle part + static prefix/suffix
+  const fullLetterNumber = adminLetterFields.issuedLetterNumber
+    ? `${LETTER_NUMBER_PREFIX}${adminLetterFields.issuedLetterNumber}${LETTER_NUMBER_SUFFIX}`
+    : "";
+
   const generateMutation = useMutation({
     mutationFn: async () => {
       if (!selectedTemplateId) throw new Error("Pilih template terlebih dahulu");
-      // Simpan data surat admin sebelum generate
-      await apiRequest("PATCH", `/api/admin/permits/${permitId}/detail`, adminLetterFields);
+      // Simpan data surat admin sebelum generate (kirim nomor surat lengkap)
+      await apiRequest("PATCH", `/api/admin/permits/${permitId}/detail`, {
+        ...adminLetterFields,
+        issuedLetterNumber: fullLetterNumber || null,
+      });
       const res = await fetch(`/api/admin/permits/${permitId}/generate-letter-docx`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("token")}` },
         body: JSON.stringify({ templateId: selectedTemplateId, saveOnly: "true" }),
       });
-      if (!res.ok) throw new Error(await res.text());
+      if (!res.ok) {
+        const err = await res.json().catch(async () => ({ error: await res.text() }));
+        throw new Error(err.error || "Gagal generate");
+      }
       return res.json();
     },
     onSuccess: () => {
@@ -214,6 +239,36 @@ function GenerateCard({
       queryClient.invalidateQueries({ queryKey: ["/api/admin/permits"] });
     },
     onError: (e: any) => toast({ title: "Gagal generate", description: e.message, variant: "destructive" }),
+  });
+
+  const downloadDocxMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedTemplateId) throw new Error("Pilih template terlebih dahulu");
+      // Simpan data surat admin dulu
+      await apiRequest("PATCH", `/api/admin/permits/${permitId}/detail`, {
+        ...adminLetterFields,
+        issuedLetterNumber: fullLetterNumber || null,
+      });
+      const res = await fetch(`/api/admin/permits/${permitId}/generate-letter-docx`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("token")}` },
+        body: JSON.stringify({ templateId: selectedTemplateId }),
+      });
+      if (!res.ok) throw new Error(await res.text());
+      const blob = await res.blob();
+      const disp = res.headers.get("Content-Disposition") ?? "";
+      const filename = disp.match(/filename="([^"]+)"/)?.[1] || "BAPPERIDA.docx";
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url; a.download = filename;
+      document.body.appendChild(a); a.click(); a.remove();
+      URL.revokeObjectURL(url);
+    },
+    onSuccess: () => {
+      toast({ title: "DOCX berhasil didownload" });
+      queryClient.invalidateQueries({ queryKey: [`/api/admin/permits/${permitId}`] });
+    },
+    onError: (e: any) => toast({ title: "Gagal download", description: e.message, variant: "destructive" }),
   });
 
   const hasLetter = !!permit?.generatedLetter?.fileUrl;
@@ -283,19 +338,23 @@ function GenerateCard({
           </div>
         ) : (
           <div className="flex flex-wrap items-center gap-2 pt-1 border-t">
-            <Button variant="secondary" onClick={() => generateMutation.mutate()} disabled={generateMutation.isPending} className="gap-2">
+            <Button
+              variant="secondary"
+              onClick={() => generateMutation.mutate()}
+              disabled={generateMutation.isPending || downloadDocxMutation.isPending}
+              className="gap-2"
+            >
               {generateMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileCheck className="w-4 h-4" />}
-              Generate & Simpan
+              Generate & Simpan (PDF)
             </Button>
-          </div>
-        )}
-
-        {hasLetter && !selectedTemplateId && (
-          <div className="flex gap-2 pt-1 border-t">
-            <Button variant="outline" size="sm" asChild className="gap-2">
-              <a href={permit.generatedLetter.fileUrl} download>
-                <Download className="w-4 h-4" /> Download Surat Tersimpan
-              </a>
+            <Button
+              variant="outline"
+              onClick={() => downloadDocxMutation.mutate()}
+              disabled={downloadDocxMutation.isPending || generateMutation.isPending}
+              className="gap-2"
+            >
+              {downloadDocxMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+              Download DOCX
             </Button>
           </div>
         )}
@@ -441,7 +500,6 @@ export default function PermitDetailPage() {
   const [adminLetterFields, setAdminLetterFields] = useState<AdminLetterFields>({
     issuedLetterNumber: "",
     issuedLetterDate: "",
-    recipientName: "",
     researchStartDate: "",
     researchEndDate: "",
   });
@@ -454,12 +512,18 @@ export default function PermitDetailPage() {
   // Initialize admin letter fields from permit data once it loads
   useEffect(() => {
     if (permit && !letterFieldsInitialized) {
+      // issuedLetterNumber stored as full string — extract just the middle part
+      let midNumber = permit.issuedLetterNumber || "";
+      if (midNumber.includes(LETTER_NUMBER_PREFIX) && midNumber.includes(LETTER_NUMBER_SUFFIX)) {
+        midNumber = midNumber
+          .replace(LETTER_NUMBER_PREFIX, "")
+          .replace(LETTER_NUMBER_SUFFIX, "");
+      }
       setAdminLetterFields({
-        issuedLetterNumber: permit.issuedLetterNumber || "",
+        issuedLetterNumber: midNumber,
         issuedLetterDate: permit.issuedLetterDate
           ? format(new Date(permit.issuedLetterDate), "yyyy-MM-dd")
           : "",
-        recipientName: permit.recipientName || "",
         researchStartDate: permit.researchStartDate
           ? format(new Date(permit.researchStartDate), "yyyy-MM-dd")
           : "",
@@ -630,7 +694,7 @@ export default function PermitDetailPage() {
           </Card>
 
           {/* Admin Fields: Data Surat Izin */}
-          <AdminLetterFieldsCard fields={adminLetterFields} onChange={setAdminLetterFields} />
+          <AdminLetterFieldsCard fields={adminLetterFields} onChange={setAdminLetterFields} permit={permit} />
 
           {/* Riwayat Status */}
           <Card>
