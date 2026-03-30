@@ -1127,16 +1127,22 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
 
         const generatedFileUrl = `/uploads/letters/${fileName}`;
 
-        // Generate PDF dari DOCX (async, tidak block response jika gagal)
+        // Generate PDF dari DOCX — wajib berhasil saat saveOnly
         let pdfFileUrl: string | undefined;
+        const pdfFileName = fileName.replace(/\.docx$/i, ".pdf");
+        const pdfFilePath = path.join(letterDir, pdfFileName);
+        const isSaveOnly = req.body.saveOnly === "true" || req.body.saveOnly === true;
+
         try {
           const pdfBuffer = await convertDocxToPdf(outputBuffer, `Surat ${permit.requestNumber}`);
-          const pdfFileName = fileName.replace(/\.docx$/i, ".pdf");
-          const pdfFilePath = path.join(letterDir, pdfFileName);
           fs.writeFileSync(pdfFilePath, pdfBuffer);
           pdfFileUrl = `/uploads/letters/${pdfFileName}`;
         } catch (pdfErr: any) {
-          console.warn("PDF generation failed (non-fatal):", pdfErr.message);
+          if (isSaveOnly) {
+            // Jika saveOnly, PDF harus berhasil agar preview bisa ditampilkan
+            return res.status(500).json({ error: `Gagal konversi ke PDF: ${pdfErr.message}` });
+          }
+          console.warn("PDF generation failed (non-fatal for download):", pdfErr.message);
         }
 
         // Simpan record ke generated_letters
@@ -1147,16 +1153,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           pdfFileUrl,
         });
 
-        // Jika saveOnly=true, kembalikan JSON (tidak download, tidak update status)
-        // Status diupdate secara manual oleh admin setelah preview
-        if (req.body.saveOnly === "true" || req.body.saveOnly === true) {
+        // Jika saveOnly=true, kembalikan JSON dengan URL file yang tersimpan
+        if (isSaveOnly) {
           return res.json({ fileUrl: generatedFileUrl, pdfFileUrl, fileName });
         }
 
-        // Jika download langsung (bukan saveOnly), tetap tidak auto-update status
-        // Admin wajib preview dulu, lalu update status secara manual
-
-        // Kirim file ke browser sebagai download
+        // Jika download langsung (bukan saveOnly), kirim DOCX ke browser
         res.setHeader(
           "Content-Type",
           "application/vnd.openxmlformats-officedocument.wordprocessingml.document"

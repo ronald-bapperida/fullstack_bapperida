@@ -118,11 +118,11 @@ function AdminLetterFieldsCard({
       <CardContent className="flex flex-col gap-3">
         <div className="grid grid-cols-2 gap-3">
           <div className="flex flex-col gap-1.5 col-span-2">
-            <Label className="text-xs">Nomor Surat Izin</Label>
+            <Label className="text-xs">Nomor Surat Izin <span className="text-muted-foreground">(hanya bagian tengah)</span></Label>
             <Input
               value={fields.issuedLetterNumber}
               onChange={set("issuedLetterNumber")}
-              placeholder="Contoh: 070/123/BAPPERIDA/2025"
+              placeholder="Contoh: 001"
               data-testid="input-issued-letter-number"
             />
           </div>
