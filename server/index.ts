@@ -71,7 +71,13 @@ app.use((req, res, next) => {
 });
 
 (async () => {
-  await runMigrations();
+  try {
+    await runMigrations();
+  } catch (err: any) {
+    console.error("[migrate] FATAL: Could not connect to database. Set DATABASE_URL in Secrets. Error:", err.message);
+    console.warn("[migrate] Continuing startup – API endpoints will fail until DB is connected.");
+  }
+
   await registerRoutes(httpServer, app);
 
   registerFlutterApiRoutes(app);

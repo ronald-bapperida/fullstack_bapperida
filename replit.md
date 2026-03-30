@@ -35,6 +35,9 @@ Aplikasi ini menggunakan **PostgreSQL** via `drizzle-orm/pg-core` + `pg`.
 - Migration otomatis berjalan saat startup via `runMigrations()` di `server/index.ts`
 
 ## Recent Changes
+- **Dark Mode Toggle**: ThemeProvider (`client/src/contexts/theme.tsx`) mengelola tema light/dark dengan persistensi `localStorage`; toggle Sun/Moon muncul di header admin; mendukung preferensi sistem (`prefers-color-scheme`).
+- **Multi-Language Update**: Tambah 20+ translation keys baru (notifications, PPID sidebar, dark/light mode, access denied, dll.) untuk ID & EN; `notification-bell.tsx` dan `app-sidebar.tsx` sekarang menggunakan `t()` — tidak ada lagi string hardcoded Indonesia.
+- **Server Resilience**: `server/index.ts` sekarang catch error koneksi DB saat startup agar frontend (Vite) tetap bisa jalan meskipun MySQL tidak tersedia.
 - **T001 (PDF Letters)**: Upload surat di permit detail sekarang hanya menerima `.pdf`; deskripsi kartu diperbarui; Flutter endpoints `GET /api/v1/permits/:id/status` dan `GET /api/v1/my-permits` (login required) mengembalikan status + `pdfFileUrl`.
 - **T002 (Notifications)**: Notifikasi dihasilkan saat submit survei IKM + laporan akhir; superadmin melihat semua notifikasi.
 - **T003 (Dashboard Chart - Year Only)**: Filter grafik dashboard kini hanya tahun (bulan dihapus); deskripsi chart updated ke "Tahun XXXX"; top news/dokumen diambil dari bulan terbaik sepanjang tahun.

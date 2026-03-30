@@ -144,15 +144,15 @@ export function AppSidebar() {
                   <NavItem href="/categories" icon={Tag} label={t("categories")} />
                   <NavItem href="/banners" icon={Image} label={t("banners")} />
                   <NavItem href="/menus" icon={Menu} label={t("menus")} />
-                  <CollapsibleNav icon={FileText} label="PPID" basePath="/documents">
-                    <SubNavItem href="/documents" label="Daftar Dokumen" />
+                  <CollapsibleNav icon={FileText} label={t("ppidSection")} basePath="/documents">
+                    <SubNavItem href="/documents" label={t("daftarDokumen")} />
                     <SubNavItem href="/documents/kinds" label={t("docKinds")} />
                     <SubNavItem href="/documents/categories" label={t("docCategories")} />
                     <SubNavItem href="/documents/types" label={t("docTypes")} />
                   </CollapsibleNav>
-                  <CollapsibleNav icon={AlertTriangle} label="Layanan Informasi" basePath="/ppid">
-                    <SubNavItem href="/ppid/information-requests" label="Permohonan Informasi" />
-                    <SubNavItem href="/ppid/objections" label="Keberatan" />
+                  <CollapsibleNav icon={AlertTriangle} label={t("layananInformasi")} basePath="/ppid">
+                    <SubNavItem href="/ppid/information-requests" label={t("permohonanInformasi")} />
+                    <SubNavItem href="/ppid/objections" label={t("keberatan")} />
                   </CollapsibleNav>
                 </SidebarMenu>
               </SidebarGroupContent>

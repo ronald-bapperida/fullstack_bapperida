@@ -7,8 +7,10 @@ import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
 import { AuthProvider, useAuth } from "@/contexts/auth";
 import { LanguageProvider, useLang } from "@/contexts/language";
+import { ThemeProvider, useTheme } from "@/contexts/theme";
 import { Button } from "@/components/ui/button";
 import { NotificationBell } from "@/components/notification-bell";
+import { Sun, Moon } from "lucide-react";
 
 import LoginPage from "@/pages/login";
 import Dashboard from "@/pages/dashboard";
@@ -40,10 +42,30 @@ const sidebarStyle = {
   "--sidebar-width-icon": "3.5rem",
 } as React.CSSProperties;
 
+function ThemeToggle() {
+  const { theme, toggleTheme } = useTheme();
+  const { t } = useLang();
+  return (
+    <Button
+      size="icon"
+      variant="ghost"
+      className="h-8 w-8"
+      onClick={toggleTheme}
+      title={theme === "dark" ? t("lightMode") : t("darkMode")}
+      data-testid="button-theme-toggle"
+    >
+      {theme === "dark"
+        ? <Sun className="w-4 h-4" />
+        : <Moon className="w-4 h-4" />
+      }
+    </Button>
+  );
+}
+
 function LangSwitcher() {
   const { lang, setLang } = useLang();
   return (
-    <div className="flex items-center gap-1 ml-2">
+    <div className="flex items-center gap-1 ml-1">
       <Button
         size="sm"
         variant={lang === "id" ? "default" : "ghost"}
@@ -78,6 +100,7 @@ function AdminLayout({ children }: { children: React.ReactNode }) {
             <div className="flex-1" />
             <span className="text-xs text-muted-foreground hidden sm:block">{t("portal")}</span>
             <NotificationBell />
+            <ThemeToggle />
             <LangSwitcher />
           </header>
           <main className="flex-1 overflow-y-auto bg-background">
@@ -91,6 +114,7 @@ function AdminLayout({ children }: { children: React.ReactNode }) {
 
 function ProtectedRoute({ component: Component, roles }: { component: React.ComponentType; roles?: string[] }) {
   const { user, isLoading } = useAuth();
+  const { t } = useLang();
 
   if (isLoading) return (
     <div className="flex items-center justify-center h-screen">
@@ -104,8 +128,8 @@ function ProtectedRoute({ component: Component, roles }: { component: React.Comp
     return (
       <AdminLayout>
         <div className="flex flex-col items-center justify-center h-full gap-4">
-          <h2 className="text-xl font-bold">Akses Ditolak</h2>
-          <p className="text-muted-foreground">Anda tidak memiliki izin untuk mengakses halaman ini.</p>
+          <h2 className="text-xl font-bold">{t("accessDenied")}</h2>
+          <p className="text-muted-foreground">{t("accessDeniedDesc")}</p>
         </div>
       </AdminLayout>
     );
@@ -148,7 +172,6 @@ function Router() {
       <Route path="/surveys" component={() => <ProtectedRoute component={SurveysPage} roles={["super_admin", "admin_rida"]} />} />
       <Route path="/final-reports" component={() => <ProtectedRoute component={FinalReportsPage} roles={["super_admin", "admin_rida"]} />} />
       <Route path="/suggestions" component={() => <ProtectedRoute component={SuggestionsPage} roles={["super_admin", "admin_rida"]} />} />
-      {/* <Route path="/letter-templates" component={() => <ProtectedRoute component={LetterTemplatesPage} roles={["super_admin", "admin_rida"]} />} /> */}
       <Route path="/letter-templates" component={() => <ProtectedRoute component={LetterTemplatesPage} roles={["super_admin", "admin_rida"]}/>} />
       <Route path="/letter-templates/new" component={() => <ProtectedRoute component={LetterTemplatesCreatePage} roles={["super_admin", "admin_rida"]}/>} />
       <Route path="/letter-templates/:id/edit" component={() => <ProtectedRoute component={LetterTemplatesEditPage} roles={["super_admin", "admin_rida"]}/>} />
@@ -167,12 +190,14 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <TooltipProvider>
-        <LanguageProvider>
-          <AuthProvider>
-            <Router />
-            <Toaster />
-          </AuthProvider>
-        </LanguageProvider>
+        <ThemeProvider>
+          <LanguageProvider>
+            <AuthProvider>
+              <Router />
+              <Toaster />
+            </AuthProvider>
+          </LanguageProvider>
+        </ThemeProvider>
       </TooltipProvider>
     </QueryClientProvider>
   );

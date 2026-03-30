@@ -295,6 +295,26 @@ const translations: Record<Lang, Record<string, string>> = {
     loginPassword: "Password",
     loginProcessing: "Memproses...",
     loginSubmit: "Masuk",
+    // Theme
+    darkMode: "Mode Gelap",
+    lightMode: "Mode Terang",
+    toggleTheme: "Ganti Tema",
+    // Notifications
+    notifications: "Notifikasi",
+    markAllRead: "Tandai semua dibaca",
+    noNotifications: "Tidak ada notifikasi",
+    justNow: "Baru saja",
+    minutesAgo: "menit lalu",
+    hoursAgo: "jam lalu",
+    // PPID Sidebar
+    daftarDokumen: "Daftar Dokumen",
+    layananInformasi: "Layanan Informasi",
+    permohonanInformasi: "Permohonan Informasi",
+    keberatan: "Keberatan",
+    ppidSection: "PPID",
+    // Access denied
+    accessDenied: "Akses Ditolak",
+    accessDeniedDesc: "Anda tidak memiliki izin untuk mengakses halaman ini.",
   },
   en: {
     // Navigation
@@ -588,6 +608,26 @@ const translations: Record<Lang, Record<string, string>> = {
     loginPassword: "Password",
     loginProcessing: "Signing in...",
     loginSubmit: "Sign In",
+    // Theme
+    darkMode: "Dark Mode",
+    lightMode: "Light Mode",
+    toggleTheme: "Toggle Theme",
+    // Notifications
+    notifications: "Notifications",
+    markAllRead: "Mark all as read",
+    noNotifications: "No notifications",
+    justNow: "Just now",
+    minutesAgo: "minutes ago",
+    hoursAgo: "hours ago",
+    // PPID Sidebar
+    daftarDokumen: "Document List",
+    layananInformasi: "Information Services",
+    permohonanInformasi: "Information Requests",
+    keberatan: "Objections",
+    ppidSection: "PPID",
+    // Access denied
+    accessDenied: "Access Denied",
+    accessDeniedDesc: "You do not have permission to access this page.",
   },
 };
 

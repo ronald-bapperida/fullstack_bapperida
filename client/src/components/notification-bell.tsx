@@ -5,6 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useAuth } from "@/contexts/auth";
+import { useLang } from "@/contexts/language";
 import { useLocation } from "wouter";
 
 type Notification = {
@@ -36,6 +37,7 @@ const TYPE_ICONS: Record<string, string> = {
 
 export function NotificationBell() {
   const { user } = useAuth();
+  const { t, lang } = useLang();
   const [open, setOpen] = useState(false);
   const panelRef = useRef<HTMLDivElement>(null);
   const [, navigate] = useLocation();
@@ -92,10 +94,10 @@ export function NotificationBell() {
     const d = new Date(iso);
     const now = new Date();
     const diff = (now.getTime() - d.getTime()) / 1000;
-    if (diff < 60) return "Baru saja";
-    if (diff < 3600) return `${Math.floor(diff / 60)} menit lalu`;
-    if (diff < 86400) return `${Math.floor(diff / 3600)} jam lalu`;
-    return d.toLocaleDateString("id-ID", { day: "numeric", month: "short" });
+    if (diff < 60) return t("justNow");
+    if (diff < 3600) return `${Math.floor(diff / 60)} ${t("minutesAgo")}`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)} ${t("hoursAgo")}`;
+    return d.toLocaleDateString(lang === "en" ? "en-GB" : "id-ID", { day: "numeric", month: "short" });
   };
 
   if (!user) return null;
@@ -124,14 +126,14 @@ export function NotificationBell() {
       {open && (
         <div className="absolute right-0 top-full mt-2 w-80 bg-background border rounded-xl shadow-xl z-50 overflow-hidden">
           <div className="flex items-center justify-between px-4 py-3 border-b">
-            <h3 className="font-semibold text-sm">Notifikasi</h3>
+            <h3 className="font-semibold text-sm">{t("notifications")}</h3>
             {unreadCount > 0 && (
               <button
                 className="text-xs text-primary hover:underline"
                 onClick={() => markAllReadMutation.mutate()}
                 data-testid="button-mark-all-read"
               >
-                Tandai semua dibaca
+                {t("markAllRead")}
               </button>
             )}
           </div>
@@ -139,7 +141,7 @@ export function NotificationBell() {
           <div className="max-h-80 overflow-y-auto divide-y">
             {notifications.length === 0 ? (
               <div className="px-4 py-8 text-center text-sm text-muted-foreground">
-                Tidak ada notifikasi
+                {t("noNotifications")}
               </div>
             ) : (
               notifications.map(notif => (
