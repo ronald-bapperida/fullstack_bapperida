@@ -441,6 +441,7 @@ function UploadSuratCard({ permit, permitId }: { permit: any; permitId: string }
 
 function LetterActionButtons({ permit, permitId }: { permit: any; permitId: string }) {
   const { toast } = useToast();
+  const [isPreviewLoading, setIsPreviewLoading] = useState(false);
   const hasLetter = !!permit?.generatedLetter?.fileUrl;
 
   const sendLetterMutation = useMutation({
@@ -459,25 +460,123 @@ function LetterActionButtons({ permit, permitId }: { permit: any; permitId: stri
     onError: (e: any) => toast({ title: "Gagal kirim surat", description: e.message, variant: "destructive" }),
   });
 
+  // Preview PDF Mutation
+  const previewPdfMutation = useMutation({
+    mutationFn: async () => {
+      setIsPreviewLoading(true);
+      const res = await fetch(`/api/admin/permits/${permitId}/preview-letter-pdf`, {
+        method: "POST",
+        headers: { 
+          "Content-Type": "application/json", 
+          Authorization: `Bearer ${localStorage.getItem("token")}` 
+        },
+        body: JSON.stringify({}),
+      });
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.error || "Gagal preview PDF");
+      }
+      const blob = await res.blob();
+      return URL.createObjectURL(blob);
+    },
+    onSuccess: (pdfUrl) => {
+      // Buka PDF di tab baru
+      window.open(pdfUrl, '_blank');
+      setTimeout(() => URL.revokeObjectURL(pdfUrl), 1000);
+      setIsPreviewLoading(false);
+    },
+    onError: (e: any) => {
+      toast({ 
+        title: "Gagal preview PDF", 
+        description: e.message, 
+        variant: "destructive" 
+      });
+      setIsPreviewLoading(false);
+    },
+  });
+
+  // Download PDF Mutation
+  const downloadPdfMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch(`/api/admin/permits/${permitId}/download-pdf`, {
+        method: "GET",
+        headers: { Authorization: `Bearer ${localStorage.getItem("token")}` },
+      });
+      if (!res.ok) {
+        const error = await res.json();
+        throw new Error(error.error || "Gagal download PDF");
+      }
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `Surat_${permit.requestNumber}.pdf`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    },
+    onSuccess: () => {
+      toast({ title: "PDF berhasil didownload" });
+    },
+    onError: (e: any) => toast({ 
+      title: "Gagal download PDF", 
+      description: e.message, 
+      variant: "destructive" 
+    }),
+  });
+
   if (!hasLetter) return null;
 
-  const previewUrl = permit.generatedLetter?.pdfFileUrl || permit.generatedLetter?.fileUrl;
+  // Cek apakah PDF tersedia
+  const hasPdf = !!permit?.generatedLetter?.pdfFileUrl;
 
   return (
     <TooltipProvider>
       <div className="flex items-center gap-2">
+        {/* Preview PDF Button */}
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button variant="outline" size="sm" asChild className="gap-2">
-              <a href={previewUrl} target="_blank" rel="noopener noreferrer">
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => previewPdfMutation.mutate()}
+              disabled={previewPdfMutation.isPending}
+              className="gap-2"
+            >
+              {previewPdfMutation.isPending ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
                 <Eye className="w-3.5 h-3.5" />
-                Preview
-              </a>
+              )}
+              Preview PDF
             </Button>
           </TooltipTrigger>
-          <TooltipContent>Buka file surat tersimpan</TooltipContent>
+          <TooltipContent>Preview surat dalam format PDF</TooltipContent>
         </Tooltip>
 
+        {/* Download PDF Button */}
+        {/* <Tooltip>
+          <TooltipTrigger asChild>
+            <Button 
+              variant="outline" 
+              size="sm" 
+              onClick={() => downloadPdfMutation.mutate()}
+              disabled={downloadPdfMutation.isPending}
+              className="gap-2"
+            >
+              {downloadPdfMutation.isPending ? (
+                <Loader2 className="w-3.5 h-3.5 animate-spin" />
+              ) : (
+                <Download className="w-3.5 h-3.5" />
+              )}
+              Download PDF
+            </Button>
+          </TooltipTrigger>
+          <TooltipContent>Download file PDF</TooltipContent>
+        </Tooltip> */}
+
+        {/* Download DOCX Button */}
         <Tooltip>
           <TooltipTrigger asChild>
             <Button variant="outline" size="sm" asChild className="gap-2">
@@ -486,9 +585,10 @@ function LetterActionButtons({ permit, permitId }: { permit: any; permitId: stri
               </a>
             </Button>
           </TooltipTrigger>
-          <TooltipContent>Download file surat</TooltipContent>
+          <TooltipContent>Download file DOCX (format Word)</TooltipContent>
         </Tooltip>
 
+        {/* Kirim ke Email Button */}
         {permit.status === "generated_letter" && (
           <Tooltip>
             <TooltipTrigger asChild>
@@ -514,6 +614,7 @@ export default function PermitDetailPage() {
 
   const [newStatus, setNewStatus] = useState("");
   const [note, setNote] = useState("");
+  const [isPreviewLoading, setIsPreviewLoading] = useState(false);
 
   const [adminLetterFields, setAdminLetterFields] = useState<AdminLetterFields>({
     issuedLetterNumber: "",

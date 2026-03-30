@@ -443,39 +443,86 @@ async function convertDocxToPdf(docxBuffer: Buffer, title = "Surat"): Promise<Bu
   const mammoth = require("mammoth");
   const PizZip = require("pizzip");
 
-  // Extract document XML
+  // Extract document XML untuk mendapatkan margin yang tepat
   const zip = new PizZip(docxBuffer);
   const documentXml = zip.files["word/document.xml"]?.asText() ?? "";
+  const stylesXml = zip.files["word/styles.xml"]?.asText() ?? "";
 
-  // Parse paragraph properties from XML in document order
-  // We track alignment, indentation, spacing for each <w:p>
-  const paragraphProps: Array<{ align: string; indLeft: number; spaceBefore: number }> = [];
+  // ==================== EXTRACT MARGIN ====================
+  // Konversi twips (1/20 point) ke cm
+  const twipsToCm = (twips: string) => {
+    const value = parseInt(twips);
+    return (value / 20 / 72 * 2.54).toFixed(2) + "cm";
+  };
+
+  // Default margin untuk surat resmi Indonesia
+  let marginTop = "2.54cm";
+  let marginBottom = "2.54cm";
+  let marginLeft = "3.00cm";    // Lebih besar untuk binding
+  let marginRight = "2.54cm";
+
+  // Parse page margins dari DOCX
+  const pgMarMatch = documentXml.match(/<w:pgMar\s[^>]*/);
+  if (pgMarMatch) {
+    const pgMarStr = pgMarMatch[0];
+    const topM = pgMarStr.match(/w:top="([^"]+)"/);
+    const botM = pgMarStr.match(/w:bottom="([^"]+)"/);
+    const lefM = pgMarStr.match(/w:left="([^"]+)"/);
+    const rigM = pgMarStr.match(/w:right="([^"]+)"/);
+    
+    if (topM) marginTop = twipsToCm(topM[1]);
+    if (botM) marginBottom = twipsToCm(botM[1]);
+    if (lefM) marginLeft = twipsToCm(lefM[1]);
+    if (rigM) marginRight = twipsToCm(rigM[1]);
+  }
+
+  // ==================== EXTRACT FONT ====================
+  let defaultFont = "'Times New Roman', Times, serif";
+  let defaultFontSize = "12pt";
+  
+  // Parse font dari styles
+  const fontMatch = stylesXml.match(/<w:rFonts[^>]*w:ascii="([^"]+)"/);
+  if (fontMatch) {
+    defaultFont = `'${fontMatch[1]}', ${defaultFont}`;
+  }
+  
+  const fontSizeMatch = stylesXml.match(/<w:sz[^>]*w:val="(\d+)"/);
+  if (fontSizeMatch) {
+    const halfPoints = parseInt(fontSizeMatch[1]);
+    const points = halfPoints / 2;
+    defaultFontSize = `${points}pt`;
+  }
+
+  // ==================== EXTRACT PARAGRAPH STYLES ====================
+  // Parse paragraph properties
+  const paragraphStyles: Array<{ align: string; indent: number; spacing: number }> = [];
   const pTagRegex = /<w:p[ >][\s\S]*?<\/w:p>/g;
   let pMatch: RegExpExecArray | null;
+  
   while ((pMatch = pTagRegex.exec(documentXml)) !== null) {
     const pXml = pMatch[0];
-
-    // Alignment: w:jc val ("both" = justify, "center", "right", "left")
+    
+    // Alignment: w:jc val ("both" = justify)
     const jcM = pXml.match(/<w:jc w:val="([^"]+)"/);
     const rawAlign = jcM ? jcM[1] : "";
     const align = rawAlign === "both" ? "justify"
       : rawAlign === "center" ? "center"
       : rawAlign === "right" ? "right"
       : rawAlign === "left" ? "left"
-      : "justify"; // default justify for formal government letters
-
-    // Left indentation in twips → px  (1 twip = 1/20pt = 1/1440inch, 96dpi: 1px = 15twips)
-    const indM = pXml.match(/<w:ind[^/]*w:left="([^"]+)"/);
-    const indLeft = indM ? Math.round(parseInt(indM[1]) / 15) : 0;
-
-    // Space before in twips → px
-    const spM = pXml.match(/<w:spacing[^/]*w:before="([^"]+)"/);
-    const spaceBefore = spM ? Math.round(parseInt(spM[1]) / 15) : 0;
-
-    paragraphProps.push({ align, indLeft, spaceBefore });
+      : "justify";
+    
+    // First line indent in twips → cm
+    const indentM = pXml.match(/<w:ind[^>]*w:firstLine="([^"]+)"/);
+    const indent = indentM ? (parseInt(indentM[1]) / 20 / 72 * 2.54).toFixed(2) + "cm" : "0cm";
+    
+    // Space before in twips → cm
+    const spacingM = pXml.match(/<w:spacing[^>]*w:before="([^"]+)"/);
+    const spacing = spacingM ? (parseInt(spacingM[1]) / 20 / 72 * 2.54).toFixed(2) + "cm" : "0cm";
+    
+    paragraphStyles.push({ align, indent: parseFloat(indent), spacing: parseFloat(spacing) });
   }
 
-  // Convert DOCX to HTML with mammoth, embedding images as base64 data URIs
+  // ==================== CONVERT TO HTML ====================
   const { value: rawHtml } = await mammoth.convertToHtml({
     buffer: docxBuffer,
     convertImage: mammoth.images.imgElement(function(image: any) {
@@ -492,72 +539,193 @@ async function convertDocxToPdf(docxBuffer: Buffer, title = "Surat"): Promise<Bu
     ],
   });
 
-  // Inject alignment + indent into every <p> tag (with or without attributes)
-  let pIdx = 0;
-  const processedHtml = rawHtml.replace(/<p(\s[^>]*)?>/g, (_match: string, _attrs: string | undefined) => {
-    const props = paragraphProps[pIdx] ?? { align: "justify", indLeft: 0, spaceBefore: 0 };
-    pIdx++;
-    const styles: string[] = [
-      `text-align:${props.align}`,
-      "margin-bottom:6pt",
-      "line-height:1.5",
-    ];
-    if (props.indLeft > 0) styles.push(`padding-left:${props.indLeft}px`);
-    if (props.spaceBefore > 0) styles.push(`margin-top:${props.spaceBefore}px`);
-    return `<p style="${styles.join(";")}">`;
-  });
-
-  // Parse page margins from DOCX XML (twips → cm)
-  const twipsToCm = (twips: string) => ((parseInt(twips) / 1440) * 2.54).toFixed(2) + "cm";
-  let marginTop = "2.54cm";
-  let marginBottom = "2.54cm";
-  let marginLeft = "3.00cm";
-  let marginRight = "2.54cm";
-
-  // Try both attribute orderings (Word may order them differently)
-  const pgMarMatch = documentXml.match(/<w:pgMar\s[^>]*/);
-  if (pgMarMatch) {
-    const pgMarStr = pgMarMatch[0];
-    const topM = pgMarStr.match(/w:top="([^"]+)"/);
-    const botM = pgMarStr.match(/w:bottom="([^"]+)"/);
-    const lefM = pgMarStr.match(/w:left="([^"]+)"/);
-    const rigM = pgMarStr.match(/w:right="([^"]+)"/);
-    if (topM) marginTop = twipsToCm(topM[1]);
-    if (botM) marginBottom = twipsToCm(botM[1]);
-    if (lefM) marginLeft = twipsToCm(lefM[1]);
-    if (rigM) marginRight = twipsToCm(rigM[1]);
-  }
-
-  // Build full HTML (no @page margin here — we pass margins only via Puppeteer)
+  // ==================== BUILD FINAL HTML ====================
   const html = `<!DOCTYPE html>
 <html lang="id">
 <head>
   <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <style>
-    * { margin: 0; padding: 0; box-sizing: border-box; }
+    @page {
+      size: A4;
+      margin: ${marginTop} ${marginRight} ${marginBottom} ${marginLeft};
+    }
+    
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
     body {
-      font-family: 'Times New Roman', Times, serif;
-      font-size: 12pt;
+      font-family: ${defaultFont};
+      font-size: ${defaultFontSize};
       line-height: 1.5;
       color: #000000;
       background: white;
     }
-    p { margin-bottom: 6pt; }
-    table { width: 100%; border-collapse: collapse; margin: 4pt 0; }
-    td, th { padding: 4pt 6pt; vertical-align: top; }
-    img { max-width: 100%; height: auto; display: block; }
-    strong, b { font-weight: bold; }
-    em, i { font-style: italic; }
-    u { text-decoration: underline; }
-    ul, ol { margin: 4pt 0 4pt 2em; }
-    li { margin: 2pt 0; }
+    
+    /* Kop surat container */
+    .letter-header {
+      text-align: center;
+      margin-bottom: 24pt;
+    }
+    
+    .header-content {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 12pt;
+      border-bottom: 2px solid #000000;
+      padding-bottom: 12pt;
+    }
+    
+    .header-logo img {
+      max-width: 80px;
+      height: auto;
+    }
+    
+    .header-text {
+      text-align: center;
+    }
+    
+    .header-text h1 {
+      font-size: 14pt;
+      font-weight: bold;
+      margin: 0;
+      text-transform: uppercase;
+    }
+    
+    .header-text h2 {
+      font-size: 12pt;
+      font-weight: bold;
+      margin: 4pt 0;
+    }
+    
+    .header-text p {
+      font-size: 10pt;
+      margin: 2pt 0;
+      text-align: center;
+    }
+    
+    /* Alamat tujuan */
+    .recipient {
+      margin: 24pt 0 16pt;
+    }
+    
+    .recipient p {
+      margin: 2pt 0;
+      text-indent: 0;
+    }
+    
+    /* Nomor surat */
+    .letter-number {
+      text-align: center;
+      margin: 20pt 0;
+    }
+    
+    .letter-number p {
+      font-weight: bold;
+      text-decoration: underline;
+      margin: 0;
+      text-indent: 0;
+    }
+    
+    /* Body text */
+    .letter-body p {
+      margin: 0 0 8pt;
+      text-indent: 1.27cm; /* Standard indent 0.5 inch */
+      text-align: justify;
+    }
+    
+    .letter-body p.no-indent {
+      text-indent: 0;
+    }
+    
+    /* Table styling (untuk alamat) */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12pt 0;
+    }
+    
+    td {
+      border: none;
+      padding: 2pt 4pt;
+      vertical-align: top;
+    }
+    
+    /* Signature section */
+    .signature {
+      margin-top: 48pt;
+      text-align: right;
+    }
+    
+    .signature p {
+      margin: 4pt 0;
+      text-indent: 0;
+    }
+    
+    .signature-name {
+      margin-top: 24pt;
+      font-weight: bold;
+    }
+    
+    .signature-image {
+      max-width: 150px;
+      height: auto;
+      margin: 8pt 0;
+    }
+    
+    /* Carbon copy */
+    .carbon-copy {
+      margin-top: 32pt;
+      font-size: 10pt;
+    }
+    
+    .carbon-copy p {
+      margin: 2pt 0;
+      text-indent: 0;
+    }
+    
+    .carbon-copy ol, .carbon-copy ul {
+      margin: 4pt 0 4pt 24pt;
+    }
+    
+    .carbon-copy li {
+      margin: 2pt 0;
+    }
+    
+    /* Bold and underline */
+    strong, b {
+      font-weight: bold;
+    }
+    
+    u {
+      text-decoration: underline;
+    }
+    
+    /* Center alignment */
+    .center {
+      text-align: center;
+    }
+    
+    /* Clearfix */
+    .clearfix::after {
+      content: "";
+      clear: both;
+      display: table;
+    }
   </style>
 </head>
 <body>
-  ${processedHtml}
+  <div class="letter-body">
+    ${rawHtml}
+  </div>
 </body>
 </html>`;
 
+  // ==================== GENERATE PDF ====================
   const executablePath = findChromePath();
   if (!executablePath) {
     console.warn("Chrome tidak ditemukan, mengirim HTML sebagai fallback");
@@ -581,32 +749,42 @@ async function convertDocxToPdf(docxBuffer: Buffer, title = "Surat"): Promise<Bu
 
   try {
     const page = await browser.newPage();
-
-    await page.setContent(html, { waitUntil: "networkidle0", timeout: 30000 });
-
-    // Wait for fonts to load
-    await page.evaluate(() =>
-      new Promise<void>((resolve) => {
+    
+    // Set viewport ke ukuran A4
+    await page.setViewport({
+      width: 1240,
+      height: 1754,
+      deviceScaleFactor: 1,
+    });
+    
+    await page.setContent(html, { 
+      waitUntil: "networkidle0", 
+      timeout: 30000 
+    });
+    
+    // Tunggu font dan gambar terload
+    await page.evaluate(() => {
+      return new Promise((resolve) => {
         if (document.fonts && document.fonts.ready) {
-          document.fonts.ready.then(() => resolve());
+          document.fonts.ready.then(resolve);
         } else {
           setTimeout(resolve, 1000);
         }
-      })
-    );
-
+      });
+    });
+    
     const pdfBuffer = await page.pdf({
       format: "A4",
       printBackground: true,
-      // Margins come from DOCX page margins — no CSS @page double-margin
       margin: {
         top: marginTop,
         bottom: marginBottom,
         left: marginLeft,
         right: marginRight,
       },
+      preferCSSPageSize: true,
     });
-
+    
     return Buffer.from(pdfBuffer);
   } finally {
     await browser.close();
@@ -1385,10 +1563,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       try {
         const permit = await db.getPermit(req.params.id);
         if (!permit) return res.status(404).json({ error: "Permit tidak ditemukan" });
-  
+    
         let templateBuffer: Buffer;
         let templateSourceName: string;
-  
+    
         if (req.file) {
           templateBuffer = fs.readFileSync(req.file.path);
           templateSourceName = req.file.originalname;
@@ -1408,79 +1586,92 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         } else {
           return res.status(400).json({ error: "Kirim file template (.docx) atau sertakan templateId" });
         }
-  
+    
         let templateConfig: any = null;
         if (req.body.templateId) {
           templateConfig = await db.getTemplate(req.body.templateId);
         }
-  
+    
+        // Generate DOCX dari template
         const replacements = buildLetterReplacements(permit, templateConfig);
-        const outputBuffer = generateDocxFromBuffer(templateBuffer, replacements);
-  
+        const docxBuffer = generateDocxFromBuffer(templateBuffer, replacements);
+    
+        // Siapkan folder untuk menyimpan file
         const letterDir = path.join(uploadDir, "letters");
         if (!fs.existsSync(letterDir)) fs.mkdirSync(letterDir, { recursive: true });
-  
+    
+        // Buat nama file
         const safeStr = (s: string) => s.replace(/[^a-zA-Z0-9\u00C0-\u024F_\- ]/g, "").trim().replace(/\s+/g, "_");
         const nomorSurat = safeStr(permit.issuedLetterNumber || permit.requestNumber || "BAPPERIDA");
         const namaPemohon = safeStr(permit.fullName || "Pemohon");
         const jenisSurat = templateConfig?.category === "rekomendasi" ? "Surat_Rekomendasi" : "Surat_Izin_Penelitian";
-        const fileName = `${nomorSurat}_${namaPemohon}_${jenisSurat}.docx`;
-        const filePath = path.join(letterDir, fileName);
-        fs.writeFileSync(filePath, outputBuffer);
-        const generatedFileUrl = `/uploads/letters/${fileName}`;
-  
-        // Generate PDF dari DOCX
-        let pdfFileUrl: string | undefined;
-        const pdfFileName = fileName.replace(/\.docx$/i, ".pdf");
+        
+        const docxFileName = `${nomorSurat}_${namaPemohon}_${jenisSurat}.docx`;
+        const pdfFileName = `${nomorSurat}_${namaPemohon}_${jenisSurat}.pdf`;
+        
+        const docxFilePath = path.join(letterDir, docxFileName);
         const pdfFilePath = path.join(letterDir, pdfFileName);
-        const isSaveOnly = req.body.saveOnly === "true" || req.body.saveOnly === true;
-  
+        
+        // Simpan file DOCX
+        fs.writeFileSync(docxFilePath, docxBuffer);
+        const generatedFileUrl = `/uploads/letters/${docxFileName}`;
+        
+        // Generate PDF dari DOCX (WAJIB)
+        let pdfFileUrl: string | undefined;
+        let pdfBuffer: Buffer | undefined;
+        
         try {
-          const pdfBuffer = await convertDocxToPdf(outputBuffer, `Surat ${permit.requestNumber}`);
+          console.log("🔄 Mengkonversi DOCX ke PDF...");
+          pdfBuffer = await convertDocxToPdf(docxBuffer, `Surat ${permit.requestNumber}`);
           fs.writeFileSync(pdfFilePath, pdfBuffer);
           pdfFileUrl = `/uploads/letters/${pdfFileName}`;
+          console.log(`✅ PDF berhasil dibuat: ${pdfFileName}`);
         } catch (pdfErr: any) {
-          console.error("PDF generation failed:", pdfErr);
-          if (isSaveOnly) {
-            // Jika saveOnly dan PDF gagal, tetap return tapi dengan warning
-            await db.createGeneratedLetter({
-              permitId: permit.id,
-              templateId: req.body.templateId ?? undefined,
-              fileUrl: generatedFileUrl,
-              pdfFileUrl: null,
-            });
-            return res.json({ 
-              fileUrl: generatedFileUrl, 
-              pdfFileUrl: null, 
-              fileName,
-              warning: "PDF tidak dapat digenerate karena Chrome tidak tersedia. Preview akan menggunakan HTML fallback."
-            });
-          }
+          console.error("❌ PDF generation failed:", pdfErr);
+          // Jika PDF gagal, tetap lanjutkan tapi kirim warning
+          // Jangan throw error, karena DOCX tetap tersimpan
         }
-  
-        // Simpan record ke generated_letters
-        await db.createGeneratedLetter({
-          permitId: permit.id,
-          templateId: req.body.templateId ?? undefined,
-          fileUrl: generatedFileUrl,
-          pdfFileUrl,
-        });
-  
-        // Jika saveOnly=true, kembalikan JSON dengan URL file yang tersimpan
+    
+        // Simpan atau update record di database
+        // const existingLetter = await (db as any).getGeneratedLetter(permit.id);
+        
+        // if (existingLetter) {
+        //   // Update existing letter
+        //   await db.updateGeneratedLetter(existingLetter.id, {
+        //     templateId: req.body.templateId ?? undefined,
+        //     fileUrl: generatedFileUrl,
+        //     pdfFileUrl: pdfFileUrl || existingLetter.pdfFileUrl,
+        //   });
+        //   console.log(`✅ Updated existing letter: ${existingLetter.id}`);
+        // } else {
+        //   // Create new letter
+          await db.createGeneratedLetter({
+            permitId: permit.id,
+            templateId: req.body.templateId ?? undefined,
+            fileUrl: generatedFileUrl,
+            pdfFileUrl,
+          });
+          console.log(`✅ Created new letter for permit: ${permit.id}`);
+        // }
+    
+        const isSaveOnly = req.body.saveOnly === "true" || req.body.saveOnly === true;
+        
+        // Jika saveOnly=true, kembalikan JSON dengan URL file
         if (isSaveOnly) {
           return res.json({ 
             fileUrl: generatedFileUrl, 
             pdfFileUrl, 
-            fileName,
+            docxFileName,
+            pdfFileName,
             hasPdf: !!pdfFileUrl
           });
         }
-  
-        // Jika download langsung, kirim DOCX
+    
+        // Jika download langsung (bukan saveOnly), kirim DOCX
         res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
-        res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
-        return res.send(outputBuffer);
-  
+        res.setHeader("Content-Disposition", `attachment; filename="${docxFileName}"`);
+        return res.send(docxBuffer);
+    
       } catch (e: any) {
         console.error("DOCX generation error:", e);
         return res.status(500).json({ error: e.message });
@@ -1498,60 +1689,96 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         const permit = await db.getPermit(req.params.id);
         if (!permit) return res.status(404).json({ error: "Permit tidak ditemukan" });
   
-        let docxBuffer: Buffer;
-        let baseName: string;
-  
-        const { templateId } = req.body;
-  
-        if (templateId) {
-          const templateFiles = await db.listLetterTemplateFiles(templateId);
-          const templateFile = templateFiles.find((f) => f.fileUrl.endsWith(".docx"));
-          if (!templateFile) return res.status(400).json({ error: "Template DOCX tidak ditemukan" });
-          const templatePath = path.join(process.cwd(), templateFile.fileUrl.replace(/^\//, ""));
-          if (!fs.existsSync(templatePath)) return res.status(400).json({ error: "File template tidak ada di disk" });
-          const templateBuf = fs.readFileSync(templatePath);
-          const templateConfig = await db.getTemplate(templateId);
-          const replacements = buildLetterReplacements(permit, templateConfig);
-          docxBuffer = generateDocxFromBuffer(templateBuf, replacements);
-          baseName = `BAPPERIDA-${permit.requestNumber.replace(/\//g, "-")}`;
-        } else {
-          const letter = await (db as any).getGeneratedLetter(permit.id);
-          if (!letter?.fileUrl && !letter?.pdfFileUrl) {
-            return res.status(400).json({ error: "Surat belum digenerate" });
+        // Ambil generated letter yang sudah ada
+        const letter = await (db as any).getGeneratedLetter(permit.id);
+        
+        if (!letter?.pdfFileUrl && !letter?.fileUrl) {
+          return res.status(400).json({ 
+            error: "Surat belum digenerate. Silakan generate surat terlebih dahulu." 
+          });
+        }
+        
+        // PRIORITAS: Jika ada PDF, langsung tampilkan
+        if (letter?.pdfFileUrl) {
+          const pdfPath = path.join(process.cwd(), letter.pdfFileUrl.replace(/^\//, ""));
+          if (fs.existsSync(pdfPath)) {
+            console.log(`✅ Menampilkan PDF yang sudah ada: ${letter.pdfFileUrl}`);
+            const pdfBuf = fs.readFileSync(pdfPath);
+            res.setHeader("Content-Type", "application/pdf");
+            res.setHeader("Content-Disposition", `inline; filename="${path.basename(pdfPath)}"`);
+            return res.send(pdfBuf);
+          } else {
+            console.warn(`⚠️ File PDF tidak ditemukan di disk: ${pdfPath}`);
           }
-  
-          // Jika PDF sudah tersimpan, serve langsung
-          if (letter?.pdfFileUrl) {
-            const pdfPath = path.join(process.cwd(), letter.pdfFileUrl.replace(/^\//, ""));
-            if (fs.existsSync(pdfPath)) {
-              const pdfBuf = fs.readFileSync(pdfPath);
+        }
+        
+        // Jika PDF tidak ada, cek apakah ada DOCX (fallback)
+        if (letter?.fileUrl) {
+          const docxPath = path.join(process.cwd(), letter.fileUrl.replace(/^\//, ""));
+          if (fs.existsSync(docxPath) && docxPath.endsWith(".docx")) {
+            console.log(`🔄 Konversi ulang DOCX ke PDF: ${docxPath}`);
+            const docxBuffer = fs.readFileSync(docxPath);
+            
+            try {
+              const pdfBuffer = await convertDocxToPdf(docxBuffer, `Surat ${permit.requestNumber}`);
+              const pdfFileName = path.basename(docxPath).replace(".docx", ".pdf");
+              const pdfPath = path.join(path.dirname(docxPath), pdfFileName);
+              fs.writeFileSync(pdfPath, pdfBuffer);
+              
+              // Update database dengan pdfFileUrl
+              await db.updateGeneratedLetterPdf(permit.id, `/uploads/letters/${pdfFileName}`);
+              
               res.setHeader("Content-Type", "application/pdf");
-              res.setHeader("Content-Disposition", `inline; filename="${path.basename(pdfPath)}"`);
-              return res.send(pdfBuf);
+              res.setHeader("Content-Disposition", `inline; filename="${pdfFileName}"`);
+              return res.send(pdfBuffer);
+            } catch (pdfErr: any) {
+              console.error("❌ PDF conversion failed:", pdfErr);
+              return res.status(500).json({ 
+                error: `Gagal konversi ke PDF: ${pdfErr.message}`,
+                fallback: "Silakan download file DOCX untuk melihat surat"
+              });
             }
           }
-  
-          if (!letter?.fileUrl) return res.status(400).json({ error: "File surat tidak ada" });
-          const filePath = path.join(process.cwd(), letter.fileUrl.replace(/^\//, ""));
-          if (!fs.existsSync(filePath)) return res.status(400).json({ error: "File surat tidak ada di disk" });
-          docxBuffer = fs.readFileSync(filePath);
-          baseName = path.basename(filePath, ".docx");
         }
-  
-        try {
-          const pdfBuffer = await convertDocxToPdf(docxBuffer!, `Surat Izin ${permit.requestNumber}`);
-          res.setHeader("Content-Type", "application/pdf");
-          res.setHeader("Content-Disposition", `inline; filename="${baseName}.pdf"`);
-          return res.send(pdfBuffer);
-        } catch (pdfErr: any) {
-          console.warn("PDF preview fallback to HTML:", pdfErr.message);
-          // Fallback ke HTML
-          const htmlContent = await convertDocxToHtml(docxBuffer!);
-          res.setHeader("Content-Type", "text/html; charset=utf-8");
-          return res.send(htmlContent);
-        }
+        
+        return res.status(400).json({ error: "File surat tidak ditemukan di server" });
+        
       } catch (e: any) {
         console.error("PDF preview error:", e);
+        return res.status(500).json({ error: e.message });
+      }
+    }
+  );
+
+  app.get(
+    "/api/admin/permits/:id/download-pdf",
+    authMiddleware,
+    requireRole("super_admin", "admin_rida"),
+    async (req: any, res) => {
+      try {
+        const permit = await db.getPermit(req.params.id);
+        if (!permit) return res.status(404).json({ error: "Permit tidak ditemukan" });
+  
+        const letter = await (db as any).getGeneratedLetter(permit.id);
+        
+        if (!letter?.pdfFileUrl) {
+          return res.status(400).json({ error: "File PDF belum tersedia" });
+        }
+        
+        const pdfPath = path.join(process.cwd(), letter.pdfFileUrl.replace(/^\//, ""));
+        if (!fs.existsSync(pdfPath)) {
+          return res.status(404).json({ error: "File PDF tidak ditemukan di server" });
+        }
+        
+        const pdfBuffer = fs.readFileSync(pdfPath);
+        const fileName = path.basename(pdfPath);
+        
+        res.setHeader("Content-Type", "application/pdf");
+        res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+        return res.send(pdfBuffer);
+        
+      } catch (e: any) {
+        console.error("PDF download error:", e);
         return res.status(500).json({ error: e.message });
       }
     }
@@ -2196,13 +2423,24 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const result = await db.createSurvey(finalData);
 
       // Jika ada requestNumber, tandai permit sebagai sudah isi survei
+      let updatedPermit = null;
       if (data.requestNumber) {
         try {
+          // Cari permit berdasarkan request number
           const linkedPermit = await db.getPermitByNumber(String(data.requestNumber).toUpperCase());
+          
           if (linkedPermit) {
-            await db.updatePermit(linkedPermit.id, { isSurvei: true });
+            // Update isSurvei menjadi true
+            updatedPermit = await db.updatePermit(linkedPermit.id, { isSurvei: true });
+            
+            console.log(`✅ Survey linked to permit ${linkedPermit.requestNumber}, isSurvei set to true`);
+          } else {
+            console.log(`⚠️ Permit with request number ${data.requestNumber} not found`);
           }
-        } catch {}
+        } catch (err) {
+          console.error("Error updating permit isSurvei:", err);
+          // Jangan gagalkan response survey jika update permit gagal
+        }
       }
 
       // Notifikasi ke admin RIDA
