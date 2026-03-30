@@ -315,14 +315,27 @@ function buildLetterHtml(rawHtml: string): string {
   return `<!DOCTYPE html><html lang="id"><head>
 <meta charset="UTF-8"/>
 <style>
-  @page { size: A4; margin: 2.5cm 3cm; }
-  * { box-sizing: border-box; }
-  body { font-family: 'Times New Roman', Times, serif; font-size: 12pt; line-height: 1.7; color: #1a1a1a; }
-  p { margin: 0 0 6px; }
-  table { width: 100%; border-collapse: collapse; margin: 6px 0; }
-  td, th { padding: 3px 6px; vertical-align: top; }
-  img { max-width: 100%; }
-  h1,h2,h3,h4 { margin: 8px 0 4px; }
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Times New Roman', Times, serif;
+    font-size: 12pt;
+    line-height: 1.5;
+    color: #000;
+    background: white;
+    padding: 2.54cm 2.54cm 2.54cm 3cm;
+    max-width: 21cm;
+    margin: 0 auto;
+  }
+  p { margin-bottom: 6pt; text-align: justify; }
+  table { width: 100%; border-collapse: collapse; margin: 4pt 0; }
+  td, th { padding: 4pt 6pt; vertical-align: top; }
+  img { max-width: 100%; height: auto; display: block; }
+  strong, b { font-weight: bold; }
+  em, i { font-style: italic; }
+  u { text-decoration: underline; }
+  ul, ol { margin: 4pt 0 4pt 2em; }
+  li { margin: 2pt 0; }
+  h1,h2,h3,h4 { margin: 8px 0 4px; font-family: 'Times New Roman', Times, serif; }
 </style></head><body>${rawHtml}</body></html>`;
 }
 
@@ -426,244 +439,131 @@ function buildLetterHtml(rawHtml: string): string {
 //     await browser.close();
 //   }
 // }
-async function convertDocxToPdf(docxBuffer: Buffer, title = "Surat"): Promise<Buffer> {  
+async function convertDocxToPdf(docxBuffer: Buffer, title = "Surat"): Promise<Buffer> {
   const mammoth = require("mammoth");
   const PizZip = require("pizzip");
-  
-  // Konversi ke HTML dengan opsi yang lebih baik
-  const { value: rawHtml, messages } = await mammoth.convertToHtml({
-    buffer: docxBuffer,
-    options: {
-      styleMap: [
-        "p[style-name='Normal'] => p:fresh",
-        "u => u",
-        "b => strong",
-        "i => em",
-        "center => div.center",
-      ]
-    }
-  });
-  
-  // Extract document properties
+
+  // Extract document XML
   const zip = new PizZip(docxBuffer);
   const documentXml = zip.files["word/document.xml"]?.asText() ?? "";
-  const stylesXml = zip.files["word/styles.xml"]?.asText() ?? "";
-  
-  // Parse margin dari XML
+
+  // Parse paragraph properties from XML in document order
+  // We track alignment, indentation, spacing for each <w:p>
+  const paragraphProps: Array<{ align: string; indLeft: number; spaceBefore: number }> = [];
+  const pTagRegex = /<w:p[ >][\s\S]*?<\/w:p>/g;
+  let pMatch: RegExpExecArray | null;
+  while ((pMatch = pTagRegex.exec(documentXml)) !== null) {
+    const pXml = pMatch[0];
+
+    // Alignment: w:jc val ("both" = justify, "center", "right", "left")
+    const jcM = pXml.match(/<w:jc w:val="([^"]+)"/);
+    const rawAlign = jcM ? jcM[1] : "";
+    const align = rawAlign === "both" ? "justify"
+      : rawAlign === "center" ? "center"
+      : rawAlign === "right" ? "right"
+      : rawAlign === "left" ? "left"
+      : "justify"; // default justify for formal government letters
+
+    // Left indentation in twips → px  (1 twip = 1/20pt = 1/1440inch, 96dpi: 1px = 15twips)
+    const indM = pXml.match(/<w:ind[^/]*w:left="([^"]+)"/);
+    const indLeft = indM ? Math.round(parseInt(indM[1]) / 15) : 0;
+
+    // Space before in twips → px
+    const spM = pXml.match(/<w:spacing[^/]*w:before="([^"]+)"/);
+    const spaceBefore = spM ? Math.round(parseInt(spM[1]) / 15) : 0;
+
+    paragraphProps.push({ align, indLeft, spaceBefore });
+  }
+
+  // Convert DOCX to HTML with mammoth, embedding images as base64 data URIs
+  const { value: rawHtml } = await mammoth.convertToHtml({
+    buffer: docxBuffer,
+    convertImage: mammoth.images.imgElement(function(image: any) {
+      return image.read("base64").then(function(imageBuffer: string) {
+        return { src: `data:${image.contentType};base64,${imageBuffer}` };
+      });
+    }),
+    styleMap: [
+      "p[style-name='Normal'] => p:fresh",
+      "p[style-name='Body Text'] => p:fresh",
+      "u => u",
+      "b => strong",
+      "i => em",
+    ],
+  });
+
+  // Inject alignment + indent into every <p> tag (with or without attributes)
+  let pIdx = 0;
+  const processedHtml = rawHtml.replace(/<p(\s[^>]*)?>/g, (_match: string, _attrs: string | undefined) => {
+    const props = paragraphProps[pIdx] ?? { align: "justify", indLeft: 0, spaceBefore: 0 };
+    pIdx++;
+    const styles: string[] = [
+      `text-align:${props.align}`,
+      "margin-bottom:6pt",
+      "line-height:1.5",
+    ];
+    if (props.indLeft > 0) styles.push(`padding-left:${props.indLeft}px`);
+    if (props.spaceBefore > 0) styles.push(`margin-top:${props.spaceBefore}px`);
+    return `<p style="${styles.join(";")}">`;
+  });
+
+  // Parse page margins from DOCX XML (twips → cm)
+  const twipsToCm = (twips: string) => ((parseInt(twips) / 1440) * 2.54).toFixed(2) + "cm";
   let marginTop = "2.54cm";
   let marginBottom = "2.54cm";
-  let marginLeft = "2.54cm";
+  let marginLeft = "3.00cm";
   let marginRight = "2.54cm";
-  
-  const marginMatch = documentXml.match(/<w:pgMar[^>]*w:top="([^"]+)"[^>]*w:bottom="([^"]+)"[^>]*w:left="([^"]+)"[^>]*w:right="([^"]+)"/);
-  if (marginMatch) {
-    const twipsToCm = (twips: string) => {
-      const value = parseInt(twips);
-      return (value / 20 / 72 * 2.54).toFixed(2) + "cm";
-    };
-    marginTop = twipsToCm(marginMatch[1]);
-    marginBottom = twipsToCm(marginMatch[2]);
-    marginLeft = twipsToCm(marginMatch[3]);
-    marginRight = twipsToCm(marginMatch[4]);
+
+  // Try both attribute orderings (Word may order them differently)
+  const pgMarMatch = documentXml.match(/<w:pgMar\s[^>]*/);
+  if (pgMarMatch) {
+    const pgMarStr = pgMarMatch[0];
+    const topM = pgMarStr.match(/w:top="([^"]+)"/);
+    const botM = pgMarStr.match(/w:bottom="([^"]+)"/);
+    const lefM = pgMarStr.match(/w:left="([^"]+)"/);
+    const rigM = pgMarStr.match(/w:right="([^"]+)"/);
+    if (topM) marginTop = twipsToCm(topM[1]);
+    if (botM) marginBottom = twipsToCm(botM[1]);
+    if (lefM) marginLeft = twipsToCm(lefM[1]);
+    if (rigM) marginRight = twipsToCm(rigM[1]);
   }
-  
-  // Parse font sizes from styles
-  const fontSizeMatch = stylesXml.match(/<w:sz[^>]*w:val="(\d+)"/);
-  let baseFontSize = "12pt";
-  if (fontSizeMatch) {
-    const halfPoints = parseInt(fontSizeMatch[1]);
-    const points = halfPoints / 2;
-    baseFontSize = `${points}pt`;
-  }
-  
-  // Enhanced HTML dengan layout yang lebih akurat
+
+  // Build full HTML (no @page margin here — we pass margins only via Puppeteer)
   const html = `<!DOCTYPE html>
 <html lang="id">
 <head>
   <meta charset="UTF-8"/>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
   <style>
-    @page {
-      size: A4;
-      margin: ${marginTop} ${marginRight} ${marginBottom} ${marginLeft};
-    }
-    
-    * {
-      margin: 0;
-      padding: 0;
-      box-sizing: border-box;
-    }
-    
+    * { margin: 0; padding: 0; box-sizing: border-box; }
     body {
       font-family: 'Times New Roman', Times, serif;
-      font-size: ${baseFontSize};
+      font-size: 12pt;
       line-height: 1.5;
       color: #000000;
       background: white;
     }
-    
-    .document-content {
-      width: 100%;
-      max-width: 100%;
-    }
-    
-    /* Kop surat styling */
-    .letter-header {
-      text-align: center;
-      margin-bottom: 24pt;
-      padding-bottom: 12pt;
-      border-bottom: 2px solid #000000;
-    }
-    
-    .letter-header img {
-      max-width: 80px;
-      height: auto;
-      margin-bottom: 8pt;
-    }
-    
-    .letter-header h1 {
-      font-size: 14pt;
-      font-weight: bold;
-      margin: 4pt 0;
-      text-transform: uppercase;
-    }
-    
-    .letter-header h2 {
-      font-size: 12pt;
-      font-weight: bold;
-      margin: 2pt 0;
-    }
-    
-    .letter-header p {
-      font-size: 10pt;
-      margin: 2pt 0;
-      text-align: center;
-    }
-    
-    /* Nomor surat */
-    .letter-number {
-      text-align: center;
-      margin: 20pt 0;
-    }
-    
-    .letter-number p {
-      font-weight: bold;
-      text-decoration: underline;
-      margin: 0;
-    }
-    
-    /* Body text */
-    .letter-body {
-      text-align: justify;
-    }
-    
-    .letter-body p {
-      margin: 0 0 8pt;
-      text-indent: 36pt;
-      line-height: 1.5;
-    }
-    
-    .letter-body p.no-indent {
-      text-indent: 0;
-    }
-    
-    /* Table styling */
-    table {
-      width: 100%;
-      border-collapse: collapse;
-      margin: 12pt 0;
-    }
-    
-    td, th {
-      border: 1px solid #000000;
-      padding: 8pt;
-      vertical-align: top;
-    }
-    
-    /* Table tanpa border */
-    table.no-border td,
-    table.no-border th {
-      border: none;
-    }
-    
-    /* List styling */
-    ul, ol {
-      margin: 8pt 0 8pt 36pt;
-    }
-    
-    li {
-      margin: 2pt 0;
-    }
-    
-    /* Image styling */
-    img {
-      max-width: 100%;
-      height: auto;
-    }
-    
-    /* Signature section */
-    .signature {
-      margin-top: 48pt;
-      text-align: right;
-    }
-    
-    .signature p {
-      margin: 4pt 0;
-      text-indent: 0;
-    }
-    
-    .signature .signature-name {
-      margin-top: 48pt;
-      font-weight: bold;
-    }
-    
-    /* Carbon copy */
-    .carbon-copy {
-      margin-top: 24pt;
-      font-size: 10pt;
-    }
-    
-    .carbon-copy p {
-      margin: 2pt 0;
-      text-indent: 0;
-    }
-    
-    /* Center alignment */
-    .center {
-      text-align: center;
-    }
-    
-    /* Bold and underline */
-    strong, b {
-      font-weight: bold;
-    }
-    
-    u {
-      text-decoration: underline;
-    }
-    
-    /* Spacing */
-    .mt-1 { margin-top: 8pt; }
-    .mt-2 { margin-top: 16pt; }
-    .mt-3 { margin-top: 24pt; }
-    .mb-1 { margin-bottom: 8pt; }
-    .mb-2 { margin-bottom: 16pt; }
+    p { margin-bottom: 6pt; }
+    table { width: 100%; border-collapse: collapse; margin: 4pt 0; }
+    td, th { padding: 4pt 6pt; vertical-align: top; }
+    img { max-width: 100%; height: auto; display: block; }
+    strong, b { font-weight: bold; }
+    em, i { font-style: italic; }
+    u { text-decoration: underline; }
+    ul, ol { margin: 4pt 0 4pt 2em; }
+    li { margin: 2pt 0; }
   </style>
 </head>
 <body>
-  <div class="document-content">
-    ${rawHtml}
-  </div>
+  ${processedHtml}
 </body>
 </html>`;
-  
+
   const executablePath = findChromePath();
   if (!executablePath) {
     console.warn("Chrome tidak ditemukan, mengirim HTML sebagai fallback");
-    const htmlBuffer = Buffer.from(html, "utf-8");
-    return htmlBuffer;
+    return Buffer.from(html, "utf-8");
   }
-  
+
   const puppeteer = require("puppeteer");
   const browser = await puppeteer.launch({
     executablePath,
@@ -674,49 +574,39 @@ async function convertDocxToPdf(docxBuffer: Buffer, title = "Surat"): Promise<Bu
       "--disable-gpu",
       "--disable-software-rasterizer",
       "--disable-web-security",
-      "--font-render-hinting=none"
+      "--font-render-hinting=none",
     ],
     headless: true,
   });
-  
+
   try {
     const page = await browser.newPage();
-    
-    // Set viewport ke ukuran A4
-    await page.setViewport({
-      width: 1240,
-      height: 1754,
-      deviceScaleFactor: 1,
-    });
-    
-    await page.setContent(html, { 
-      waitUntil: "networkidle0", 
-      timeout: 30000 
-    });
-    
-    // Tambahkan delay untuk memastikan semua font dan gambar terload
-    await page.evaluate(() => {
-      return new Promise((resolve) => {
+
+    await page.setContent(html, { waitUntil: "networkidle0", timeout: 30000 });
+
+    // Wait for fonts to load
+    await page.evaluate(() =>
+      new Promise<void>((resolve) => {
         if (document.fonts && document.fonts.ready) {
-          document.fonts.ready.then(resolve);
+          document.fonts.ready.then(() => resolve());
         } else {
           setTimeout(resolve, 1000);
         }
-      });
-    });
-    
+      })
+    );
+
     const pdfBuffer = await page.pdf({
       format: "A4",
       printBackground: true,
+      // Margins come from DOCX page margins — no CSS @page double-margin
       margin: {
         top: marginTop,
         bottom: marginBottom,
         left: marginLeft,
         right: marginRight,
       },
-      preferCSSPageSize: true,
     });
-    
+
     return Buffer.from(pdfBuffer);
   } finally {
     await browser.close();
@@ -725,7 +615,21 @@ async function convertDocxToPdf(docxBuffer: Buffer, title = "Surat"): Promise<Bu
 
 async function convertDocxToHtml(docxBuffer: Buffer): Promise<string> {
   const mammoth = require("mammoth");
-  const { value: rawHtml } = await mammoth.convertToHtml({ buffer: docxBuffer });
+  const { value: rawHtml } = await mammoth.convertToHtml({
+    buffer: docxBuffer,
+    convertImage: mammoth.images.imgElement(function(image: any) {
+      return image.read("base64").then(function(imageBuffer: string) {
+        return { src: `data:${image.contentType};base64,${imageBuffer}` };
+      });
+    }),
+    styleMap: [
+      "p[style-name='Normal'] => p:fresh",
+      "p[style-name='Body Text'] => p:fresh",
+      "u => u",
+      "b => strong",
+      "i => em",
+    ],
+  });
   return buildLetterHtml(rawHtml);
 }
 
@@ -2434,6 +2338,27 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
   
+  // ─── Available Years for Filter ───────────────────────────────────────────────
+  app.get("/api/admin/stats/available-years", authMiddleware, async (req, res) => {
+    try {
+      const years = await db.getAvailableYears();
+      return res.json(years);
+    } catch (e: any) {
+      return res.status(500).json({ error: e.message });
+    }
+  });
+
+  // ─── Permit Monthly Trend ─────────────────────────────────────────────────────
+  app.get("/api/admin/stats/permit-monthly", authMiddleware, requireRole("super_admin", "admin_rida"), async (req, res) => {
+    try {
+      const year = req.query.year ? parseInt(req.query.year as string) : new Date().getFullYear();
+      const data = await db.getPermitMonthlyStats(year);
+      return res.json(data);
+    } catch (e: any) {
+      return res.status(500).json({ error: e.message });
+    }
+  });
+
   // ─── IKM Dashboard Stats ──────────────────────────────────────────────────────
   app.get("/api/admin/stats/ikm-dashboard", authMiddleware, async (req, res) => {
     try {

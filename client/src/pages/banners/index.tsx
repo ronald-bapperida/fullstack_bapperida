@@ -11,7 +11,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } f
 import { Switch } from "@/components/ui/switch";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
-import { Plus, Edit, Trash2, Image, Eye, MousePointerClick, Upload, X, Monitor, Smartphone, RefreshCw } from "lucide-react";
+import { Plus, Edit, Trash2, Image, MousePointerClick, Upload, X, Monitor, Smartphone, RefreshCw } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useLang } from "@/contexts/language";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -275,17 +275,16 @@ export default function BannersPage() {
               <TableHead className="w-24">{t("bannerGambar")}</TableHead>
               <TableHead>{t("bannerJudulPlacement")}</TableHead>
               <TableHead className="w-28">{t("status")}</TableHead>
-              <TableHead className="w-24 text-center">{t("bannerViews")}</TableHead>
-              <TableHead className="w-24 text-center">{t("bannerClicks")}</TableHead>
+              <TableHead className="w-28 text-center">{t("bannerClicks")}</TableHead>
               <TableHead className="w-24 text-right">{t("action")}</TableHead>
             </TableRow>
           </TableHeader>
           <TableBody>
             {isLoading ? Array.from({ length: 3 }).map((_, i) => (
-              <TableRow key={i}>{Array.from({ length: 6 }).map((_, j) => <TableCell key={j}><Skeleton className="h-5 w-full" /></TableCell>)}</TableRow>
+              <TableRow key={i}>{Array.from({ length: 5 }).map((_, j) => <TableCell key={j}><Skeleton className="h-5 w-full" /></TableCell>)}</TableRow>
             )) : banners.length === 0 ? (
               <TableRow>
-                <TableCell colSpan={6} className="text-center py-12 text-muted-foreground">
+                <TableCell colSpan={5} className="text-center py-12 text-muted-foreground">
                   {trash ? "Tidak ada banner di trash" : "Belum ada banner"}
                 </TableCell>
               </TableRow>
@@ -311,11 +310,6 @@ export default function BannersPage() {
                   <Badge variant={b.isActive ? "default" : "secondary"}>
                     {b.isActive ? "Aktif" : "Nonaktif"}
                   </Badge>
-                </TableCell>
-                <TableCell className="text-center">
-                  <span className="flex items-center justify-center gap-1 text-sm">
-                    <Eye className="w-3 h-3" />{b.viewCount}
-                  </span>
                 </TableCell>
                 <TableCell className="text-center">
                   <span className="flex items-center justify-center gap-1 text-sm">

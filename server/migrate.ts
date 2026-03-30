@@ -1,11 +1,11 @@
 import "dotenv/config";
-import mysql from "mysql2/promise";
+import pg from "pg";
 
 if (!process.env.DATABASE_URL) {
   throw new Error("DATABASE_URL is missing");
 }
 
-const pool = mysql.createPool(process.env.DATABASE_URL);
+const pool = new pg.Pool({ connectionString: process.env.DATABASE_URL });
 
 const MIGRATIONS = [
   // Permit: research date fields
@@ -24,7 +24,7 @@ const MIGRATIONS = [
   `ALTER TABLE research_permit_requests ADD COLUMN IF NOT EXISTS is_survei BOOLEAN NOT NULL DEFAULT FALSE`,
   // Notifications table
   `CREATE TABLE IF NOT EXISTS notifications (
-    id VARCHAR(36) NOT NULL DEFAULT (UUID()),
+    id VARCHAR(36) NOT NULL DEFAULT gen_random_uuid(),
     type VARCHAR(50) NOT NULL,
     title VARCHAR(255) NOT NULL,
     message TEXT NOT NULL,
@@ -33,25 +33,23 @@ const MIGRATIONS = [
     target_role VARCHAR(50) NOT NULL DEFAULT 'all',
     is_read BOOLEAN NOT NULL DEFAULT FALSE,
     read_by TEXT NULL DEFAULT NULL,
-    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    created_at TIMESTAMP DEFAULT now(),
     PRIMARY KEY (id)
   )`,
 ];
 
 export async function runMigrations() {
-  let connection = null;
+  const client = await pool.connect();
   try {
-    connection = await pool.getConnection();
     for (const sql of MIGRATIONS) {
       try {
-        await connection.query(sql);
+        await client.query(sql);
         console.log("[migrate] OK:", sql.slice(0, 60));
       } catch (err: any) {
-        // MySQL error codes
-        // 1060: duplicate column
-        // 1050: duplicate table
-        if (err.code === "ER_DUP_FIELDNAME" || err.code === "ER_TABLE_EXISTS_ERROR") {
-          // already exists, skip
+        // PostgreSQL error codes
+        // 42701: duplicate column
+        // 42P07: duplicate table
+        if (err.code === "42701" || err.code === "42P07") {
           console.log("[migrate] Skip (already exists):", sql.slice(0, 60));
         } else {
           console.warn("[migrate] WARN:", err.message, "| SQL:", sql.slice(0, 80));
@@ -60,6 +58,6 @@ export async function runMigrations() {
     }
     console.log("[migrate] All migrations applied.");
   } finally {
-    if (connection) connection.release();
+    client.release();
   }
 }

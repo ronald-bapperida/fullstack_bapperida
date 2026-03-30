@@ -39,7 +39,7 @@ Aplikasi ini menggunakan **PostgreSQL** via `drizzle-orm/pg-core` + `pg`.
 - **T002 (Notifications)**: Notifikasi dihasilkan saat submit survei IKM + laporan akhir; superadmin melihat semua notifikasi.
 - **T003 (Dashboard Chart - Year Only)**: Filter grafik dashboard kini hanya tahun (bulan dihapus); deskripsi chart updated ke "Tahun XXXX"; top news/dokumen diambil dari bulan terbaik sepanjang tahun.
 - **T004 (Export Date Range)**: Filter tanggal dari-sampai tersedia di card Export Data di dashboard; semua 6 endpoint export mendukung `?from=&to=` param; IKM surveys export juga ditambahkan.
-- **DB Revert to MySQL**: Kembali menggunakan `drizzle-orm/mysql-core` + `mysql2` sesuai kebutuhan. Set `DATABASE_URL` ke MySQL connection string.
+- **DB Migration to PostgreSQL (Final)**: Fully migrated from `mysql2` to `pg` + `drizzle-orm/node-postgres`. `shared/schema.ts` now uses `pgTable`, `pgEnum`; `server/db.ts` uses `pg.Pool`; `server/migrate.ts` uses `pg`; MySQL-specific SQL functions (`YEAR()`, `MONTH()`) replaced with PostgreSQL equivalents (`EXTRACT(YEAR FROM ...)`, `EXTRACT(MONTH FROM ...)`). MySQL server at `helium:3306` was permanently unavailable; PostgreSQL at `helium:5432` is the active DB.
 - **Template Categories (T005)**: Added `category` field (surat_izin/rekomendasi) to template create/edit form and upload modal; category badge shown in template list (blue=Surat Izin, purple=Rekomendasi).
 - **Notifications**: Bell component in header with polling for unread count; CRUD at `/api/admin/notifications`.
 - **Permit Admin Fields (T004)**: `AdminLetterFieldsCard` in permit detail — issued letter number/date, recipient name/city, research start/end dates; PATCH endpoint `/api/admin/permits/:id/detail`.

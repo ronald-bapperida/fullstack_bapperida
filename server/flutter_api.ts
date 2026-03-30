@@ -95,6 +95,15 @@ export function registerFlutterApiRoutes(app: express.Express) {
    * @desc    Get active banners
    * @access  Public
    */
+  flutterRouter.post("/v1/banners/:id/click", async (req: Request, res: Response) => {
+    try {
+      await db.trackBannerClick(req.params.id);
+      return res.json({ success: true, message: "Click tracked" });
+    } catch (error: any) {
+      return res.status(500).json({ success: false, message: "Failed to track click", error: error.message });
+    }
+  });
+
   flutterRouter.get("/v1/banners", async (req: Request, res: Response) => {
     try {
       const banners = await db.getActiveBanners();

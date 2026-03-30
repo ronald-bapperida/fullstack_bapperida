@@ -10,8 +10,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Newspaper, ClipboardList, BarChart2, Image, FileText, Clock,
-  CheckCircle, Trash2, TrendingUp, Download, MapPin, Users, PieChart,
-  Activity, Star, ArrowUpRight, CalendarDays, Building2, Layers, CalendarIcon,
+  CheckCircle, TrendingUp, Download, MapPin, Users,
+  Activity, Star, ArrowUpRight, CalendarDays, Building2, CalendarIcon,
 } from "lucide-react";
 import { useAuth } from "@/contexts/auth";
 import { useToast } from "@/hooks/use-toast";
@@ -33,11 +33,6 @@ import {
   ResponsiveContainer,
   Area,
   AreaChart,
-  RadarChart,
-  Radar,
-  PolarGrid,
-  PolarAngleAxis,
-  PolarRadiusAxis,
 } from "recharts";
 
 interface Stats {
@@ -63,11 +58,6 @@ interface DocumentDownloadStats {
 
 interface PermitOriginStats { institution: string; count: number; percentage: number; }
 
-interface SurveyStats {
-  total_responses: number; satisfaction_rate: number;
-  categories: Array<{ category: string; value: number; percentage: number }>;
-  monthly_trend: Array<{ month: string; responses: number; satisfaction: number }>;
-}
 
 const GRADIENT_COLORS = [
   { from: "#3b82f6", to: "#60a5fa" },
@@ -208,8 +198,6 @@ export default function Dashboard() {
   const [exportFrom, setExportFrom] = useState<Date | undefined>(undefined);
   const [exportTo, setExportTo] = useState<Date | undefined>(undefined);
 
-  const years = Array.from({ length: new Date().getFullYear() - 2019 }, (_, i) => 2020 + i);
-
   const exportFromStr = exportFrom ? format(exportFrom, "yyyy-MM-dd") : undefined;
   const exportToStr = exportTo ? format(exportTo, "yyyy-MM-dd") : undefined;
 
@@ -226,8 +214,21 @@ export default function Dashboard() {
     queryKey: ["/api/admin/stats/permit-origins", selectedYear],
     enabled: !!user && (user.role === "super_admin" || user.role === "admin_rida"),
   });
-  const { data: surveyStats, isLoading: surveyLoading } = useQuery<SurveyStats>({
-    queryKey: ["/api/admin/stats/survey-satisfaction", selectedYear],
+  const { data: availableYears } = useQuery<number[]>({
+    queryKey: ["/api/admin/stats/available-years"],
+    enabled: !!user,
+  });
+
+  const { data: permitMonthly, isLoading: permitMonthlyLoading } = useQuery<any[]>({
+    queryKey: ["/api/admin/stats/permit-monthly", selectedYear],
+    queryFn: async () => {
+      const token = localStorage.getItem("token");
+      const res = await fetch(`/api/admin/stats/permit-monthly?year=${selectedYear}`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
     enabled: !!user && (user.role === "super_admin" || user.role === "admin_rida"),
   });
 
@@ -269,7 +270,7 @@ export default function Dashboard() {
     fill: CHART_COLORS[index % CHART_COLORS.length],
   })) || [];
 
-  const satisfactionData = surveyStats?.categories || [];
+  const years = availableYears && availableYears.length > 0 ? availableYears : [new Date().getFullYear()];
 
   // Stat card configurations
   const bppCards: StatCardConfig[] = stats ? [
@@ -349,21 +350,7 @@ export default function Dashboard() {
       iconBgClass: "bg-white/20",
       textClass: "text-white",
     },
-    {
-      title: t("avgSatisfaction"),
-      value: surveyStats?.satisfaction_rate ? `${surveyStats.satisfaction_rate.toFixed(1)}%` : "–",
-      icon: Star,
-      bgClass: "bg-gradient-to-br from-cyan-500 to-sky-500",
-      iconBgClass: "bg-white/20",
-      textClass: "text-white",
-      subLabel: "dari 100",
-    },
   ] : [];
-
-  const months = [
-    "Jan", "Feb", "Mar", "Apr", "Mei", "Jun",
-    "Jul", "Agu", "Sep", "Okt", "Nov", "Des"
-  ];
 
   return (
     <div className="flex flex-col gap-6 p-6 min-h-screen bg-gradient-to-b from-muted/40 via-background to-background">
@@ -547,9 +534,6 @@ export default function Dashboard() {
           </TabsTrigger>
           <TabsTrigger value="permits" disabled={!isRIDA} className="data-[state=active]:bg-white data-[state=active]:shadow-sm">
             <ClipboardList className="w-4 h-4 mr-1.5" />{t("permitTab")}
-          </TabsTrigger>
-          <TabsTrigger value="surveys" disabled={!isRIDA} className="data-[state=active]:bg-white data-[state=active]:shadow-sm">
-            <BarChart2 className="w-4 h-4 mr-1.5" />{t("surveyTab")}
           </TabsTrigger>
           <TabsTrigger value="ikm" disabled={!isRIDA} className="data-[state=active]:bg-white data-[state=active]:shadow-sm">
             <Star className="w-4 h-4 mr-1.5" />Survei IKM
@@ -783,141 +767,46 @@ export default function Dashboard() {
                   </div>
                   Trend Pengajuan Izin
                 </CardTitle>
-                <CardDescription>Perbandingan bulanan &middot; {selectedYear}</CardDescription>
+                <CardDescription>Pengajuan, disetujui & ditolak per bulan &middot; {selectedYear}</CardDescription>
               </CardHeader>
               <CardContent>
-                <div className="h-72">
-                  <ResponsiveContainer width="100%" height="100%">
-                    <AreaChart
-                      data={months.map((month) => ({
-                        name: month.substring(0, 3),
-                        pengajuan: Math.floor(Math.random() * 20) + 3,
-                        disetujui: Math.floor(Math.random() * 15) + 2,
-                      }))}
-                    >
-                      <defs>
-                        <linearGradient id="areaGrad1" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3} />
-                          <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
-                        </linearGradient>
-                        <linearGradient id="areaGrad2" x1="0" y1="0" x2="0" y2="1">
-                          <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
-                          <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
-                        </linearGradient>
-                      </defs>
-                      <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
-                      <XAxis dataKey="name" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
-                      <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
-                      <Tooltip contentStyle={{ borderRadius: "10px", border: "none", boxShadow: "0 4px 20px rgba(0,0,0,0.1)" }} />
-                      <Legend iconType="circle" iconSize={8} />
-                      <Area type="monotone" dataKey="pengajuan" name="Pengajuan" stroke="#6366f1" strokeWidth={2} fill="url(#areaGrad1)" />
-                      <Area type="monotone" dataKey="disetujui" name="Disetujui" stroke="#10b981" strokeWidth={2} fill="url(#areaGrad2)" />
-                    </AreaChart>
-                  </ResponsiveContainer>
-                </div>
+                {permitMonthlyLoading ? (
+                  <div className="h-72 flex items-center justify-center"><Skeleton className="h-48 w-full" /></div>
+                ) : (
+                  <div className="h-72">
+                    <ResponsiveContainer width="100%" height="100%">
+                      <AreaChart data={permitMonthly || []}>
+                        <defs>
+                          <linearGradient id="areaGrad1" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#6366f1" stopOpacity={0.3} />
+                            <stop offset="95%" stopColor="#6366f1" stopOpacity={0} />
+                          </linearGradient>
+                          <linearGradient id="areaGrad2" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#10b981" stopOpacity={0.3} />
+                            <stop offset="95%" stopColor="#10b981" stopOpacity={0} />
+                          </linearGradient>
+                          <linearGradient id="areaGrad3" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="5%" stopColor="#ef4444" stopOpacity={0.3} />
+                            <stop offset="95%" stopColor="#ef4444" stopOpacity={0} />
+                          </linearGradient>
+                        </defs>
+                        <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
+                        <XAxis dataKey="name" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+                        <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false} allowDecimals={false} />
+                        <Tooltip contentStyle={{ borderRadius: "10px", border: "none", boxShadow: "0 4px 20px rgba(0,0,0,0.1)" }} />
+                        <Legend iconType="circle" iconSize={8} />
+                        <Area type="monotone" dataKey="pengajuan" name="Pengajuan" stroke="#6366f1" strokeWidth={2} fill="url(#areaGrad1)" />
+                        <Area type="monotone" dataKey="disetujui" name="Disetujui" stroke="#10b981" strokeWidth={2} fill="url(#areaGrad2)" />
+                        <Area type="monotone" dataKey="ditolak" name="Ditolak" stroke="#ef4444" strokeWidth={2} fill="url(#areaGrad3)" />
+                      </AreaChart>
+                    </ResponsiveContainer>
+                  </div>
+                )}
               </CardContent>
             </Card>
           </div>
         </TabsContent>
 
-        {/* ─ Tab: Survei ─ */}
-        <TabsContent value="surveys" className="space-y-4">
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
-            {surveyLoading ? <ChartSkeleton /> : (
-              <Card className="border-0 shadow-md overflow-hidden">
-                <div className="h-1 bg-gradient-to-r from-pink-500 via-rose-400 to-red-400" />
-                <CardHeader className="pb-3">
-                  <CardTitle className="flex items-center gap-2 text-base">
-                    <div className="w-8 h-8 rounded-lg bg-pink-100 dark:bg-pink-950 flex items-center justify-center">
-                      <PieChart className="w-4 h-4 text-pink-500" />
-                    </div>
-                    Indeks Kepuasan Masyarakat
-                  </CardTitle>
-                  <CardDescription>Berdasarkan kategori pelayanan &middot; {selectedYear}</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  {satisfactionData.length === 0 ? (
-                    <div className="h-72 flex items-center justify-center text-muted-foreground text-sm">Belum ada data survei</div>
-                  ) : (
-                    <div className="h-72">
-                      <ResponsiveContainer width="100%" height="100%">
-                        <RadarChart outerRadius={90} data={satisfactionData}>
-                          <defs>
-                            <linearGradient id="radarGrad" x1="0" y1="0" x2="1" y2="1">
-                              <stop stopColor="#ec4899" stopOpacity={0.8} />
-                              <stop offset="100%" stopColor="#f97316" stopOpacity={0.8} />
-                            </linearGradient>
-                          </defs>
-                          <PolarGrid stroke="#e5e7eb" />
-                          <PolarAngleAxis dataKey="category" tick={{ fontSize: 10 }} />
-                          <PolarRadiusAxis angle={30} domain={[0, 100]} tick={{ fontSize: 9 }} />
-                          <Radar
-                            name="Kepuasan"
-                            dataKey="value"
-                            stroke="#ec4899"
-                            strokeWidth={2}
-                            fill="#ec4899"
-                            fillOpacity={0.25}
-                          />
-                          <Tooltip formatter={(value: any) => [`${value}%`, "Tingkat Kepuasan"]} contentStyle={{ borderRadius: "10px", border: "none", boxShadow: "0 4px 20px rgba(0,0,0,0.1)" }} />
-                        </RadarChart>
-                      </ResponsiveContainer>
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            )}
-
-            {/* Survey summary per kategori */}
-            {surveyLoading ? <ChartSkeleton /> : (
-              <Card className="border-0 shadow-md overflow-hidden">
-                <div className="h-1 bg-gradient-to-r from-cyan-500 via-sky-400 to-blue-400" />
-                <CardHeader className="pb-3">
-                  <CardTitle className="flex items-center gap-2 text-base">
-                    <div className="w-8 h-8 rounded-lg bg-cyan-100 dark:bg-cyan-950 flex items-center justify-center">
-                      <Layers className="w-4 h-4 text-cyan-500" />
-                    </div>
-                    Skor per Kategori
-                  </CardTitle>
-                  <CardDescription>Nilai rata-rata setiap aspek pelayanan</CardDescription>
-                </CardHeader>
-                <CardContent>
-                  {satisfactionData.length === 0 ? (
-                    <div className="flex items-center justify-center h-48 text-sm text-muted-foreground">Belum ada data</div>
-                  ) : (
-                    <div className="space-y-3">
-                      {satisfactionData.map((item, i) => (
-                        <div key={i} className="space-y-1">
-                          <div className="flex items-center justify-between text-sm">
-                            <span className="text-muted-foreground truncate max-w-[200px]">{item.category}</span>
-                            <span className="font-semibold text-foreground ml-2 shrink-0">{item.value.toFixed(1)}%</span>
-                          </div>
-                          <div className="h-2 rounded-full bg-muted overflow-hidden">
-                            <div
-                              className="h-full rounded-full transition-all duration-700"
-                              style={{
-                                width: `${item.value}%`,
-                                background: `linear-gradient(90deg, ${GRADIENT_COLORS[i % GRADIENT_COLORS.length].from}, ${GRADIENT_COLORS[i % GRADIENT_COLORS.length].to})`,
-                              }}
-                            />
-                          </div>
-                        </div>
-                      ))}
-                      {surveyStats && (
-                        <div className="pt-3 mt-2 border-t flex items-center justify-between">
-                          <span className="text-sm font-medium">Rata-rata Keseluruhan</span>
-                          <Badge className="bg-primary/10 text-primary border-primary/20 text-sm font-bold">
-                            {surveyStats.satisfaction_rate.toFixed(1)}%
-                          </Badge>
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </CardContent>
-              </Card>
-            )}
-          </div>
-        </TabsContent>
 
         {/* ─ Tab: Survei IKM ─ */}
         <TabsContent value="ikm" className="space-y-4">

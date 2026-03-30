@@ -221,6 +221,8 @@ export interface IStorage {
    getDocumentDownloadsStats(year?: number, month?: string): Promise<any>;
    getPermitOriginStats(year?: number): Promise<any[]>;
    getSurveySatisfactionStats(year?: number): Promise<any>;
+   getPermitMonthlyStats(year: number): Promise<any[]>;
+   getAvailableYears(): Promise<number[]>;
 
   // Notifications
   createNotification(data: { type: string; title: string; message: string; resourceId?: string; resourceType?: string; targetRole?: string }): Promise<schema.Notification>;
@@ -1077,6 +1079,51 @@ export class DatabaseStorage implements IStorage {
     return monthlyStats;
   }
   
+  async getAvailableYears(): Promise<number[]> {
+    const rows = await db
+      .select({ year: sql<number>`EXTRACT(YEAR FROM ${schema.researchPermitRequests.createdAt})` })
+      .from(schema.researchPermitRequests)
+      .where(isNull(schema.researchPermitRequests.deletedAt))
+      .groupBy(sql`EXTRACT(YEAR FROM ${schema.researchPermitRequests.createdAt})`)
+      .orderBy(sql`EXTRACT(YEAR FROM ${schema.researchPermitRequests.createdAt})`);
+    const years = rows.map(r => Number(r.year)).filter(y => !isNaN(y));
+    const currentYear = new Date().getFullYear();
+    if (!years.includes(currentYear)) years.push(currentYear);
+    return years.sort((a, b) => a - b);
+  }
+
+  async getPermitMonthlyStats(year: number): Promise<any[]> {
+    const monthNames = ["Jan","Feb","Mar","Apr","Mei","Jun","Jul","Agu","Sep","Okt","Nov","Des"];
+    const startDate = new Date(year, 0, 1);
+    const endDate = new Date(year, 11, 31, 23, 59, 59);
+
+    const rows = await db
+      .select({
+        month: sql<number>`EXTRACT(MONTH FROM ${schema.researchPermitRequests.createdAt})`,
+        status: schema.researchPermitRequests.status,
+        count: sql<number>`count(*)`,
+      })
+      .from(schema.researchPermitRequests)
+      .where(
+        and(
+          isNull(schema.researchPermitRequests.deletedAt),
+          sql`${schema.researchPermitRequests.createdAt} BETWEEN ${startDate} AND ${endDate}`
+        )
+      )
+      .groupBy(sql`EXTRACT(MONTH FROM ${schema.researchPermitRequests.createdAt})`, schema.researchPermitRequests.status);
+
+    const result = monthNames.map((name, i) => {
+      const monthNum = i + 1;
+      const monthRows = rows.filter(r => Number(r.month) === monthNum);
+      const total = monthRows.reduce((s, r) => s + Number(r.count), 0);
+      const approved = monthRows.filter(r => r.status === "approved" || r.status === "generated_letter" || r.status === "sent").reduce((s, r) => s + Number(r.count), 0);
+      const rejected = monthRows.filter(r => r.status === "rejected").reduce((s, r) => s + Number(r.count), 0);
+      return { name, pengajuan: total, disetujui: approved, ditolak: rejected };
+    });
+
+    return result;
+  }
+
   async getPermitOriginStats(year?: number) {
     const targetYear = year || new Date().getFullYear();
     
