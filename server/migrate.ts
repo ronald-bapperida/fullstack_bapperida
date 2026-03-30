@@ -1,4 +1,16 @@
-import { Pool } from "pg";
+import "dotenv/config";
+import { drizzle } from "drizzle-orm/mysql2";
+import mysql from "mysql2/promise";
+import * as schema from "@shared/schema";
+
+if (!process.env.DATABASE_URL) {
+  throw new Error("DATABASE_URL is missing");
+}
+
+// Buat connection pool untuk MySQL
+const pool = mysql.createPool(process.env.DATABASE_URL);
+
+export const db = drizzle(pool, { schema, mode: "default" });
 
 const MIGRATIONS = [
   // Permit: research date fields
@@ -15,7 +27,7 @@ const MIGRATIONS = [
   `ALTER TABLE generated_letters ADD COLUMN IF NOT EXISTS pdf_file_url TEXT NULL DEFAULT NULL`,
   // Notifications table
   `CREATE TABLE IF NOT EXISTS notifications (
-    id VARCHAR(36) NOT NULL DEFAULT gen_random_uuid()::text,
+    id VARCHAR(36) NOT NULL DEFAULT (UUID()),
     type VARCHAR(50) NOT NULL,
     title VARCHAR(255) NOT NULL,
     message TEXT NOT NULL,
@@ -30,18 +42,18 @@ const MIGRATIONS = [
 ];
 
 export async function runMigrations() {
-  let pool: Pool | null = null;
+  let connection = null;
   try {
-    pool = new Pool({ connectionString: process.env.DATABASE_URL as string });
+    connection = await pool.getConnection();
     for (const sql of MIGRATIONS) {
       try {
-        await pool.query(sql);
+        await connection.query(sql);
         console.log("[migrate] OK:", sql.slice(0, 60));
       } catch (err: any) {
-        if (
-          err.code === "42701" || // duplicate_column
-          err.code === "42P07"    // duplicate_table
-        ) {
+        // MySQL error codes
+        // 1060: duplicate column
+        // 1050: duplicate table
+        if (err.code === "ER_DUP_FIELDNAME" || err.code === "ER_TABLE_EXISTS_ERROR") {
           // already exists, skip
         } else {
           console.warn("[migrate] WARN:", err.message, "| SQL:", sql.slice(0, 80));
@@ -50,6 +62,6 @@ export async function runMigrations() {
     }
     console.log("[migrate] All migrations applied.");
   } finally {
-    if (pool) await pool.end();
+    if (connection) connection.release();
   }
 }

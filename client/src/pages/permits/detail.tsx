@@ -125,11 +125,11 @@ function AdminLetterFieldsCard({
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         {/* Read-only fields from applicant */}
-        <div className="rounded-md bg-muted/40 border px-3 py-2.5 flex flex-col gap-1.5">
+        {/* <div className="rounded-md bg-muted/40 border px-3 py-2.5 flex flex-col gap-1.5">
           <p className="text-xs text-muted-foreground font-medium">Data dari Pemohon (tidak dapat diubah)</p>
           <InfoRow label="No. Surat Pengantar" value={permit.introLetterNumber} />
           <InfoRow label="Pejabat Surat Pengantar" value={permit.signerPosition} />
-        </div>
+        </div> */}
 
         <div className="grid grid-cols-2 gap-3">
           <div className="flex flex-col gap-1.5 col-span-2">
@@ -347,7 +347,7 @@ function GenerateCard({
               {generateMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileCheck className="w-4 h-4" />}
               Generate & Simpan (PDF)
             </Button>
-            <Button
+            {/* <Button
               variant="outline"
               onClick={() => downloadDocxMutation.mutate()}
               disabled={downloadDocxMutation.isPending || generateMutation.isPending}
@@ -355,7 +355,7 @@ function GenerateCard({
             >
               {downloadDocxMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
               Download DOCX
-            </Button>
+            </Button> */}
           </div>
         )}
       </CardContent>
@@ -641,7 +641,7 @@ export default function PermitDetailPage() {
               <FileLink label="Surat Pengantar" url={permit.fileIntroLetter} />
               <FileLink label="Proposal Penelitian" url={permit.fileProposal} />
               <FileLink label="Bukti Follow Sosmed" url={permit.fileSocialMedia} />
-              <FileLink label="Bukti Isi Survei" url={permit.fileSurvey} />
+              {/* <FileLink label="Bukti Isi Survei" url={permit.fileSurvey} /> */}
             </CardContent>
           </Card>
 
