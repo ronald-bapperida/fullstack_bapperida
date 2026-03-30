@@ -20,6 +20,7 @@ import {
   AlignmentType, BorderStyle, Table as DocxTable, TableRow as DocxTableRow,
   TableCell as DocxTableCell, WidthType, ImageRun, UnderlineType,
 } from "docx";
+import { promisify } from 'util';
 
 import PizZip from "pizzip";
 import Docxtemplater from "docxtemplater";
@@ -121,7 +122,7 @@ function escapeXmlWithBreaks(str: string): string {
   if (!str) return "";
   const lines = str.split("\n");
   return lines
-    .map(line => escapeXml(line.trimEnd()))
+    .map(line => escapeXml(line))
     .join('</w:t></w:r><w:r><w:br/></w:r><w:r><w:t xml:space="preserve">');
 }
 
@@ -153,13 +154,17 @@ function generateDocxFromBuffer(
     let xml = zip.files[target].asText();
 
     for (const [placeholder, value] of Object.entries(replacements)) {
-      // Gunakan escapeXmlWithBreaks agar \n dalam nilai diubah menjadi
-      // line-break Word yang valid (<w:br/>) sehingga Enter pada field
-      // kepada / tembusan menghasilkan baris baru di dokumen Word.
+      // Gunakan escapeXmlWithBreaks agar \n dalam nilai diubah menjadi line-break Word
       const safeValue = escapeXmlWithBreaks(value);
       // Format XML-escaped: &lt;&lt;PLACEHOLDER&gt;&gt;
       const xmlEscaped = `&lt;&lt;${placeholder}&gt;&gt;`;
       xml = xml.split(xmlEscaped).join(safeValue);
+      
+      // Juga coba format tanpa XML escape (untuk kompatibilitas)
+      const plainEscaped = `<<${placeholder}>>`;
+      if (xml.includes(plainEscaped)) {
+        xml = xml.split(plainEscaped).join(safeValue);
+      }
     }
 
     zip.file(target, xml);
@@ -184,10 +189,19 @@ function buildLetterReplacements(permit: any, template?: any): Record<string, st
     }).toUpperCase();
   };
 
+  const formatDateForSurat = (d: any): string => {
+    if (!d) return "-";
+    const date = new Date(d);
+    const day = date.getDate();
+    const month = date.toLocaleDateString("id-ID", { month: "long" }).toUpperCase();
+    const year = date.getFullYear();
+    return `${day} ${month} ${year}`;
+  };
+
   const today = new Date();
   const city = template?.city || "Palangka Raya";
 
-  // Format tembusan as numbered list for DOCX (newline-separated entries from template)
+  // Format tembusan as numbered list for DOCX
   const tembusanRaw: string = template?.tembusan || "";
   const tembusanLines = tembusanRaw
     .split("\n")
@@ -197,54 +211,67 @@ function buildLetterReplacements(permit: any, template?: any): Record<string, st
     ? tembusanLines.map((line: string, i: number) => `${i + 1}. ${line}`).join("\n")
     : "-";
 
+  // Get the letter number (full or partial)
+  // const letterNumber = permit.issuedLetterNumber || "";
+  
+  // // Extract just the number part for some templates
+  // const letterNumberOnly = letterNumber.replace(/[^0-9]/g, "");
+
   return {
-    // Dari data permit
-    "NAMA":                  permit.fullName         ?? "-",
-    "KEPADA":                (permit.recipientName || template?.kepada || permit.fullName) ?? "-",
-    "TUJUAN KEPADA":         permit.recipientName    ?? (template?.kepada || permit.fullName) ?? "-",
-    "NIM":                   permit.nimNik            ?? "-",
-    "NIK":                   permit.nimNik            ?? "-",
-    "NIM/NIK":               permit.nimNik            ?? "-",
-    "TIM SURVEY/PENELITI":   permit.institution      ?? "-",
-    "NAMA INSTANSI":         permit.institution      ?? "-",
-    "INSTANSI":              permit.institution      ?? "-",
-    "JUDUL PENELITIAN":      permit.researchTitle    ?? "-",
-    "LOKASI PENELITIAN":     permit.researchLocation ?? "-",
-    "DURASI PENELITIAN":     permit.researchDuration ?? "-",
-    "NOMOR SURAT PENGANTAR": permit.introLetterNumber ?? "-",
-    "NOMOR SURAT":           permit.issuedLetterNumber || permit.introLetterNumber || "-",
-    "NOMOR SURAT IZIN":      permit.issuedLetterNumber ?? "-",
-    // Pejabat Surat Pengantar = jabatan yang menandatangani surat pengantar (dari data pemohon)
-    "PEJABAT SURAT PENGANTAR": permit.signerPosition   ?? permit.recipientName ?? "-",
-    "NOMOR PENGAJUAN":       permit.requestNumber    ?? "-",
+    // Basic data
+    "NAMA": permit.fullName ?? "-",
+    "NIM": permit.nimNik ?? "-",
+    "NIM/NIK": permit.nimNik ?? "-",
+    "NIK": permit.nimNik ?? "-",
+    
+    // Surat Rekomendasi specific
+    "NOMOR SURAT IZIN": permit.issuedLetterNumber,
+    "NOMOR SURAT PENGANTAR": permit.introLetterNumber,
+    // "NOMOR": letterNumberOnly,
+    
+    // Pejabat & Institution
+    "PEJABAT SURAT PENGANTAR": permit.signerPosition || "-",
+    "TIM SURVEY/PENELITI": permit.institution ?? "-",
+    "INSTANSI": permit.institution ?? "-",
+    "NAMA INSTANSI": permit.institution ?? "-",
+    
+    // Research
+    "JUDUL PENELITIAN": permit.researchTitle ?? "-",
+    "LOKASI PENELITIAN": permit.researchLocation ?? "-",
+    "DURASI PENELITIAN": permit.researchDuration ?? "-",
+    
+    // Dates
     "TANGGAL SURAT PENGANTAR": formatDate(permit.introLetterDate),
-    "TANGGAL SURAT":         permit.issuedLetterDate ? formatDate(permit.issuedLetterDate) : formatDate(permit.introLetterDate),
-    "TANGGAL SURAT IZIN":    formatDate(permit.issuedLetterDate),
-    "TANGGAL PENGAJUAN":     formatDate(permit.createdAt),
+    "TANGGAL SURAT": formatDate(permit.issuedLetterDate),
+    "TANGGAL SURAT IZIN": formatDate(permit.issuedLetterDate),
+    "TGL SRT DITETAPKAN": formatDateForSurat(permit.issuedLetterDate),
+    "TGL MULAI": formatDate(permit.researchStartDate),
+    "TGL SELESAI": formatDate(permit.researchEndDate),
     "TANGGAL MULAI PENELITIAN": formatDate(permit.researchStartDate),
     "TANGGAL SELESAI PENELITIAN": formatDate(permit.researchEndDate),
-    "TGL SRT DITETAPKAN":    formatDate(permit.issuedLetterDate),
-    "TGL MULAI":             formatDate(permit.researchStartDate),
-    "TGL SELESAI":           formatDate(permit.researchEndDate),
-    "TGL AKHIR":             formatDate(permit.researchEndDate),
-    "KOTA PENELITIAN":       permit.recipientCity    ?? city,
-    "TANDA TANGAN":          permit.workUnit || permit.institution || "-",
-    "TELEPON":               permit.phone            ?? "-",
-    "EMAIL":                 permit.email            ?? "-",
-    "ALAMAT":                permit.address          ?? "-",
-    // Dari config template
-    "NAMA PEJABAT":          template?.officialName     ?? "-",
-    "JABATAN":               template?.officialPosition ?? "-",
-    "JABATAN PEJABAT":       template?.officialPosition ?? "-",
-    "NIP":                   template?.officialNip      ?? "-",
-    "NIP PEJABAT":           template?.officialNip      ?? "-",
-    "KOTA":                  city,
-    "TEMBUSAN":              tembusanFormatted,
-    // Tanggal otomatis
-    "TANGGAL HARI INI":      formatDate(today),
-    "TANGGAL":               formatDate(today),
-    "TAHUN":                 String(today.getFullYear()),
-    "BULAN":                 today.toLocaleDateString("id-ID", { month: "long" }).toUpperCase(),
+    
+    // Contact
+    "TELEPON": permit.phoneWa ?? "-",
+    "EMAIL": permit.email ?? "-",
+    "ALAMAT": permit.address ?? "-",
+    
+    // Template config
+    "NAMA PEJABAT": template?.officialName ?? "Endy, ST, MT",
+    "JABATAN": template?.officialPosition ?? "Kepala Bidang Riset dan Inovasi Daerah",
+    "JABATAN PEJABAT": template?.officialPosition ?? "Kepala Bidang Riset dan Inovasi Daerah",
+    "NIP": template?.officialNip ?? "197412232000031002",
+    "NIP PEJABAT": template?.officialNip ?? "197412232000031002",
+    "KOTA": city,
+    "KOTA PENELITIAN": permit.recipientCity ?? city,
+    "KEPADA": permit.recipientName ?? "Walikota Palangka Raya",
+    "TUJUAN KEPADA": permit.recipientName ?? "Walikota Palangka Raya",
+    "TEMBUSAN": tembusanFormatted,
+    
+    // Current date
+    "TANGGAL HARI INI": formatDate(today),
+    "TANGGAL": formatDate(today),
+    "TAHUN": String(today.getFullYear()),
+    "BULAN": today.toLocaleDateString("id-ID", { month: "long" }).toUpperCase(),
   };
 }
 
@@ -299,26 +326,401 @@ function buildLetterHtml(rawHtml: string): string {
 </style></head><body>${rawHtml}</body></html>`;
 }
 
-async function convertDocxToPdf(docxBuffer: Buffer, title = "Surat"): Promise<Buffer> {
-  const mammoth = require("mammoth");
-  const { value: rawHtml } = await mammoth.convertToHtml({ buffer: docxBuffer });
-  const html = buildLetterHtml(rawHtml);
+// async function convertDocxToPdf(docxBuffer: Buffer, title = "Surat"): Promise<Buffer> {
+//   const mammoth = require("mammoth");
+//   const { value: rawHtml } = await mammoth.convertToHtml({ buffer: docxBuffer });
+//   const html = buildLetterHtml(rawHtml);
 
+//   const executablePath = findChromePath();
+//   if (!executablePath) {
+//     throw new Error("Chrome tidak ditemukan di server. Pastikan Puppeteer sudah terinstall (jalankan: npx puppeteer browsers install chrome).");
+//   }
+//   const puppeteer = require("puppeteer");
+//   const browser = await puppeteer.launch({
+//     executablePath,
+//     args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
+//     headless: true,
+//   });
+//   const page = await browser.newPage();
+//   await page.setContent(html, { waitUntil: "networkidle0" });
+//   const pdfUint8 = await page.pdf({ format: "A4", printBackground: true });
+//   await browser.close();
+//   return Buffer.from(pdfUint8);
+// }
+// async function convertDocxToPdf(docxBuffer: Buffer, title = "Surat"): Promise<Buffer> {
+//   const mammoth = require("mammoth");
+//   const { value: rawHtml } = await mammoth.convertToHtml({ buffer: docxBuffer });
+//   const html = buildLetterHtml(rawHtml);
+
+//   // Coba berbagai kemungkinan path Chrome
+//   const possiblePaths = [
+//     // Puppeteer cache paths
+//     ...(() => {
+//       const home = process.env.HOME || "/home/runner";
+//       const paths = [];
+//       for (const cacheRoot of [path.join(home, ".cache", "puppeteer", "chrome"), path.join("/root", ".cache", "puppeteer", "chrome")]) {
+//         try {
+//           if (fs.existsSync(cacheRoot)) {
+//             const versions = fs.readdirSync(cacheRoot);
+//             for (const ver of versions.sort().reverse()) {
+//               for (const subDir of ["chrome-linux64", "chrome-linux"]) {
+//                 const candidate = path.join(cacheRoot, ver, subDir, "chrome");
+//                 if (fs.existsSync(candidate)) paths.push(candidate);
+//               }
+//             }
+//           }
+//         } catch {}
+//       }
+//       return paths;
+//     })(),
+//     // System paths
+//     "/usr/bin/google-chrome-stable",
+//     "/usr/bin/google-chrome",
+//     "/usr/bin/chromium-browser",
+//     "/usr/bin/chromium",
+//     "/usr/local/bin/chromium",
+//     "/snap/bin/chromium",
+//     // Puppeteer executable path
+//     (() => {
+//       try {
+//         const puppeteer = require("puppeteer");
+//         return typeof puppeteer.executablePath === "function" ? puppeteer.executablePath() : undefined;
+//       } catch { return undefined; }
+//     })(),
+//   ].filter(Boolean);
+
+//   const executablePath = possiblePaths.find(p => p && fs.existsSync(p));
+  
+//   if (!executablePath) {
+//     // Fallback: kirim HTML saja jika Chrome tidak tersedia
+//     console.warn("Chrome tidak ditemukan, mengirim HTML sebagai fallback");
+//     const htmlBuffer = Buffer.from(html, "utf-8");
+//     return htmlBuffer;
+//   }
+  
+//   const puppeteer = require("puppeteer");
+//   const browser = await puppeteer.launch({
+//     executablePath,
+//     args: [
+//       "--no-sandbox",
+//       "--disable-setuid-sandbox",
+//       "--disable-dev-shm-usage",
+//       "--disable-gpu",
+//       "--disable-software-rasterizer",
+//       "--disable-web-security",
+//       "--disable-features=IsolateOrigins,site-per-process"
+//     ],
+//     headless: true,
+//   });
+  
+//   try {
+//     const page = await browser.newPage();
+//     await page.setContent(html, { waitUntil: "networkidle0", timeout: 30000 });
+//     const pdfUint8 = await page.pdf({ 
+//       format: "A4", 
+//       printBackground: true,
+//       margin: { top: "2.5cm", bottom: "2.5cm", left: "2.5cm", right: "2.5cm" }
+//     });
+//     return Buffer.from(pdfUint8);
+//   } finally {
+//     await browser.close();
+//   }
+// }
+async function convertDocxToPdf(docxBuffer: Buffer, title = "Surat"): Promise<Buffer> {  
+  const mammoth = require("mammoth");
+  const PizZip = require("pizzip");
+  
+  // Konversi ke HTML dengan opsi yang lebih baik
+  const { value: rawHtml, messages } = await mammoth.convertToHtml({
+    buffer: docxBuffer,
+    options: {
+      styleMap: [
+        "p[style-name='Normal'] => p:fresh",
+        "u => u",
+        "b => strong",
+        "i => em",
+        "center => div.center",
+      ]
+    }
+  });
+  
+  // Extract document properties
+  const zip = new PizZip(docxBuffer);
+  const documentXml = zip.files["word/document.xml"]?.asText() ?? "";
+  const stylesXml = zip.files["word/styles.xml"]?.asText() ?? "";
+  
+  // Parse margin dari XML
+  let marginTop = "2.54cm";
+  let marginBottom = "2.54cm";
+  let marginLeft = "2.54cm";
+  let marginRight = "2.54cm";
+  
+  const marginMatch = documentXml.match(/<w:pgMar[^>]*w:top="([^"]+)"[^>]*w:bottom="([^"]+)"[^>]*w:left="([^"]+)"[^>]*w:right="([^"]+)"/);
+  if (marginMatch) {
+    const twipsToCm = (twips: string) => {
+      const value = parseInt(twips);
+      return (value / 20 / 72 * 2.54).toFixed(2) + "cm";
+    };
+    marginTop = twipsToCm(marginMatch[1]);
+    marginBottom = twipsToCm(marginMatch[2]);
+    marginLeft = twipsToCm(marginMatch[3]);
+    marginRight = twipsToCm(marginMatch[4]);
+  }
+  
+  // Parse font sizes from styles
+  const fontSizeMatch = stylesXml.match(/<w:sz[^>]*w:val="(\d+)"/);
+  let baseFontSize = "12pt";
+  if (fontSizeMatch) {
+    const halfPoints = parseInt(fontSizeMatch[1]);
+    const points = halfPoints / 2;
+    baseFontSize = `${points}pt`;
+  }
+  
+  // Enhanced HTML dengan layout yang lebih akurat
+  const html = `<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <style>
+    @page {
+      size: A4;
+      margin: ${marginTop} ${marginRight} ${marginBottom} ${marginLeft};
+    }
+    
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box;
+    }
+    
+    body {
+      font-family: 'Times New Roman', Times, serif;
+      font-size: ${baseFontSize};
+      line-height: 1.5;
+      color: #000000;
+      background: white;
+    }
+    
+    .document-content {
+      width: 100%;
+      max-width: 100%;
+    }
+    
+    /* Kop surat styling */
+    .letter-header {
+      text-align: center;
+      margin-bottom: 24pt;
+      padding-bottom: 12pt;
+      border-bottom: 2px solid #000000;
+    }
+    
+    .letter-header img {
+      max-width: 80px;
+      height: auto;
+      margin-bottom: 8pt;
+    }
+    
+    .letter-header h1 {
+      font-size: 14pt;
+      font-weight: bold;
+      margin: 4pt 0;
+      text-transform: uppercase;
+    }
+    
+    .letter-header h2 {
+      font-size: 12pt;
+      font-weight: bold;
+      margin: 2pt 0;
+    }
+    
+    .letter-header p {
+      font-size: 10pt;
+      margin: 2pt 0;
+      text-align: center;
+    }
+    
+    /* Nomor surat */
+    .letter-number {
+      text-align: center;
+      margin: 20pt 0;
+    }
+    
+    .letter-number p {
+      font-weight: bold;
+      text-decoration: underline;
+      margin: 0;
+    }
+    
+    /* Body text */
+    .letter-body {
+      text-align: justify;
+    }
+    
+    .letter-body p {
+      margin: 0 0 8pt;
+      text-indent: 36pt;
+      line-height: 1.5;
+    }
+    
+    .letter-body p.no-indent {
+      text-indent: 0;
+    }
+    
+    /* Table styling */
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      margin: 12pt 0;
+    }
+    
+    td, th {
+      border: 1px solid #000000;
+      padding: 8pt;
+      vertical-align: top;
+    }
+    
+    /* Table tanpa border */
+    table.no-border td,
+    table.no-border th {
+      border: none;
+    }
+    
+    /* List styling */
+    ul, ol {
+      margin: 8pt 0 8pt 36pt;
+    }
+    
+    li {
+      margin: 2pt 0;
+    }
+    
+    /* Image styling */
+    img {
+      max-width: 100%;
+      height: auto;
+    }
+    
+    /* Signature section */
+    .signature {
+      margin-top: 48pt;
+      text-align: right;
+    }
+    
+    .signature p {
+      margin: 4pt 0;
+      text-indent: 0;
+    }
+    
+    .signature .signature-name {
+      margin-top: 48pt;
+      font-weight: bold;
+    }
+    
+    /* Carbon copy */
+    .carbon-copy {
+      margin-top: 24pt;
+      font-size: 10pt;
+    }
+    
+    .carbon-copy p {
+      margin: 2pt 0;
+      text-indent: 0;
+    }
+    
+    /* Center alignment */
+    .center {
+      text-align: center;
+    }
+    
+    /* Bold and underline */
+    strong, b {
+      font-weight: bold;
+    }
+    
+    u {
+      text-decoration: underline;
+    }
+    
+    /* Spacing */
+    .mt-1 { margin-top: 8pt; }
+    .mt-2 { margin-top: 16pt; }
+    .mt-3 { margin-top: 24pt; }
+    .mb-1 { margin-bottom: 8pt; }
+    .mb-2 { margin-bottom: 16pt; }
+  </style>
+</head>
+<body>
+  <div class="document-content">
+    ${rawHtml}
+  </div>
+</body>
+</html>`;
+  
   const executablePath = findChromePath();
   if (!executablePath) {
-    throw new Error("Chrome tidak ditemukan di server. Pastikan Puppeteer sudah terinstall (jalankan: npx puppeteer browsers install chrome).");
+    console.warn("Chrome tidak ditemukan, mengirim HTML sebagai fallback");
+    const htmlBuffer = Buffer.from(html, "utf-8");
+    return htmlBuffer;
   }
+  
   const puppeteer = require("puppeteer");
   const browser = await puppeteer.launch({
     executablePath,
-    args: ["--no-sandbox", "--disable-setuid-sandbox", "--disable-dev-shm-usage", "--disable-gpu"],
+    args: [
+      "--no-sandbox",
+      "--disable-setuid-sandbox",
+      "--disable-dev-shm-usage",
+      "--disable-gpu",
+      "--disable-software-rasterizer",
+      "--disable-web-security",
+      "--font-render-hinting=none"
+    ],
     headless: true,
   });
-  const page = await browser.newPage();
-  await page.setContent(html, { waitUntil: "networkidle0" });
-  const pdfUint8 = await page.pdf({ format: "A4", printBackground: true });
-  await browser.close();
-  return Buffer.from(pdfUint8);
+  
+  try {
+    const page = await browser.newPage();
+    
+    // Set viewport ke ukuran A4
+    await page.setViewport({
+      width: 1240,
+      height: 1754,
+      deviceScaleFactor: 1,
+    });
+    
+    await page.setContent(html, { 
+      waitUntil: "networkidle0", 
+      timeout: 30000 
+    });
+    
+    // Tambahkan delay untuk memastikan semua font dan gambar terload
+    await page.evaluate(() => {
+      return new Promise((resolve) => {
+        if (document.fonts && document.fonts.ready) {
+          document.fonts.ready.then(resolve);
+        } else {
+          setTimeout(resolve, 1000);
+        }
+      });
+    });
+    
+    const pdfBuffer = await page.pdf({
+      format: "A4",
+      printBackground: true,
+      margin: {
+        top: marginTop,
+        bottom: marginBottom,
+        left: marginLeft,
+        right: marginRight,
+      },
+      preferCSSPageSize: true,
+    });
+    
+    return Buffer.from(pdfBuffer);
+  } finally {
+    await browser.close();
+  }
 }
 
 async function convertDocxToHtml(docxBuffer: Buffer): Promise<string> {
@@ -1074,63 +1476,46 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     "/api/admin/permits/:id/generate-letter-docx",
     authMiddleware,
     requireRole("super_admin", "admin_rida"),
-    tempTemplateUpload.single("template"), // field name dari FormData frontend
+    tempTemplateUpload.single("template"),
     async (req: any, res) => {
       try {
         const permit = await db.getPermit(req.params.id);
         if (!permit) return res.status(404).json({ error: "Permit tidak ditemukan" });
-
+  
         let templateBuffer: Buffer;
         let templateSourceName: string;
-
+  
         if (req.file) {
-          // --- Opsi A: Template dikirim langsung dari frontend ---
           templateBuffer = fs.readFileSync(req.file.path);
           templateSourceName = req.file.originalname;
-
-          // Hapus file temp setelah dibaca
           fs.unlinkSync(req.file.path);
-
         } else if (req.body.templateId) {
-          // --- Opsi B: Gunakan template tersimpan di DB ---
           const templateFiles = await db.listLetterTemplateFiles(req.body.templateId);
           const templateFile = templateFiles.find((f) => f.fileUrl.endsWith(".docx"));
           if (!templateFile) {
             return res.status(400).json({ error: "Template DOCX tidak ditemukan di database" });
           }
-          const templatePath = path.join(
-            process.cwd(),
-            templateFile.fileUrl.replace("/uploads", "uploads")
-          );
+          const templatePath = path.join(process.cwd(), templateFile.fileUrl.replace("/uploads", "uploads"));
           if (!fs.existsSync(templatePath)) {
             return res.status(400).json({ error: "File template tidak ada di disk" });
           }
           templateBuffer = fs.readFileSync(templatePath);
           templateSourceName = templateFile.fileName;
-
         } else {
-          return res.status(400).json({
-            error: "Kirim file template (.docx) atau sertakan templateId",
-          });
+          return res.status(400).json({ error: "Kirim file template (.docx) atau sertakan templateId" });
         }
-
-        // Fetch template config (for dynamic variables like officialName, tembusan etc.)
+  
         let templateConfig: any = null;
         if (req.body.templateId) {
           templateConfig = await db.getTemplate(req.body.templateId);
         }
-
-        // Build replacements dari data permit + template config
+  
         const replacements = buildLetterReplacements(permit, templateConfig);
-
-        // Generate DOCX
         const outputBuffer = generateDocxFromBuffer(templateBuffer, replacements);
-
-        // Simpan file hasil generate
+  
         const letterDir = path.join(uploadDir, "letters");
         if (!fs.existsSync(letterDir)) fs.mkdirSync(letterDir, { recursive: true });
-
-        // Format nama file: {NomorSuratIzin}_{NamaPemohon}_Jenis Surat.docx
+  
         const safeStr = (s: string) => s.replace(/[^a-zA-Z0-9\u00C0-\u024F_\- ]/g, "").trim().replace(/\s+/g, "_");
         const nomorSurat = safeStr(permit.issuedLetterNumber || permit.requestNumber || "BAPPERIDA");
         const namaPemohon = safeStr(permit.fullName || "Pemohon");
@@ -1138,27 +1523,37 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         const fileName = `${nomorSurat}_${namaPemohon}_${jenisSurat}.docx`;
         const filePath = path.join(letterDir, fileName);
         fs.writeFileSync(filePath, outputBuffer);
-
         const generatedFileUrl = `/uploads/letters/${fileName}`;
-
-        // Generate PDF dari DOCX — wajib berhasil saat saveOnly
+  
+        // Generate PDF dari DOCX
         let pdfFileUrl: string | undefined;
         const pdfFileName = fileName.replace(/\.docx$/i, ".pdf");
         const pdfFilePath = path.join(letterDir, pdfFileName);
         const isSaveOnly = req.body.saveOnly === "true" || req.body.saveOnly === true;
-
+  
         try {
           const pdfBuffer = await convertDocxToPdf(outputBuffer, `Surat ${permit.requestNumber}`);
           fs.writeFileSync(pdfFilePath, pdfBuffer);
           pdfFileUrl = `/uploads/letters/${pdfFileName}`;
         } catch (pdfErr: any) {
+          console.error("PDF generation failed:", pdfErr);
           if (isSaveOnly) {
-            // Jika saveOnly, PDF harus berhasil agar preview bisa ditampilkan
-            return res.status(500).json({ error: `Gagal konversi ke PDF: ${pdfErr.message}` });
+            // Jika saveOnly dan PDF gagal, tetap return tapi dengan warning
+            await db.createGeneratedLetter({
+              permitId: permit.id,
+              templateId: req.body.templateId ?? undefined,
+              fileUrl: generatedFileUrl,
+              pdfFileUrl: null,
+            });
+            return res.json({ 
+              fileUrl: generatedFileUrl, 
+              pdfFileUrl: null, 
+              fileName,
+              warning: "PDF tidak dapat digenerate karena Chrome tidak tersedia. Preview akan menggunakan HTML fallback."
+            });
           }
-          console.warn("PDF generation failed (non-fatal for download):", pdfErr.message);
         }
-
+  
         // Simpan record ke generated_letters
         await db.createGeneratedLetter({
           permitId: permit.id,
@@ -1166,23 +1561,22 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           fileUrl: generatedFileUrl,
           pdfFileUrl,
         });
-
+  
         // Jika saveOnly=true, kembalikan JSON dengan URL file yang tersimpan
         if (isSaveOnly) {
-          return res.json({ fileUrl: generatedFileUrl, pdfFileUrl, fileName });
+          return res.json({ 
+            fileUrl: generatedFileUrl, 
+            pdfFileUrl, 
+            fileName,
+            hasPdf: !!pdfFileUrl
+          });
         }
-
-        // Jika download langsung (bukan saveOnly), kirim DOCX ke browser
-        res.setHeader(
-          "Content-Type",
-          "application/vnd.openxmlformats-officedocument.wordprocessingml.document"
-        );
-        res.setHeader(
-          "Content-Disposition",
-          `attachment; filename="${fileName}"`
-        );
+  
+        // Jika download langsung, kirim DOCX
+        res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
+        res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
         return res.send(outputBuffer);
-
+  
       } catch (e: any) {
         console.error("DOCX generation error:", e);
         return res.status(500).json({ error: e.message });
@@ -1199,14 +1593,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       try {
         const permit = await db.getPermit(req.params.id);
         if (!permit) return res.status(404).json({ error: "Permit tidak ditemukan" });
-
+  
         let docxBuffer: Buffer;
         let baseName: string;
-
+  
         const { templateId } = req.body;
-
+  
         if (templateId) {
-          // Generate fresh DOCX dari template yang dipilih
           const templateFiles = await db.listLetterTemplateFiles(templateId);
           const templateFile = templateFiles.find((f) => f.fileUrl.endsWith(".docx"));
           if (!templateFile) return res.status(400).json({ error: "Template DOCX tidak ditemukan" });
@@ -1218,11 +1611,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           docxBuffer = generateDocxFromBuffer(templateBuf, replacements);
           baseName = `BAPPERIDA-${permit.requestNumber.replace(/\//g, "-")}`;
         } else {
-          // Pakai file surat yang sudah tersimpan
           const letter = await (db as any).getGeneratedLetter(permit.id);
-          if (!letter?.fileUrl && !letter?.pdfFileUrl) return res.status(400).json({ error: "Surat belum digenerate" });
-
-          // Jika PDF sudah tersimpan, serve langsung tanpa konversi ulang
+          if (!letter?.fileUrl && !letter?.pdfFileUrl) {
+            return res.status(400).json({ error: "Surat belum digenerate" });
+          }
+  
+          // Jika PDF sudah tersimpan, serve langsung
           if (letter?.pdfFileUrl) {
             const pdfPath = path.join(process.cwd(), letter.pdfFileUrl.replace(/^\//, ""));
             if (fs.existsSync(pdfPath)) {
@@ -1232,16 +1626,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
               return res.send(pdfBuf);
             }
           }
-
-          // Fallback: konversi dari DOCX
+  
           if (!letter?.fileUrl) return res.status(400).json({ error: "File surat tidak ada" });
           const filePath = path.join(process.cwd(), letter.fileUrl.replace(/^\//, ""));
           if (!fs.existsSync(filePath)) return res.status(400).json({ error: "File surat tidak ada di disk" });
           docxBuffer = fs.readFileSync(filePath);
           baseName = path.basename(filePath, ".docx");
         }
-
-        // Coba PDF via Chrome; fallback ke HTML jika Chrome tidak ada
+  
         try {
           const pdfBuffer = await convertDocxToPdf(docxBuffer!, `Surat Izin ${permit.requestNumber}`);
           res.setHeader("Content-Type", "application/pdf");
@@ -1249,7 +1641,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           return res.send(pdfBuffer);
         } catch (pdfErr: any) {
           console.warn("PDF preview fallback to HTML:", pdfErr.message);
-          // Fallback: serve HTML langsung — browser bisa tampilkan & print
+          // Fallback ke HTML
           const htmlContent = await convertDocxToHtml(docxBuffer!);
           res.setHeader("Content-Type", "text/html; charset=utf-8");
           return res.send(htmlContent);
