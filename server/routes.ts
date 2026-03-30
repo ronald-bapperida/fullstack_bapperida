@@ -21,6 +21,8 @@ import {
   TableCell as DocxTableCell, WidthType, ImageRun, UnderlineType,
 } from "docx";
 import { promisify } from 'util';
+import { execFile } from 'child_process';
+const execFileAsync = promisify(execFile);
 
 import PizZip from "pizzip";
 import Docxtemplater from "docxtemplater";
@@ -276,7 +278,69 @@ function buildLetterReplacements(permit: any, template?: any): Record<string, st
 }
 
 
-// ─── DOCX → PDF via mammoth + puppeteer ─────────────────────────────────────
+// ─── DOCX → PDF: LibreOffice (primary) + mammoth/puppeteer (fallback) ────────
+
+/** Cek apakah LibreOffice tersedia di sistem */
+function findLibreOfficePath(): string | undefined {
+  const candidates = [
+    "libreoffice",
+    "soffice",
+    "/usr/bin/libreoffice",
+    "/usr/bin/soffice",
+    "/usr/lib/libreoffice/program/soffice",
+    "/opt/libreoffice/program/soffice",
+  ];
+  for (const p of candidates) {
+    try {
+      const result = require("child_process").execFileSync(p, ["--version"], {
+        stdio: "pipe", timeout: 5000,
+      });
+      if (result) return p;
+    } catch {}
+  }
+  return undefined;
+}
+
+/**
+ * Konversi DOCX → PDF menggunakan LibreOffice headless.
+ * Lebih akurat dari mammoth+puppeteer karena menggunakan renderer yang sama dengan LibreOffice Writer.
+ * Returns null jika LibreOffice tidak tersedia.
+ */
+async function convertWithLibreOffice(docxBuffer: Buffer): Promise<Buffer | null> {
+  const loPath = findLibreOfficePath();
+  if (!loPath) return null;
+
+  const os = require("os");
+  const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), "lo-conv-"));
+  const inputPath = path.join(tmpDir, "input.docx");
+  const outputPath = path.join(tmpDir, "input.pdf");
+
+  try {
+    fs.writeFileSync(inputPath, docxBuffer);
+    await execFileAsync(loPath, [
+      "--headless",
+      "--norestore",
+      "--nologo",
+      "--nolockcheck",
+      "--convert-to", "pdf",
+      "--outdir", tmpDir,
+      inputPath,
+    ], { timeout: 60000 });
+
+    if (!fs.existsSync(outputPath)) {
+      console.warn("[LibreOffice] Konversi selesai tapi output PDF tidak ditemukan");
+      return null;
+    }
+    const pdfBuffer = fs.readFileSync(outputPath);
+    return pdfBuffer;
+  } catch (err: any) {
+    console.warn("[LibreOffice] Konversi gagal:", err.message);
+    return null;
+  } finally {
+    try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
+  }
+}
+
 /** Cari path executable Chrome/Chromium yang terinstal */
 function findChromePath(): string | undefined {
   // 1. Scan puppeteer cache (semua versi yang terinstall)
@@ -440,6 +504,14 @@ function buildLetterHtml(rawHtml: string): string {
 //   }
 // }
 async function convertDocxToPdf(docxBuffer: Buffer, title = "Surat"): Promise<Buffer> {
+  // Coba LibreOffice dulu (akurasi tinggi, mendukung semua formatting DOCX)
+  const loPdf = await convertWithLibreOffice(docxBuffer);
+  if (loPdf) {
+    console.log(`[PDF] Menggunakan LibreOffice untuk konversi: ${title}`);
+    return loPdf;
+  }
+  console.log(`[PDF] LibreOffice tidak tersedia, fallback ke mammoth+puppeteer: ${title}`);
+
   const mammoth = require("mammoth");
   const PizZip = require("pizzip");
 
