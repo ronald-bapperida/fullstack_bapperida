@@ -1,4 +1,4 @@
-import mysql from "mysql2/promise";
+import { Pool } from "pg";
 
 const MIGRATIONS = [
   // Permit: research date fields
@@ -15,7 +15,7 @@ const MIGRATIONS = [
   `ALTER TABLE generated_letters ADD COLUMN IF NOT EXISTS pdf_file_url TEXT NULL DEFAULT NULL`,
   // Notifications table
   `CREATE TABLE IF NOT EXISTS notifications (
-    id VARCHAR(36) NOT NULL DEFAULT (UUID()),
+    id VARCHAR(36) NOT NULL DEFAULT gen_random_uuid()::text,
     type VARCHAR(50) NOT NULL,
     title VARCHAR(255) NOT NULL,
     message TEXT NOT NULL,
@@ -30,15 +30,18 @@ const MIGRATIONS = [
 ];
 
 export async function runMigrations() {
-  let pool: mysql.Pool | null = null;
+  let pool: Pool | null = null;
   try {
-    pool = mysql.createPool(process.env.DATABASE_URL as string);
+    pool = new Pool({ connectionString: process.env.DATABASE_URL as string });
     for (const sql of MIGRATIONS) {
       try {
         await pool.query(sql);
         console.log("[migrate] OK:", sql.slice(0, 60));
       } catch (err: any) {
-        if (err.code === "ER_DUP_FIELDNAME" || err.code === "ER_TABLE_EXISTS_ERROR") {
+        if (
+          err.code === "42701" || // duplicate_column
+          err.code === "42P07"    // duplicate_table
+        ) {
           // already exists, skip
         } else {
           console.warn("[migrate] WARN:", err.message, "| SQL:", sql.slice(0, 80));

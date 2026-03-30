@@ -451,7 +451,7 @@ async function ensureSurvey(idx: number) {
     id,
     respondentName: name,
     age: 20 + idx,
-    gender: (idx % 2 === 0 ? "laki_laki" : "perempuan") as any,
+    gender: (idx % 2 === 0 ? "laki-laki" : "perempuan") as any,
     education: "S1",
     occupation: "Mahasiswa",
     q1: 4, q2: 4, q3: 4, q4: 4, q5: 4, q6: 4, q7: 4, q8: 4, q9: 4,
