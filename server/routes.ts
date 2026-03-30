@@ -198,9 +198,9 @@ function buildLetterReplacements(permit: any, template?: any): Record<string, st
   return {
     // Dari data permit
     "NAMA":                  permit.fullName         ?? "-",
-    // Kepada: pakai field kepada dari template (bisa multi-baris), fallback ke recipientName atau nama pemohon
     "KEPADA":                (permit.recipientName || template?.kepada || permit.fullName) ?? "-",
     "TUJUAN KEPADA":         permit.recipientName    ?? (template?.kepada || permit.fullName) ?? "-",
+    "PEJABAT SURAT PENGANTAR": permit.recipientName  ?? "-",
     "NIM":                   permit.nimNik            ?? "-",
     "NIK":                   permit.nimNik            ?? "-",
     "NIM/NIK":               permit.nimNik            ?? "-",
@@ -220,6 +220,10 @@ function buildLetterReplacements(permit: any, template?: any): Record<string, st
     "TANGGAL PENGAJUAN":     formatDate(permit.createdAt),
     "TANGGAL MULAI PENELITIAN": formatDate(permit.researchStartDate),
     "TANGGAL SELESAI PENELITIAN": formatDate(permit.researchEndDate),
+    "TGL SRT DITETAPKAN":    formatDate(permit.issuedLetterDate),
+    "TGL MULAI":             formatDate(permit.researchStartDate),
+    "TGL SELESAI":           formatDate(permit.researchEndDate),
+    "TGL AKHIR":             formatDate(permit.researchEndDate),
     "KOTA PENELITIAN":       permit.recipientCity    ?? city,
     "TANDA TANGAN":          permit.workUnit || permit.institution || "-",
     "TELEPON":               permit.phone            ?? "-",
@@ -917,10 +921,19 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       }
 
       const letter = await db.getGeneratedLetter(permit.id);
+
+      // Simplified customer-facing status
+      const customerStatus = ((): { label: string; code: string } => {
+        if (permit.status === "rejected") return { label: "Ditolak", code: "ditolak" };
+        if (permit.status === "sent" || permit.status === "generated_letter") return { label: "Disetujui", code: "disetujui" };
+        if (permit.status === "submitted") return { label: "Diajukan", code: "diajukan" };
+        return { label: "Dalam Proses", code: "dalam_proses" };
+      })();
   
       return res.json({
         ...permit,
         fileUrl: letter?.fileUrl,
+        customerStatus,
       });
   
     } catch (e: any) {
@@ -1239,15 +1252,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     storage: multer.diskStorage({
       destination: (_, __, cb) => cb(null, letterFilesDir),
       filename: (_, file, cb) => {
-        // Simpan dengan UUID dulu; akan di-rename di route handler
-        cb(null, `${randomUUID()}.pdf`);
+        const ext = path.extname(file.originalname).toLowerCase();
+        cb(null, `${randomUUID()}${ext}`);
       },
     }),
     limits: { fileSize: 10 * 1024 * 1024 },
     fileFilter: (_, file, cb) => {
       const ext = path.extname(file.originalname).toLowerCase();
-      if (ext !== ".pdf") {
-        return cb(new Error("Hanya file PDF yang diizinkan"));
+      if (ext !== ".pdf" && ext !== ".docx") {
+        return cb(new Error("Hanya file PDF atau DOCX yang diizinkan"));
       }
       cb(null, true);
     },
@@ -1259,29 +1272,30 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     generatedLetterUpload.single("file"),
     async (req: any, res) => {
       try {
-        if (!req.file) return res.status(400).json({ error: "No file uploaded — hanya PDF yang diizinkan" });
+        if (!req.file) return res.status(400).json({ error: "No file uploaded — hanya PDF atau DOCX yang diizinkan" });
         const permit = await db.getPermit(req.params.id);
         if (!permit) return res.status(404).json({ error: "Permit tidak ditemukan" });
 
-        // Terapkan naming convention: {NomorSurat}_{NamaPemohon}_{JenisSurat}.pdf
+        // Terapkan naming convention: {NomorSurat}_{NamaPemohon}_{JenisSurat}.ext
         const safeStr = (s: string) => s.replace(/[^a-zA-Z0-9\u00C0-\u024F_\- ]/g, "").trim().replace(/\s+/g, "_");
         const nomorSurat = safeStr(permit.issuedLetterNumber || permit.requestNumber || "BAPPERIDA");
         const namaPemohon = safeStr(permit.fullName || "Pemohon");
         const jenisSurat = "Surat_Izin_Penelitian";
-        const finalFileName = `${nomorSurat}_${namaPemohon}_${jenisSurat}.pdf`;
+        const ext = path.extname(req.file.originalname).toLowerCase();
+        const finalFileName = `${nomorSurat}_${namaPemohon}_${jenisSurat}${ext}`;
         const oldPath = req.file.path;
         const newPath = path.join(letterFilesDir, finalFileName);
         fs.renameSync(oldPath, newPath);
 
         const newUrl = `/uploads/letters/${finalFileName}`;
-        // Upload PDF manual → simpan ke pdfFileUrl (bukan fileUrl DOCX)
+        // Upload manual → simpan ke pdfFileUrl (digunakan sebagai file utama surat)
         await db.updateGeneratedLetterPdf(permit.id, newUrl);
         // Tambah history upload tanpa mengubah status
         await (db as any).addPermitStatusHistory({
           permitId: permit.id,
           fromStatus: permit.status,
           toStatus: permit.status,
-          note: "File PDF surat diupload manual oleh admin",
+          note: `File surat (${ext.replace(".", "").toUpperCase()}) diupload manual oleh admin`,
           changedBy: req.user.id,
         });
         return res.json({ fileUrl: newUrl, pdfFileUrl: newUrl });
@@ -1696,10 +1710,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         const { name, category } = req.body;
   
         // Baca isi XML untuk extract placeholder otomatis
+        // Strip XML tags sebelum matching agar placeholder yang terpecah antar XML run tetap terdeteksi
         const zip = new PizZip(fs.readFileSync(req.file.path));
         const docXml = zip.files["word/document.xml"]?.asText() ?? "";
+        const plainText = docXml
+          .replace(/<[^>]+>/g, "")
+          .replace(/&lt;/g, "<")
+          .replace(/&gt;/g, ">")
+          .replace(/&amp;/g, "&");
         const foundPlaceholders = [...new Set(
-          [...docXml.matchAll(/&lt;&lt;([^&]+?)&gt;&gt;/g)].map((m) => `<<${m[1]}>>`)
+          [...plainText.matchAll(/<<([^>]+?)>>/g)].map((m) => `<<${m[1]}>>`)
         )];
   
         // Buat template record

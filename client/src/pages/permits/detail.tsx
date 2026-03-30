@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { useParams, useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
@@ -18,7 +18,7 @@ import {
 
 import {
   ArrowLeft, FileText, Clock, CheckCircle, XCircle, FileCheck, Send,
-  ExternalLink, Eye, Download, Loader2, AlertCircle, Upload, RefreshCw, Mail,
+  ExternalLink, Eye, Download, Loader2, AlertCircle, Upload, Mail,
 } from "lucide-react";
 
 import { useToast } from "@/hooks/use-toast";
@@ -61,34 +61,6 @@ function parsePlaceholders(raw: string | null | undefined): string[] {
   try { const arr = JSON.parse(raw); return Array.isArray(arr) ? arr : []; } catch { return []; }
 }
 
-function downloadBlob(blob: Blob, filename: string) {
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url; a.download = filename;
-  document.body.appendChild(a); a.click(); a.remove();
-  URL.revokeObjectURL(url);
-}
-
-async function openPdfPreview(permitId: string, templateId?: string) {
-  const res = await fetch(`/api/admin/permits/${permitId}/preview-letter-pdf`, {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${localStorage.getItem("token")}`,
-    },
-    body: JSON.stringify({ templateId }),
-  });
-  if (!res.ok) {
-    const err = await res.json().catch(async () => ({ error: await res.text() }));
-    throw new Error(err.error || "Gagal generate PDF preview");
-  }
-  const blob = await res.blob();
-  const url = URL.createObjectURL(blob);
-  window.open(url, "_blank");
-  // Revoke setelah sedikit delay agar browser sempat membuka PDF
-  setTimeout(() => URL.revokeObjectURL(url), 30000);
-}
-
 // ─── Sub-components ───────────────────────────────────────────────────────────
 
 function InfoRow({ label, value }: { label: string; value: string | null | undefined }) {
@@ -117,31 +89,23 @@ function FileLink({ label, url }: { label: string; url: string | null | undefine
 
 // ─── Admin Letter Fields Card ─────────────────────────────────────────────────
 
-function AdminLetterFieldsCard({ permit, permitId }: { permit: any; permitId: string }) {
-  const { toast } = useToast();
-  const [issuedLetterNumber, setIssuedLetterNumber] = useState(permit.issuedLetterNumber || "");
-  const [issuedLetterDate, setIssuedLetterDate] = useState(
-    permit.issuedLetterDate ? format(new Date(permit.issuedLetterDate), "yyyy-MM-dd") : ""
-  );
-  const [recipientName, setRecipientName] = useState(permit.recipientName || "");
-  const [recipientCity, setRecipientCity] = useState(permit.recipientCity || "");
-  const [researchStartDate, setResearchStartDate] = useState(
-    permit.researchStartDate ? format(new Date(permit.researchStartDate), "yyyy-MM-dd") : ""
-  );
-  const [researchEndDate, setResearchEndDate] = useState(
-    permit.researchEndDate ? format(new Date(permit.researchEndDate), "yyyy-MM-dd") : ""
-  );
+interface AdminLetterFields {
+  issuedLetterNumber: string;
+  issuedLetterDate: string;
+  recipientName: string;
+  researchStartDate: string;
+  researchEndDate: string;
+}
 
-  const saveMutation = useMutation({
-    mutationFn: () => apiRequest("PATCH", `/api/admin/permits/${permitId}/detail`, {
-      issuedLetterNumber, issuedLetterDate, recipientName, recipientCity, researchStartDate, researchEndDate,
-    }),
-    onSuccess: () => {
-      toast({ title: "Data surat berhasil disimpan" });
-      queryClient.invalidateQueries({ queryKey: [`/api/admin/permits/${permitId}`] });
-    },
-    onError: (e: any) => toast({ title: "Gagal menyimpan", description: e.message, variant: "destructive" }),
-  });
+function AdminLetterFieldsCard({
+  fields,
+  onChange,
+}: {
+  fields: AdminLetterFields;
+  onChange: (fields: AdminLetterFields) => void;
+}) {
+  const set = (key: keyof AdminLetterFields) => (e: React.ChangeEvent<HTMLInputElement>) =>
+    onChange({ ...fields, [key]: e.target.value });
 
   return (
     <Card className="border-amber-200 dark:border-amber-800">
@@ -156,8 +120,8 @@ function AdminLetterFieldsCard({ permit, permitId }: { permit: any; permitId: st
           <div className="flex flex-col gap-1.5 col-span-2">
             <Label className="text-xs">Nomor Surat Izin</Label>
             <Input
-              value={issuedLetterNumber}
-              onChange={(e) => setIssuedLetterNumber(e.target.value)}
+              value={fields.issuedLetterNumber}
+              onChange={set("issuedLetterNumber")}
               placeholder="Contoh: 070/123/BAPPERIDA/2025"
               data-testid="input-issued-letter-number"
             />
@@ -166,26 +130,17 @@ function AdminLetterFieldsCard({ permit, permitId }: { permit: any; permitId: st
             <Label className="text-xs">Tanggal Surat Izin Ditetapkan</Label>
             <Input
               type="date"
-              value={issuedLetterDate}
-              onChange={(e) => setIssuedLetterDate(e.target.value)}
+              value={fields.issuedLetterDate}
+              onChange={set("issuedLetterDate")}
               data-testid="input-issued-letter-date"
             />
           </div>
           <div className="flex flex-col gap-1.5">
-            <Label className="text-xs">Kota/Kabupaten Tujuan</Label>
+            <Label className="text-xs">Pejabat Surat Pengantar</Label>
             <Input
-              value={recipientCity}
-              onChange={(e) => setRecipientCity(e.target.value)}
-              placeholder="Palangka Raya"
-              data-testid="input-recipient-city"
-            />
-          </div>
-          <div className="flex flex-col gap-1.5 col-span-2">
-            <Label className="text-xs">Tujuan Kepada (Penerima Surat)</Label>
-            <Input
-              value={recipientName}
-              onChange={(e) => setRecipientName(e.target.value)}
-              placeholder="Nama / jabatan penerima surat"
+              value={fields.recipientName}
+              onChange={set("recipientName")}
+              placeholder="Nama pejabat surat pengantar"
               data-testid="input-recipient-name"
             />
           </div>
@@ -193,8 +148,8 @@ function AdminLetterFieldsCard({ permit, permitId }: { permit: any; permitId: st
             <Label className="text-xs">Tanggal Mulai Penelitian</Label>
             <Input
               type="date"
-              value={researchStartDate}
-              onChange={(e) => setResearchStartDate(e.target.value)}
+              value={fields.researchStartDate}
+              onChange={set("researchStartDate")}
               data-testid="input-research-start-date"
             />
           </div>
@@ -202,22 +157,12 @@ function AdminLetterFieldsCard({ permit, permitId }: { permit: any; permitId: st
             <Label className="text-xs">Tanggal Selesai Penelitian</Label>
             <Input
               type="date"
-              value={researchEndDate}
-              onChange={(e) => setResearchEndDate(e.target.value)}
+              value={fields.researchEndDate}
+              onChange={set("researchEndDate")}
               data-testid="input-research-end-date"
             />
           </div>
         </div>
-        <Button
-          size="sm"
-          onClick={() => saveMutation.mutate()}
-          disabled={saveMutation.isPending}
-          className="self-end"
-          data-testid="button-save-letter-fields"
-        >
-          {saveMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-2" /> : null}
-          Simpan Data Surat
-        </Button>
       </CardContent>
     </Card>
   );
@@ -225,10 +170,17 @@ function AdminLetterFieldsCard({ permit, permitId }: { permit: any; permitId: st
 
 // ─── Generate Card ────────────────────────────────────────────────────────────
 
-function GenerateCard({ permit, permitId }: { permit: any; permitId: string }) {
+function GenerateCard({
+  permit,
+  permitId,
+  adminLetterFields,
+}: {
+  permit: any;
+  permitId: string;
+  adminLetterFields: AdminLetterFields;
+}) {
   const { toast } = useToast();
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
-  const [previewLoading, setPreviewLoading] = useState(false);
 
   const { data: templates = [], isLoading: templatesLoading } = useQuery<LetterTemplate[]>({
     queryKey: ["/api/admin/letter-templates"],
@@ -246,6 +198,8 @@ function GenerateCard({ permit, permitId }: { permit: any; permitId: string }) {
   const generateMutation = useMutation({
     mutationFn: async () => {
       if (!selectedTemplateId) throw new Error("Pilih template terlebih dahulu");
+      // Simpan data surat admin sebelum generate
+      await apiRequest("PATCH", `/api/admin/permits/${permitId}/detail`, adminLetterFields);
       const res = await fetch(`/api/admin/permits/${permitId}/generate-letter-docx`, {
         method: "POST",
         headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("token")}` },
@@ -261,41 +215,6 @@ function GenerateCard({ permit, permitId }: { permit: any; permitId: string }) {
     },
     onError: (e: any) => toast({ title: "Gagal generate", description: e.message, variant: "destructive" }),
   });
-
-  const downloadDocxMutation = useMutation({
-    mutationFn: async () => {
-      if (!selectedTemplateId) throw new Error("Pilih template terlebih dahulu");
-      const res = await fetch(`/api/admin/permits/${permitId}/generate-letter-docx`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json", Authorization: `Bearer ${localStorage.getItem("token")}` },
-        body: JSON.stringify({ templateId: selectedTemplateId }),
-      });
-      if (!res.ok) throw new Error(await res.text());
-      return { blob: await res.blob(), filename: res.headers.get("Content-Disposition")?.match(/filename="([^"]+)"/)?.[1] || "BAPPERIDA.docx" };
-    },
-    onSuccess: ({ blob, filename }) => {
-      downloadBlob(blob, filename);
-      toast({ title: "Surat berhasil didownload" });
-      queryClient.invalidateQueries({ queryKey: [`/api/admin/permits/${permitId}`] });
-      queryClient.invalidateQueries({ queryKey: ["/api/admin/permits"] });
-    },
-    onError: (e: any) => toast({ title: "Gagal download", description: e.message, variant: "destructive" }),
-  });
-
-  async function handlePreview() {
-    if (!selectedTemplateId) {
-      toast({ title: "Pilih template terlebih dahulu", variant: "destructive" });
-      return;
-    }
-    setPreviewLoading(true);
-    try {
-      await openPdfPreview(permit.id, selectedTemplateId);
-    } catch (e: any) {
-      toast({ title: "Gagal preview", description: e.message, variant: "destructive" });
-    } finally {
-      setPreviewLoading(false);
-    }
-  }
 
   const hasLetter = !!permit?.generatedLetter?.fileUrl;
 
@@ -339,14 +258,12 @@ function GenerateCard({ permit, permitId }: { permit: any; permitId: string }) {
                 {selectedTemplate.isActive ? "Aktif" : "Nonaktif"}
               </Badge>
             </div>
-            {placeholders.length > 0 ? (
+            {placeholders.length > 0 && (
               <div className="flex flex-wrap gap-1.5">
                 {placeholders.map((p) => (
                   <Badge key={p} variant="secondary" className="text-xs font-mono">{p}</Badge>
                 ))}
               </div>
-            ) : (
-              <p className="text-xs text-muted-foreground">Placeholder tidak terdeteksi di template ini.</p>
             )}
           </div>
         )}
@@ -355,11 +272,7 @@ function GenerateCard({ permit, permitId }: { permit: any; permitId: string }) {
         {hasLetter && (
           <div className="flex items-center gap-2 rounded-md bg-green-50 border border-green-200 px-3 py-2.5">
             <CheckCircle className="w-4 h-4 text-green-600 shrink-0" />
-            <span className="text-xs text-green-700 font-medium">Surat sudah digenerate:</span>
-            {/* <a href={permit.generatedLetter.fileUrl} target="_blank" rel="noopener noreferrer"
-              className="text-xs text-primary flex items-center gap-1 hover:underline ml-auto">
-              <ExternalLink className="w-3 h-3" /> Buka file tersimpan
-            </a> */}
+            <span className="text-xs text-green-700 font-medium">Surat sudah digenerate.</span>
           </div>
         )}
 
@@ -370,18 +283,10 @@ function GenerateCard({ permit, permitId }: { permit: any; permitId: string }) {
           </div>
         ) : (
           <div className="flex flex-wrap items-center gap-2 pt-1 border-t">
-            {/* <Button variant="outline" onClick={handlePreview} disabled={previewLoading} className="gap-2">
-              {previewLoading ? <Loader2 className="w-4 h-4 animate-spin" /> : <Eye className="w-4 h-4" />}
-              Preview (Tab Baru)
-            </Button> */}
             <Button variant="secondary" onClick={() => generateMutation.mutate()} disabled={generateMutation.isPending} className="gap-2">
               {generateMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileCheck className="w-4 h-4" />}
               Generate & Simpan
             </Button>
-            {/* <Button onClick={() => downloadDocxMutation.mutate()} disabled={downloadDocxMutation.isPending} className="gap-2 ml-auto">
-              {downloadDocxMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
-              Download DOCX
-            </Button> */}
           </div>
         )}
 
@@ -404,7 +309,6 @@ function GenerateCard({ permit, permitId }: { permit: any; permitId: string }) {
 function UploadSuratCard({ permit, permitId }: { permit: any; permitId: string }) {
   const { toast } = useToast();
   const [overwriteFile, setOverwriteFile] = useState<File | null>(null);
-  const hasLetter = !!permit?.generatedLetter?.fileUrl;
 
   const overwriteMutation = useMutation({
     mutationFn: async () => {
@@ -438,22 +342,12 @@ function UploadSuratCard({ permit, permitId }: { permit: any; permitId: string }
       </CardHeader>
       <CardContent className="flex flex-col gap-3">
         <p className="text-xs text-muted-foreground">
-          Upload file surat PDF untuk mengganti atau menambahkan berkas. Digunakan jika berkas bermasalah dan perlu penggantian manual.
+          Upload file surat untuk mengganti atau menambahkan berkas. Digunakan jika berkas bermasalah dan perlu penggantian manual.
           Riwayat akan mencatat berkas ini sebagai <strong>upload manual (bukan dari generate template)</strong>.
-          Format: <strong>PDF saja</strong>, Maks. 5 MB. Nama file otomatis disesuaikan dengan konvensi penamaan surat.
+          Format: <strong>PDF atau DOCX</strong>, Maks. 10 MB. Nama file otomatis disesuaikan dengan konvensi penamaan surat.
         </p>
-        {/* {hasLetter && (
-          <div className="flex items-center gap-2 text-xs text-muted-foreground bg-muted/30 px-3 py-2 rounded">
-            <FileText className="w-3.5 h-3.5 shrink-0" />
-            File saat ini:{" "}
-            <a href={permit.generatedLetter.fileUrl} target="_blank" rel="noopener noreferrer"
-              className="text-primary hover:underline flex items-center gap-1">
-              <ExternalLink className="w-3 h-3" /> Lihat file tersimpan
-            </a>
-          </div>
-        )} */}
         <div className="flex items-center gap-2">
-          <Input type="file" accept=".pdf"
+          <Input type="file" accept=".pdf,.docx"
             onChange={(e) => setOverwriteFile(e.target.files?.[0] || null)} className="flex-1" />
           <Button onClick={() => overwriteMutation.mutate()} disabled={!overwriteFile || overwriteMutation.isPending}
             variant="outline" className="gap-2 shrink-0">
@@ -470,21 +364,7 @@ function UploadSuratCard({ permit, permitId }: { permit: any; permitId: string }
 
 function LetterActionButtons({ permit, permitId }: { permit: any; permitId: string }) {
   const { toast } = useToast();
-  const [previewLoading, setPreviewLoading] = useState(false);
   const hasLetter = !!permit?.generatedLetter?.fileUrl;
-
-  const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
-  const { data: templates = [] } = useQuery<LetterTemplate[]>({
-    queryKey: ["/api/admin/letter-templates"],
-    queryFn: async () => {
-      const res = await apiRequest("GET", "/api/admin/letter-templates");
-      if (!res.ok) throw new Error(await res.text());
-      return res.json();
-    },
-  });
-  const activeTemplates = templates.filter((t) => t.isActive);
-  const autoTemplateId = activeTemplates[0]?.id;
-  const effectiveTemplateId = selectedTemplateId || autoTemplateId || "";
 
   const sendLetterMutation = useMutation({
     mutationFn: async () => {
@@ -504,28 +384,21 @@ function LetterActionButtons({ permit, permitId }: { permit: any; permitId: stri
 
   if (!hasLetter) return null;
 
-  async function handlePreviewGenerated() {
-    setPreviewLoading(true);
-    try {
-      await openPdfPreview(permit.id, effectiveTemplateId);
-    } catch (e: any) {
-      toast({ title: "Gagal preview", description: e.message, variant: "destructive" });
-    } finally {
-      setPreviewLoading(false);
-    }
-  }
+  const previewUrl = permit.generatedLetter?.pdfFileUrl || permit.generatedLetter?.fileUrl;
 
   return (
     <TooltipProvider>
       <div className="flex items-center gap-2">
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button variant="outline" size="sm" onClick={handlePreviewGenerated} disabled={previewLoading} className="gap-2">
-              {previewLoading ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Eye className="w-3.5 h-3.5" />}
-              Preview
+            <Button variant="outline" size="sm" asChild className="gap-2">
+              <a href={previewUrl} target="_blank" rel="noopener noreferrer">
+                <Eye className="w-3.5 h-3.5" />
+                Preview
+              </a>
             </Button>
           </TooltipTrigger>
-          <TooltipContent>Preview surat yang sudah digenerate</TooltipContent>
+          <TooltipContent>Buka file surat tersimpan</TooltipContent>
         </Tooltip>
 
         <Tooltip>
@@ -565,9 +438,38 @@ export default function PermitDetailPage() {
   const [newStatus, setNewStatus] = useState("");
   const [note, setNote] = useState("");
 
+  const [adminLetterFields, setAdminLetterFields] = useState<AdminLetterFields>({
+    issuedLetterNumber: "",
+    issuedLetterDate: "",
+    recipientName: "",
+    researchStartDate: "",
+    researchEndDate: "",
+  });
+  const [letterFieldsInitialized, setLetterFieldsInitialized] = useState(false);
+
   const { data: permit, isLoading } = useQuery<any>({
     queryKey: [`/api/admin/permits/${permitId}`],
   });
+
+  // Initialize admin letter fields from permit data once it loads
+  useEffect(() => {
+    if (permit && !letterFieldsInitialized) {
+      setAdminLetterFields({
+        issuedLetterNumber: permit.issuedLetterNumber || "",
+        issuedLetterDate: permit.issuedLetterDate
+          ? format(new Date(permit.issuedLetterDate), "yyyy-MM-dd")
+          : "",
+        recipientName: permit.recipientName || "",
+        researchStartDate: permit.researchStartDate
+          ? format(new Date(permit.researchStartDate), "yyyy-MM-dd")
+          : "",
+        researchEndDate: permit.researchEndDate
+          ? format(new Date(permit.researchEndDate), "yyyy-MM-dd")
+          : "",
+      });
+      setLetterFieldsInitialized(true);
+    }
+  }, [permit, letterFieldsInitialized]);
 
   const StatusIcon = useMemo(() => STATUS_ICONS[permit?.status] || Clock, [permit?.status]);
 
@@ -681,7 +583,7 @@ export default function PermitDetailPage() {
 
           {/* Generate Surat — hanya tampil jika belum sent */}
           {permit.status !== "sent" && (
-            <GenerateCard permit={permit} permitId={permitId} />
+            <GenerateCard permit={permit} permitId={permitId} adminLetterFields={adminLetterFields} />
           )}
 
           {/* Upload / Timpa Surat — selalu tampil sebagai card terpisah */}
@@ -728,7 +630,7 @@ export default function PermitDetailPage() {
           </Card>
 
           {/* Admin Fields: Data Surat Izin */}
-          <AdminLetterFieldsCard permit={permit} permitId={permitId} />
+          <AdminLetterFieldsCard fields={adminLetterFields} onChange={setAdminLetterFields} />
 
           {/* Riwayat Status */}
           <Card>

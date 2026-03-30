@@ -322,12 +322,6 @@ function UploadModal({ open, onClose, onSuccess }: UploadModalProps) {
             </div>
           )}
 
-          {!parsing && file && previewPlaceholders.length === 0 && (
-            <div className="flex items-center gap-2 text-xs text-amber-600">
-              <AlertCircle className="w-3.5 h-3.5" />
-              Tidak ada placeholder {"<<...>>"} terdeteksi di file ini.
-            </div>
-          )}
         </div>
 
         <DialogFooter className="mt-2">
