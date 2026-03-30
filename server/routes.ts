@@ -3,6 +3,8 @@ import { createServer, type Server } from "http";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
+import { createRequire } from "module";
+const require = createRequire(import.meta.url);
 import { storage as db } from "./storage";
 import { authMiddleware, requireRole, hashPassword, verifyPassword, signToken } from "./auth";
 import { randomUUID } from "crypto";
@@ -1012,7 +1014,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // Update permit admin fields (nomor surat, tanggal, penerima, dll.)
   app.patch("/api/admin/permits/:id/detail", authMiddleware, requireRole("super_admin", "admin_rida"), async (req: any, res) => {
     try {
-      const { issuedLetterNumber, issuedLetterDate, recipientName, recipientCity, researchStartDate, researchEndDate } = req.body;
+      const { issuedLetterNumber, issuedLetterDate, recipientName, recipientCity, researchStartDate, researchEndDate, isSurvei } = req.body;
       const updateData: Record<string, any> = {};
       if (issuedLetterNumber !== undefined) updateData.issuedLetterNumber = issuedLetterNumber || null;
       if (issuedLetterDate !== undefined) updateData.issuedLetterDate = issuedLetterDate ? new Date(issuedLetterDate) : null;
@@ -1020,7 +1022,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (recipientCity !== undefined) updateData.recipientCity = recipientCity || null;
       if (researchStartDate !== undefined) updateData.researchStartDate = researchStartDate ? new Date(researchStartDate) : null;
       if (researchEndDate !== undefined) updateData.researchEndDate = researchEndDate ? new Date(researchEndDate) : null;
+      if (isSurvei !== undefined) updateData.isSurvei = Boolean(isSurvei);
       const p = await db.updatePermit(req.params.id, updateData);
+      return res.json(p);
+    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+  });
+
+  // Toggle isSurvei flag (admin)
+  app.patch("/api/admin/permits/:id/is-survei", authMiddleware, requireRole("super_admin", "admin_rida"), async (req: any, res) => {
+    try {
+      const { isSurvei } = req.body;
+      if (typeof isSurvei !== "boolean") return res.status(400).json({ error: "isSurvei harus boolean" });
+      const p = await db.updatePermit(req.params.id, { isSurvei });
       return res.json(p);
     } catch (e: any) { return res.status(500).json({ error: e.message }); }
   });
@@ -1885,6 +1898,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // 4. INSERT
       // =========================
       const result = await db.createSurvey(finalData);
+
+      // Jika ada requestNumber, tandai permit sebagai sudah isi survei
+      if (data.requestNumber) {
+        try {
+          const linkedPermit = await db.getPermitByNumber(String(data.requestNumber).toUpperCase());
+          if (linkedPermit) {
+            await db.updatePermit(linkedPermit.id, { isSurvei: true });
+          }
+        } catch {}
+      }
 
       // Notifikasi ke admin RIDA
       db.createNotification({

@@ -6,7 +6,7 @@ Admin panel untuk BAPPERIDA (Badan Perencanaan, Penelitian dan Pengembangan Daer
 ## Tech Stack
 - **Frontend**: React + TypeScript, Wouter (routing), TanStack Query, Shadcn UI, Tailwind CSS, **react-quill-new** (rich text editor)
 - **Node.js Backend**: Express.js + TypeScript, JWT Auth (port 5000 - serves React admin panel)
-- **Database**: **MySQL** + Drizzle ORM (`drizzle-orm/mysql-core` + `mysql2`)
+- **Database**: **PostgreSQL** + Drizzle ORM (`drizzle-orm/pg-core` + `pg`)
 - **File Storage**: Local filesystem (`/uploads`)
 
 ## Architecture
@@ -24,14 +24,14 @@ Admin panel untuk BAPPERIDA (Badan Perencanaan, Penelitian dan Pengembangan Daer
 - **admin_bpp**: BAPPEDA modules (News, Categories, Banners, Menus, Documents, Document Masters)
 - **admin_rida**: RIDA modules (Research Permits, Surveys, Final Reports, Letter Templates, Suggestions)
 
-## CRITICAL: Database Setup (MySQL)
-Aplikasi ini menggunakan **MySQL** via `drizzle-orm/mysql-core` + `mysql2`.
-- **server/db.ts**: Menggunakan `mysql2.createPool` dan `drizzle` dari `drizzle-orm/mysql2`
-- **shared/schema.ts**: Menggunakan `mysqlTable`, `mysqlEnum`, `int` dari `drizzle-orm/mysql-core`
-- **drizzle.config.ts**: Menggunakan `dialect: "mysql"`
-- **server/migrate.ts**: Menggunakan `mysql2.Pool` untuk migration queries
-- Set `DATABASE_URL` ke MySQL connection string, contoh: `mysql://user:password@host:3306/dbname`
-- Untuk schema changes: gunakan `npm run db:push` atau jalankan SQL migration secara manual
+## CRITICAL: Database Setup (PostgreSQL)
+Aplikasi ini menggunakan **PostgreSQL** via `drizzle-orm/pg-core` + `pg`.
+- **server/db.ts**: Menggunakan `pg.Pool` dan `drizzle` dari `drizzle-orm/node-postgres`
+- **shared/schema.ts**: Menggunakan `pgTable`, `pgEnum`, `integer` dari `drizzle-orm/pg-core`
+- **server/migrate.ts**: Manual migrations via `pg.Pool`, run on startup from `server/index.ts`
+- **drizzle.config.ts**: Menggunakan `dialect: "postgresql"`
+- Set `DATABASE_URL` ke PostgreSQL connection string (disediakan otomatis oleh Replit)
+- Untuk schema changes: tambahkan SQL migration ke array `MIGRATIONS` di `server/migrate.ts`
 - Migration otomatis berjalan saat startup via `runMigrations()` di `server/index.ts`
 
 ## Recent Changes
