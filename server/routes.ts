@@ -236,6 +236,7 @@ function buildLetterReplacements(permit: any, template?: any): Record<string, st
     "TIM SURVEY/PENELITI": permit.institution ?? "-",
     "INSTANSI": permit.institution ?? "-",
     "NAMA INSTANSI": permit.institution ?? "-",
+    "BAPPEDA KABUPATEN": permit.recipientCity ?? "-",
     
     // Research
     "JUDUL PENELITIAN": permit.researchTitle ?? "-",

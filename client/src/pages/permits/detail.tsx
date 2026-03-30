@@ -94,6 +94,7 @@ interface AdminLetterFields {
   issuedLetterDate: string;
   researchStartDate: string;
   researchEndDate: string;
+  recipientCity: string;
 }
 
 // const LETTER_NUMBER_PREFIX = "072/";
@@ -151,14 +152,15 @@ function AdminLetterFieldsCard({
             />
           </div>
           
-          {/* <div className="flex flex-col gap-1.5">
-            <Label className="text-xs">Pejabat/Penanda Tangan Surat Pengantar</Label>
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-xs">Kota/Kabupaten Tujuan</Label>
             <Input
-              value={fields.signerPosition || permit?.signerPosition || ""}
-              onChange={set("signerPosition")}
-              placeholder="Kepala Dinas PMPTSP"
+              value={fields.recipientCity}
+              onChange={set("recipientCity")}
+              placeholder="Palangka Raya"
+              data-testid="input-recipient-city"
             />
-          </div> */}
+          </div>
           
           <div className="flex flex-col gap-1.5">
             <Label className="text-xs">Tanggal Mulai Penelitian</Label>
@@ -621,6 +623,7 @@ export default function PermitDetailPage() {
     issuedLetterDate: "",
     researchStartDate: "",
     researchEndDate: "",
+    recipientCity: "",
   });
   const [letterFieldsInitialized, setLetterFieldsInitialized] = useState(false);
 
@@ -640,6 +643,7 @@ export default function PermitDetailPage() {
       // }
       setAdminLetterFields({
         issuedLetterNumber: permit.issuedLetterNumber,
+        recipientCity: permit.recipientCity,
         issuedLetterDate: permit.issuedLetterDate
           ? format(new Date(permit.issuedLetterDate), "yyyy-MM-dd")
           : "",
