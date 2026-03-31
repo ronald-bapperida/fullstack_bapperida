@@ -25,6 +25,18 @@ interface Doc {
   kindId: string | null; categoryId: string | null; typeId: string | null;
 }
 
+// Helper function to format date for datetime-local input
+const formatDateForInput = (dateString: string | null | undefined): string => {
+  if (!dateString) return "";
+  try {
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return "";
+    return format(date, "yyyy-MM-dd'T'HH:mm");
+  } catch {
+    return "";
+  }
+};
+
 function DocForm({ doc, kinds, categories, types, onDone }: {
   doc?: Doc;
   kinds: DocMaster[];
@@ -35,7 +47,7 @@ function DocForm({ doc, kinds, categories, types, onDone }: {
   const { toast } = useToast();
   const [file, setFile] = useState<File | null>(null);
 
-  const { register, handleSubmit, control, formState: { errors } } = useForm({
+  const { register, handleSubmit, control, formState: { errors }, watch } = useForm({
     defaultValues: {
       title: doc?.title || "",
       kindId: doc?.kindId || "",
@@ -46,27 +58,32 @@ function DocForm({ doc, kinds, categories, types, onDone }: {
       publisher: doc?.publisher || "",
       accessLevel: doc?.accessLevel || "terbuka",
       status: doc?.status || "draft",
-      publishedAt: doc?.publishedAt
-                  ? format(new Date(doc.publishedAt), "yyyy-MM-dd'T'HH:mm")
-                  : "",
+      publishedAt: formatDateForInput(doc?.publishedAt),
     },
   });
+
+  const watchedPublishedAt = watch("publishedAt");
 
   const mutation = useMutation({
     mutationFn: async (data: any) => {
       const fd = new FormData();
+      
+      // Handle publishedAt: convert to ISO string if exists
+      if (data.publishedAt) {
+        fd.append("publishedAt", new Date(data.publishedAt).toISOString());
+      } else {
+        fd.append("publishedAt", "");
+      }
+      
+      // Append other fields
       Object.entries(data).forEach(([k, v]) => {
-        if (k === "publishedAt") {
-          fd.append(k, v ? String(v) : "");
-          return;
+        if (k !== "publishedAt" && v !== undefined && v !== null && v !== "") {
+          fd.append(k, String(v));
         }
-        if (v !== undefined && v !== null && v !== "") fd.append(k, String(v));
       });
+      
       if (file) fd.append("file", file);
-      // if (data.publishedAt) {
-      //   const dt = new Date(data.publishedAt + "T00:00:00");
-      //   fd.set("publishedAt", dt.toISOString());
-      // }
+      
       const res = doc
         ? await apiRequest("PATCH", `/api/admin/documents/${doc.id}`, fd)
         : await apiRequest("POST", "/api/admin/documents", fd);
@@ -156,19 +173,6 @@ function DocForm({ doc, kinds, categories, types, onDone }: {
       </div>
 
       <div className="grid gap-4">
-        {/* <div className="flex flex-col gap-2">
-          <Label>Level Akses</Label>
-          <Controller name="accessLevel" control={control} render={({ field }) => (
-            <Select value={field.value} onValueChange={field.onChange}>
-              <SelectTrigger><SelectValue /></SelectTrigger>
-              <SelectContent>
-                <SelectItem value="terbuka">Terbuka</SelectItem>
-                <SelectItem value="terbatas">Terbatas</SelectItem>
-                <SelectItem value="rahasia">Rahasia</SelectItem>
-              </SelectContent>
-            </Select>
-          )} />
-        </div> */}
         <div className="flex flex-col gap-2">
           <Label>Status</Label>
           <Controller name="status" control={control} render={({ field }) => (
@@ -186,7 +190,12 @@ function DocForm({ doc, kinds, categories, types, onDone }: {
       <div className="grid grid-cols-2 gap-4">
         <div className="flex flex-col gap-2">
           <Label>Tanggal Publikasi</Label>
-          <Input type="date" {...register("publishedAt")} />
+          <Input type="datetime-local" {...register("publishedAt")} data-testid="input-published-date" />
+          {watchedPublishedAt && (
+            <p className="text-xs text-green-600">
+              Terisi: {new Date(watchedPublishedAt).toLocaleString()}
+            </p>
+          )}
         </div>
         <div className="flex flex-col gap-2">
           <Label>Publisher</Label>
@@ -402,11 +411,9 @@ export default function DocumentsPage() {
                 sortDir={sortDir}
                 onSort={toggleSort}
               />
-              {/* <TableHead>Judul</TableHead> */}
               <TableHead className="w-32">Jenis</TableHead>
               <TableHead className="w-32">Kategori</TableHead>
               <TableHead className="w-20">Tipe</TableHead>
-              {/* <TableHead className="w-24">Akses</TableHead> */}
               <SortableHead
                 label="Tanggal Publikasi"
                 colKey="publishedAt"
@@ -441,8 +448,9 @@ export default function DocumentsPage() {
                 <TableCell className="text-sm">{d.kindId ? kindMap[d.kindId] || "-" : "-"}</TableCell>
                 <TableCell className="text-sm">{d.categoryId ? categoryMap[d.categoryId] || "-" : "-"}</TableCell>
                 <TableCell className="text-sm">{d.typeId ? typeMap[d.typeId] || "-" : "-"}</TableCell>
-                {/* <TableCell><Badge variant="outline" className="text-xs">{d.accessLevel}</Badge></TableCell> */}
-                <TableCell className="text-sm">{d.publishedAt ? format(new Date(d.publishedAt), "dd MMM yyyy") : "-"}</TableCell>
+                <TableCell className="text-sm">
+                  {d.publishedAt ? format(new Date(d.publishedAt), "dd MMM yyyy") : "-"}
+                </TableCell>
                 <TableCell><Badge variant={d.status === "published" ? "default" : "secondary"} className="text-xs">{d.status}</Badge></TableCell>
                 <TableCell>
                   <div className="flex items-center justify-end gap-1">

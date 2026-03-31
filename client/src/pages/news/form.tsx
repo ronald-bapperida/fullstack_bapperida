@@ -14,8 +14,22 @@ import { ArrowLeft, Save, Upload, X, Globe, FileText } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useForm, Controller } from "react-hook-form";
 import QuillEditor from "@/components/quill-editor";
+import { format } from "date-fns";
 
 interface Category { id: string; name: string; slug: string; }
+
+// Helper function to format date for datetime-local input
+const formatDateForInput = (dateString: string | null | undefined): string => {
+  if (!dateString) return "";
+  try {
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return "";
+    // Format: YYYY-MM-DDThh:mm
+    return format(date, "yyyy-MM-dd'T'HH:mm");
+  } catch {
+    return "";
+  }
+};
 
 export default function NewsFormPage() {
   const { id } = useParams<{ id: string }>();
@@ -34,7 +48,7 @@ export default function NewsFormPage() {
     enabled: isEdit,
   });
 
-  const { register, handleSubmit, control, reset } = useForm({
+  const { register, handleSubmit, control, reset, watch } = useForm({
     defaultValues: {
       title: "",
       categoryId: "",
@@ -46,6 +60,13 @@ export default function NewsFormPage() {
     },
   });
 
+  // Watch for debugging
+  const watchedPublishedAt = watch("publishedAt");
+  const watchedEventAt = watch("eventAt");
+
+  useEffect(() => {
+  }, [watchedPublishedAt, watchedEventAt]);
+
   useEffect(() => {
     if (existingNews) {
       reset({
@@ -54,8 +75,8 @@ export default function NewsFormPage() {
         excerpt: existingNews.excerpt || "",
         url: existingNews.url || "",
         featuredCaption: existingNews.featuredCaption || "",
-        publishedAt: existingNews.publishedAt ? existingNews.publishedAt.split("T")[0] : "",
-        eventAt: existingNews.eventAt ? existingNews.eventAt.split("T")[0] : "",
+        publishedAt: formatDateForInput(existingNews.publishedAt),
+        eventAt: formatDateForInput(existingNews.eventAt),
       });
       setContent(existingNews.content || "");
       setSavedStatus(existingNews.status || "draft");
@@ -66,11 +87,21 @@ export default function NewsFormPage() {
   const mutation = useMutation({
     mutationFn: async (data: any) => {
       const payload = { ...data, content };
+      
+      // Handle dates properly
+      if (payload.publishedAt) {
+        payload.publishedAt = new Date(payload.publishedAt).toISOString();
+      }
+      if (payload.eventAt) {
+        payload.eventAt = new Date(payload.eventAt).toISOString();
+      }
+      
       const fd = new FormData();
       Object.entries(payload).forEach(([k, v]) => {
         if (v !== undefined && v !== null && v !== "") fd.append(k, String(v));
       });
       if (featuredImageFile) fd.append("featuredImage", featuredImageFile);
+      
       const res = isEdit
         ? await apiRequest("PATCH", `/api/admin/news/${id}`, fd)
         : await apiRequest("POST", "/api/admin/news", fd);
@@ -187,12 +218,30 @@ export default function NewsFormPage() {
 
                 <div className="flex flex-col gap-2">
                   <Label>Tanggal Publikasi</Label>
-                  <Input type="datetime-local" {...register("publishedAt")} />
+                  <Input 
+                    type="datetime-local" 
+                    {...register("publishedAt")}
+                    data-testid="input-published-at"
+                  />
+                  {watchedPublishedAt && (
+                    <p className="text-xs text-green-600">
+                      Terisi: {new Date(watchedPublishedAt).toLocaleString()}
+                    </p>
+                  )}
                 </div>
 
                 <div className="flex flex-col gap-2">
                   <Label>Tanggal Kegiatan</Label>
-                  <Input type="datetime-local" {...register("eventAt")} />
+                  <Input 
+                    type="datetime-local" 
+                    {...register("eventAt")}
+                    data-testid="input-event-at"
+                  />
+                  {watchedEventAt && (
+                    <p className="text-xs text-green-600">
+                      Terisi: {new Date(watchedEventAt).toLocaleString()}
+                    </p>
+                  )}
                 </div>
 
                 <div className="flex flex-col gap-2">

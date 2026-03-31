@@ -16,6 +16,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useLang } from "@/contexts/language";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useForm, Controller } from "react-hook-form";
+import { format } from "date-fns";
 
 interface Banner {
   id: string; title: string; placement: string; isActive: boolean;
@@ -23,6 +24,18 @@ interface Banner {
   imageDesktop: string | null; imageMobile: string | null; altText: string | null;
   startAt: string | null; endAt: string | null; createdAt: string; deletedAt: string | null;
 }
+
+// Helper function to format date for date input (without time)
+const formatDateForDateInput = (dateString: string | null | undefined): string => {
+  if (!dateString) return "";
+  try {
+    const date = new Date(dateString);
+    if (isNaN(date.getTime())) return "";
+    return format(date, "yyyy-MM-dd");
+  } catch {
+    return "";
+  }
+};
 
 function ImagePreviewField({
   label, icon, preview, onClear, inputId, onFileChange, testId
@@ -78,7 +91,7 @@ function BannerForm({ banner, onDone }: { banner?: Banner; onDone: () => void })
   const [desktopPreview, setDesktopPreview] = useState<string | null>(banner?.imageDesktop || null);
   const [mobilePreview, setMobilePreview] = useState<string | null>(banner?.imageMobile || null);
 
-  const { register, handleSubmit, control } = useForm({
+  const { register, handleSubmit, control, watch } = useForm({
     defaultValues: {
       title: banner?.title || "",
       placement: banner?.placement || "home",
@@ -86,19 +99,42 @@ function BannerForm({ banner, onDone }: { banner?: Banner; onDone: () => void })
       linkType: banner?.linkType || "external",
       linkUrl: banner?.linkUrl || "",
       isActive: banner?.isActive ?? true,
-      startAt: banner?.startAt ? banner.startAt.split("T")[0] : "",
-      endAt: banner?.endAt ? banner.endAt.split("T")[0] : "",
+      startAt: formatDateForDateInput(banner?.startAt),
+      endAt: formatDateForDateInput(banner?.endAt),
     },
   });
+
+  // Watch for debugging
+  const watchedStartAt = watch("startAt");
+  const watchedEndAt = watch("endAt");
 
   const mutation = useMutation({
     mutationFn: async (data: any) => {
       const fd = new FormData();
+      
+      // Handle dates: convert to ISO string if exists
+      if (data.startAt) {
+        fd.append("startAt", new Date(data.startAt).toISOString());
+      } else {
+        fd.append("startAt", "");
+      }
+      
+      if (data.endAt) {
+        fd.append("endAt", new Date(data.endAt).toISOString());
+      } else {
+        fd.append("endAt", "");
+      }
+      
+      // Append other fields
       Object.entries(data).forEach(([k, v]) => {
-        if (v !== undefined && v !== null && v !== "") fd.append(k, String(v));
+        if (k !== "startAt" && k !== "endAt" && v !== undefined && v !== null && v !== "") {
+          fd.append(k, String(v));
+        }
       });
+      
       if (desktopFile) fd.append("imageDesktop", desktopFile);
       if (mobileFile) fd.append("imageMobile", mobileFile);
+      
       const res = banner
         ? await apiRequest("PATCH", `/api/admin/banners/${banner.id}`, fd)
         : await apiRequest("POST", "/api/admin/banners", fd);
@@ -184,11 +220,21 @@ function BannerForm({ banner, onDone }: { banner?: Banner; onDone: () => void })
       <div className="grid grid-cols-2 gap-4">
         <div className="flex flex-col gap-2">
           <Label>Mulai Tayang</Label>
-          <Input type="date" {...register("startAt")} />
+          <Input type="date" {...register("startAt")} data-testid="input-start-date" />
+          {watchedStartAt && (
+            <p className="text-xs text-green-600">
+              Terisi: {new Date(watchedStartAt).toLocaleDateString()}
+            </p>
+          )}
         </div>
         <div className="flex flex-col gap-2">
           <Label>Selesai Tayang</Label>
-          <Input type="date" {...register("endAt")} />
+          <Input type="date" {...register("endAt")} data-testid="input-end-date" />
+          {watchedEndAt && (
+            <p className="text-xs text-green-600">
+              Terisi: {new Date(watchedEndAt).toLocaleDateString()}
+            </p>
+          )}
         </div>
       </div>
 
@@ -225,6 +271,15 @@ export default function BannersPage() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/banners"] });
       toast({ title: "Banner dihapus" });
+    },
+    onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
+  });
+
+  const restoreMutation = useMutation({
+    mutationFn: (id: string) => apiRequest("POST", `/api/admin/banners/${id}/restore`),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/banners"] });
+      toast({ title: "Banner dipulihkan" });
     },
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
@@ -342,7 +397,7 @@ export default function BannersPage() {
                         </AlertDialog>
                       </>
                     ) : (
-                      <Button size="icon" variant="ghost" title="Pulihkan" data-testid={`button-restore-${b.id}`}>
+                      <Button size="icon" variant="ghost" onClick={() => restoreMutation.mutate(b.id)} title="Pulihkan" data-testid={`button-restore-${b.id}`}>
                         <RefreshCw className="w-4 h-4" />
                       </Button>
                     )}
