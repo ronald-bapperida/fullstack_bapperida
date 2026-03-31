@@ -221,20 +221,20 @@ function BannerForm({ banner, onDone }: { banner?: Banner; onDone: () => void })
         <div className="flex flex-col gap-2">
           <Label>Mulai Tayang</Label>
           <Input type="date" {...register("startAt")} data-testid="input-start-date" />
-          {watchedStartAt && (
+          {/* {watchedStartAt && (
             <p className="text-xs text-green-600">
               Terisi: {new Date(watchedStartAt).toLocaleDateString()}
             </p>
-          )}
+          )} */}
         </div>
         <div className="flex flex-col gap-2">
           <Label>Selesai Tayang</Label>
           <Input type="date" {...register("endAt")} data-testid="input-end-date" />
-          {watchedEndAt && (
+          {/* {watchedEndAt && (
             <p className="text-xs text-green-600">
               Terisi: {new Date(watchedEndAt).toLocaleDateString()}
             </p>
-          )}
+          )} */}
         </div>
       </div>
 

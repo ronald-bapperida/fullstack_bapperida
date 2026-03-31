@@ -223,11 +223,11 @@ export default function NewsFormPage() {
                     {...register("publishedAt")}
                     data-testid="input-published-at"
                   />
-                  {watchedPublishedAt && (
+                  {/* {watchedPublishedAt && (
                     <p className="text-xs text-green-600">
                       Terisi: {new Date(watchedPublishedAt).toLocaleString()}
                     </p>
-                  )}
+                  )} */}
                 </div>
 
                 <div className="flex flex-col gap-2">
@@ -237,11 +237,11 @@ export default function NewsFormPage() {
                     {...register("eventAt")}
                     data-testid="input-event-at"
                   />
-                  {watchedEventAt && (
+                  {/* {watchedEventAt && (
                     <p className="text-xs text-green-600">
                       Terisi: {new Date(watchedEventAt).toLocaleString()}
                     </p>
-                  )}
+                  )} */}
                 </div>
 
                 <div className="flex flex-col gap-2">

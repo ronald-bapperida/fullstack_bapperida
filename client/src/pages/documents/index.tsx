@@ -191,11 +191,11 @@ function DocForm({ doc, kinds, categories, types, onDone }: {
         <div className="flex flex-col gap-2">
           <Label>Tanggal Publikasi</Label>
           <Input type="datetime-local" {...register("publishedAt")} data-testid="input-published-date" />
-          {watchedPublishedAt && (
+          {/* {watchedPublishedAt && (
             <p className="text-xs text-green-600">
               Terisi: {new Date(watchedPublishedAt).toLocaleString()}
             </p>
-          )}
+          )} */}
         </div>
         <div className="flex flex-col gap-2">
           <Label>Publisher</Label>
