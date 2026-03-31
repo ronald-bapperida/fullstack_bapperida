@@ -1,5 +1,6 @@
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
+import crypto from "crypto";
 import type { Request, Response, NextFunction } from "express";
 
 const JWT_SECRET = process.env.SESSION_SECRET || "bapperida-secret-2024";
@@ -13,7 +14,15 @@ export function verifyPassword(password: string, hash: string): boolean {
 }
 
 export function signToken(payload: { id: string; username: string; role: string }): string {
-  return jwt.sign(payload, JWT_SECRET, { expiresIn: "30d" });
+  return jwt.sign(payload, JWT_SECRET, { expiresIn: "1h" });
+}
+
+export function signAccessToken(payload: { id: string; username: string; role: string }): string {
+  return jwt.sign(payload, JWT_SECRET, { expiresIn: "1h" });
+}
+
+export function generateRefreshToken(): string {
+  return crypto.randomBytes(64).toString("hex");
 }
 
 export function verifyToken(token: string): any {
