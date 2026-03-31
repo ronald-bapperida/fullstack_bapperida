@@ -7,7 +7,8 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { Building2, LogIn, Eye, EyeOff } from "lucide-react";
+import { LogIn, Eye, EyeOff } from "lucide-react";
+import { Link } from "wouter";
 import logoBapperida from "@assets/logo_bapperida_1771921692764.png";
 
 export default function LoginPage() {
@@ -104,10 +105,12 @@ export default function LoginPage() {
                 <LogIn className="w-4 h-4" />
                 {loading ? t("loginProcessing") : t("loginSubmit")}
               </Button>
+              <div className="text-center">
+                <Link href="/forgot-password" className="text-xs text-muted-foreground hover:text-foreground underline-offset-4 hover:underline" data-testid="link-forgot-password">
+                  Lupa Password?
+                </Link>
+              </div>
             </form>
-            {/* <p className="text-xs text-muted-foreground text-center mt-4">
-              Default: superadmin / Admin@123
-            </p> */}
           </CardContent>
         </Card>
       </div>

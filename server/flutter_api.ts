@@ -896,73 +896,90 @@ export function registerFlutterApiRoutes(app: express.Express) {
   flutterRouter.post("/v1/auth/forgot-password", async (req: Request, res: Response) => {
     try {
       const { email } = req.body;
-      
       if (!email) {
-        return res.status(400).json({
-          success: false,
-          message: "Email is required"
-        });
+        return res.status(400).json({ success: false, message: "Email wajib diisi" });
       }
-      
       const user = await db.getUserByEmail(email);
-      
-      // Always return success even if email not found (security)
       if (user) {
-        // Here you would typically:
-        // 1. Generate reset token
-        // 2. Save to database
-        // 3. Send email with reset link
-        
-        // For now, just log
-        console.log(`Password reset requested for: ${email}`);
+        const otp = String(Math.floor(100000 + Math.random() * 900000));
+        const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+        await db.deleteOtpForUser(user.id);
+        await db.createOtp(user.id, otp, expiresAt);
+        const { sendOtpResetEmail } = await import("./email");
+        await sendOtpResetEmail(user.email!, otp, user.fullName || user.username).catch(console.error);
       }
-      
-      return res.json({
-        success: true,
-        message: "If your email is registered, you will receive password reset instructions"
-      });
+      return res.json({ success: true, message: "Jika email terdaftar, kode OTP telah dikirim" });
     } catch (error: any) {
-      return res.status(500).json({
-        success: false,
-        message: "Failed to process request",
-        error: error.message
-      });
+      return res.status(500).json({ success: false, message: "Gagal memproses permintaan", error: error.message });
+    }
+  });
+
+  /**
+   * @route   POST /api/flutter/v1/auth/verify-otp
+   * @desc    Verify OTP and get reset token
+   * @access  Public
+   */
+  flutterRouter.post("/v1/auth/verify-otp", async (req: Request, res: Response) => {
+    try {
+      const { email, otp } = req.body;
+      if (!email || !otp) {
+        return res.status(400).json({ success: false, message: "Email dan OTP wajib diisi" });
+      }
+      const user = await db.getUserByEmail(email);
+      if (!user) return res.status(400).json({ success: false, message: "OTP tidak valid atau sudah kedaluwarsa" });
+      const record = await db.getOtp(user.id);
+      if (!record) return res.status(400).json({ success: false, message: "OTP tidak valid atau sudah kedaluwarsa" });
+      if (new Date(record.expiresAt) < new Date()) {
+        await db.deleteOtpForUser(user.id);
+        return res.status(400).json({ success: false, message: "OTP sudah kedaluwarsa" });
+      }
+      if (record.otp !== String(otp)) {
+        return res.status(400).json({ success: false, message: "OTP salah" });
+      }
+      await db.markOtpVerified(record.id);
+      const jwt = (await import("jsonwebtoken")).default;
+      const resetToken = jwt.sign(
+        { userId: user.id, purpose: "reset-password" },
+        process.env.JWT_SECRET || "secret",
+        { expiresIn: "15m" }
+      );
+      return res.json({ success: true, message: "OTP valid", reset_token: resetToken });
+    } catch (error: any) {
+      return res.status(500).json({ success: false, message: "Gagal memverifikasi OTP", error: error.message });
     }
   });
 
   /**
    * @route   POST /api/flutter/v1/auth/reset-password
-   * @desc    Reset password with token
+   * @desc    Reset password with reset token
    * @access  Public
    */
   flutterRouter.post("/v1/auth/reset-password", async (req: Request, res: Response) => {
     try {
-      const { token, new_password } = req.body;
-      
-      if (!token || !new_password) {
-        return res.status(400).json({
-          success: false,
-          message: "Token and new password are required"
-        });
+      const { reset_token, new_password } = req.body;
+      if (!reset_token || !new_password) {
+        return res.status(400).json({ success: false, message: "Token dan password baru wajib diisi" });
       }
-      
-      // Here you would:
-      // 1. Verify token
-      // 2. Find user by token
-      // 3. Update password
-      // 4. Invalidate token
-      
-      // For now, return success message
-      return res.json({
-        success: true,
-        message: "Password reset successful"
-      });
+      const jwt = (await import("jsonwebtoken")).default;
+      let payload: any;
+      try {
+        payload = jwt.verify(reset_token, process.env.JWT_SECRET || "secret");
+      } catch {
+        return res.status(400).json({ success: false, message: "Token tidak valid atau sudah kedaluwarsa" });
+      }
+      if (payload.purpose !== "reset-password") {
+        return res.status(400).json({ success: false, message: "Token tidak valid" });
+      }
+      if (new_password.length < 6) {
+        return res.status(400).json({ success: false, message: "Password minimal 6 karakter" });
+      }
+      const { hashPassword } = await import("./auth");
+      const hashed = await hashPassword(new_password);
+      await db.updateUser(payload.userId, { password: hashed });
+      await db.deleteOtpForUser(payload.userId);
+      return res.json({ success: true, message: "Password berhasil direset" });
     } catch (error: any) {
-      return res.status(500).json({
-        success: false,
-        message: "Failed to reset password",
-        error: error.message
-      });
+      return res.status(500).json({ success: false, message: "Gagal mereset password", error: error.message });
     }
   });
 

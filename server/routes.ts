@@ -918,6 +918,64 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  // ─── Auth: Forgot Password / OTP ────────────────────────────────────────────
+  app.post("/api/auth/forgot-password", async (req, res) => {
+    try {
+      const { email } = req.body;
+      if (!email) return res.status(400).json({ error: "Email wajib diisi" });
+      const user = await db.getUserByEmail(email);
+      if (user && user.email) {
+        const otp = String(Math.floor(100000 + Math.random() * 900000));
+        const expiresAt = new Date(Date.now() + 10 * 60 * 1000);
+        await db.deleteOtpForUser(user.id);
+        await db.createOtp(user.id, otp, expiresAt);
+        const { sendOtpResetEmail } = await import("./email");
+        await sendOtpResetEmail(user.email, otp, user.fullName || user.username).catch(console.error);
+      }
+      return res.json({ ok: true, message: "Jika email terdaftar, kode OTP telah dikirim" });
+    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+  });
+
+  app.post("/api/auth/verify-otp", async (req, res) => {
+    try {
+      const { email, otp } = req.body;
+      if (!email || !otp) return res.status(400).json({ error: "Email dan OTP wajib diisi" });
+      const user = await db.getUserByEmail(email);
+      if (!user) return res.status(400).json({ error: "OTP tidak valid atau sudah kedaluwarsa" });
+      const record = await db.getOtp(user.id);
+      if (!record) return res.status(400).json({ error: "OTP tidak valid atau sudah kedaluwarsa" });
+      if (new Date(record.expiresAt) < new Date()) {
+        await db.deleteOtpForUser(user.id);
+        return res.status(400).json({ error: "OTP sudah kedaluwarsa" });
+      }
+      if (record.otp !== String(otp)) return res.status(400).json({ error: "OTP salah" });
+      await db.markOtpVerified(record.id);
+      const jwt = (await import("jsonwebtoken")).default;
+      const resetToken = jwt.sign(
+        { userId: user.id, purpose: "reset-password" },
+        process.env.JWT_SECRET || "secret",
+        { expiresIn: "15m" }
+      );
+      return res.json({ ok: true, reset_token: resetToken });
+    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+  });
+
+  app.post("/api/auth/reset-password", async (req, res) => {
+    try {
+      const { reset_token, new_password } = req.body;
+      if (!reset_token || !new_password) return res.status(400).json({ error: "Token dan password baru wajib diisi" });
+      const jwt = (await import("jsonwebtoken")).default;
+      let payload: any;
+      try { payload = jwt.verify(reset_token, process.env.JWT_SECRET || "secret"); }
+      catch { return res.status(400).json({ error: "Token tidak valid atau sudah kedaluwarsa" }); }
+      if (payload.purpose !== "reset-password") return res.status(400).json({ error: "Token tidak valid" });
+      if (new_password.length < 6) return res.status(400).json({ error: "Password minimal 6 karakter" });
+      await db.updateUser(payload.userId, { password: hashPassword(new_password) });
+      await db.deleteOtpForUser(payload.userId);
+      return res.json({ ok: true, message: "Password berhasil direset" });
+    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+  });
+
   // ─── Admin: Users ───────────────────────────────────────────────────────────
   app.get("/api/admin/users", authMiddleware, requireRole("super_admin"), async (req, res) => {
     try {
@@ -1111,7 +1169,10 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   });
 
   app.get("/api/admin/banners", authMiddleware, async (req, res) => {
-    try { return res.json(await db.listBanners({ trash: req.query.trash === "true" })); }
+    try {
+      await db.deactivateExpiredBanners().catch(() => {});
+      return res.json(await db.listBanners({ trash: req.query.trash === "true" }));
+    }
     catch (e: any) { return res.status(500).json({ error: e.message }); }
   });
 
@@ -1124,6 +1185,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         if (req.files?.imageMobile?.[0]) data.imageMobile = fileUrl("banners", req.files.imageMobile[0].filename);
         if (data.startAt) data.startAt = new Date(data.startAt);
         if (data.endAt) data.endAt = new Date(data.endAt);
+        if (data.startAt && data.endAt && new Date(data.endAt) < new Date(data.startAt)) {
+          return res.status(400).json({ error: "Tanggal selesai harus setelah tanggal mulai" });
+        }
         data.isActive = data.isActive === "true" || data.isActive === true;
         return res.json(await db.createBanner(data));
       } catch (e: any) { return res.status(500).json({ error: e.message }); }
@@ -1137,6 +1201,9 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         if (req.files?.imageMobile?.[0]) data.imageMobile = fileUrl("banners", req.files.imageMobile[0].filename);
         if (data.startAt) data.startAt = new Date(data.startAt);
         if (data.endAt) data.endAt = new Date(data.endAt);
+        if (data.startAt && data.endAt && new Date(data.endAt) < new Date(data.startAt)) {
+          return res.status(400).json({ error: "Tanggal selesai harus setelah tanggal mulai" });
+        }
         if (data.isActive !== undefined) data.isActive = data.isActive === "true" || data.isActive === true;
         return res.json(await db.updateBanner(req.params.id, data));
       } catch (e: any) { return res.status(500).json({ error: e.message }); }
@@ -2748,10 +2815,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ─── PPID Keberatan (Admin) ──────────────────────────────────────────────────
   app.get("/api/admin/ppid/objections", authMiddleware, requireRole("super_admin", "admin_bpp"), async (req, res) => {
     try {
-      const page  = parseInt(req.query.page  as string) || 1;
-      const limit = parseInt(req.query.limit as string) || 20;
+      const page   = parseInt(req.query.page  as string) || 1;
+      const limit  = parseInt(req.query.limit as string) || 20;
       const status = req.query.status as string | undefined;
-      return res.json(await db.listPpidObjections({ page, limit, status }));
+      const search = req.query.search as string | undefined;
+      return res.json(await db.listPpidObjections({ page, limit, status, search }));
     } catch (e: any) { return res.status(500).json({ error: e.message }); }
   });
 
@@ -2775,10 +2843,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // ─── PPID Permohonan Informasi (Admin) ───────────────────────────────────────
   app.get("/api/admin/ppid/information-requests", authMiddleware, requireRole("super_admin", "admin_bpp"), async (req, res) => {
     try {
-      const page  = parseInt(req.query.page  as string) || 1;
-      const limit = parseInt(req.query.limit as string) || 20;
+      const page   = parseInt(req.query.page  as string) || 1;
+      const limit  = parseInt(req.query.limit as string) || 20;
       const status = req.query.status as string | undefined;
-      return res.json(await db.listPpidInfoRequests({ page, limit, status }));
+      const search = req.query.search as string | undefined;
+      return res.json(await db.listPpidInfoRequests({ page, limit, status, search }));
     } catch (e: any) { return res.status(500).json({ error: e.message }); }
   });
 

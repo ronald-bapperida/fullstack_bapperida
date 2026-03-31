@@ -224,6 +224,26 @@ export interface IStorage {
    getPermitMonthlyStats(year: number): Promise<any[]>;
    getAvailableYears(): Promise<number[]>;
 
+  // PPID
+  createPpidObjection(data: any): Promise<any>;
+  listPpidObjections(opts: { page?: number; limit?: number; status?: string; search?: string }): Promise<{ items: any[]; total: number }>;
+  getPpidObjection(id: string): Promise<any>;
+  updatePpidObjectionStatus(id: string, data: { status: string; reviewNote?: string; processedBy?: string }): Promise<any>;
+  createPpidInfoRequest(data: any): Promise<any>;
+  listPpidInfoRequests(opts: { page?: number; limit?: number; status?: string; search?: string }): Promise<{ items: any[]; total: number }>;
+  getPpidInfoRequest(id: string): Promise<any>;
+  getPpidInfoRequestByToken(token: string): Promise<any>;
+  updatePpidInfoRequestStatus(id: string, data: { status: string; reviewNote?: string; processedBy?: string; responseFileUrl?: string }): Promise<any>;
+
+  // OTP Reset Password
+  createOtp(userId: string, otp: string, expiresAt: Date): Promise<string>;
+  getOtp(userId: string): Promise<any>;
+  markOtpVerified(id: string): Promise<void>;
+  deleteOtpForUser(userId: string): Promise<void>;
+
+  // Banners
+  deactivateExpiredBanners(): Promise<void>;
+
   // Notifications
   createNotification(data: { type: string; title: string; message: string; resourceId?: string; resourceType?: string; targetRole?: string }): Promise<schema.Notification>;
   listNotifications(opts: { targetRole: string; limit?: number }): Promise<schema.Notification[]>;
@@ -1225,15 +1245,26 @@ export class DatabaseStorage implements IStorage {
     return insertAndGet<any>(schema.ppidObjections, schema.ppidObjections.id, data);
   }
 
-  async listPpidObjections({ page = 1, limit = 20, status }: { page?: number; limit?: number; status?: string }) {
+  async listPpidObjections({ page = 1, limit = 20, status, search }: { page?: number; limit?: number; status?: string; search?: string }) {
     const offset = (page - 1) * limit;
-    const where = status ? eq(schema.ppidObjections.status, status) : undefined;
+    const conditions: any[] = [];
+    if (status) conditions.push(eq(schema.ppidObjections.status, status));
+    if (search) {
+      const s = `%${search.toLowerCase()}%`;
+      conditions.push(or(
+        ciLike(schema.ppidObjections.fullName, search),
+        ciLike(schema.ppidObjections.nik, search),
+        ciLike(schema.ppidObjections.phone, search),
+        ciLike(schema.ppidObjections.requestCode, search),
+      ));
+    }
+    const where = conditions.length > 0 ? and(...conditions) : undefined;
     const [items, [{ count }]] = await Promise.all([
       db.select().from(schema.ppidObjections)
         .where(where)
         .orderBy(desc(schema.ppidObjections.createdAt))
         .limit(limit).offset(offset),
-      db.select({ count: sql<number>`cast(count(*) as signed)` }).from(schema.ppidObjections).where(where),
+      db.select({ count: sql<number>`count(*)::int` }).from(schema.ppidObjections).where(where),
     ]);
     return { items, total: count };
   }
@@ -1256,15 +1287,25 @@ export class DatabaseStorage implements IStorage {
     return insertAndGet<any>(schema.ppidInformationRequests, schema.ppidInformationRequests.id, data);
   }
 
-  async listPpidInfoRequests({ page = 1, limit = 20, status }: { page?: number; limit?: number; status?: string }) {
+  async listPpidInfoRequests({ page = 1, limit = 20, status, search }: { page?: number; limit?: number; status?: string; search?: string }) {
     const offset = (page - 1) * limit;
-    const where = status ? eq(schema.ppidInformationRequests.status, status) : undefined;
+    const conditions: any[] = [];
+    if (status) conditions.push(eq(schema.ppidInformationRequests.status, status));
+    if (search) {
+      conditions.push(or(
+        ciLike(schema.ppidInformationRequests.fullName, search),
+        ciLike(schema.ppidInformationRequests.nik, search),
+        ciLike(schema.ppidInformationRequests.phone, search),
+        ciLike(schema.ppidInformationRequests.token, search),
+      ));
+    }
+    const where = conditions.length > 0 ? and(...conditions) : undefined;
     const [items, [{ count }]] = await Promise.all([
       db.select().from(schema.ppidInformationRequests)
         .where(where)
         .orderBy(desc(schema.ppidInformationRequests.createdAt))
         .limit(limit).offset(offset),
-      db.select({ count: sql<number>`cast(count(*) as signed)` }).from(schema.ppidInformationRequests).where(where),
+      db.select({ count: sql<number>`count(*)::int` }).from(schema.ppidInformationRequests).where(where),
     ]);
     return { items, total: count };
   }
@@ -1324,6 +1365,42 @@ export class DatabaseStorage implements IStorage {
     const existing: string[] = notif.readBy ? JSON.parse(notif.readBy) : [];
     if (!existing.includes(userId)) existing.push(userId);
     await db.update(schema.notifications).set({ isRead: true, readBy: JSON.stringify(existing) }).where(eq(schema.notifications.id, id));
+  }
+
+  // ── OTP Reset Password ────────────────────────────────────────────────────────
+  async createOtp(userId: string, otp: string, expiresAt: Date) {
+    await db.delete(schema.passwordResetOtps).where(eq(schema.passwordResetOtps.userId, userId));
+    const id = randomUUID();
+    await db.insert(schema.passwordResetOtps).values({ id, userId, otp, verified: false, expiresAt });
+    return id;
+  }
+
+  async getOtp(userId: string) {
+    const [r] = await db.select().from(schema.passwordResetOtps)
+      .where(eq(schema.passwordResetOtps.userId, userId))
+      .orderBy(desc(schema.passwordResetOtps.createdAt))
+      .limit(1);
+    return r;
+  }
+
+  async markOtpVerified(id: string) {
+    await db.update(schema.passwordResetOtps).set({ verified: true }).where(eq(schema.passwordResetOtps.id, id));
+  }
+
+  async deleteOtpForUser(userId: string) {
+    await db.delete(schema.passwordResetOtps).where(eq(schema.passwordResetOtps.userId, userId));
+  }
+
+  // ── Banner: Auto-deactivate expired ──────────────────────────────────────────
+  async deactivateExpiredBanners() {
+    const now = new Date();
+    await db.update(schema.banners)
+      .set({ isActive: false, updatedAt: now })
+      .where(and(
+        eq(schema.banners.isActive, true),
+        isNull(schema.banners.deletedAt),
+        sql`${schema.banners.endAt} IS NOT NULL AND ${schema.banners.endAt} < ${now}`,
+      ));
   }
 
   async markAllNotificationsRead(targetRole: string, userId: string): Promise<void> {

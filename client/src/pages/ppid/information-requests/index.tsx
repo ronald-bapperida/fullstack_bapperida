@@ -3,10 +3,11 @@ import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
-import { FileQuestion, Eye, FileSpreadsheet } from "lucide-react";
+import { FileQuestion, Eye, FileSpreadsheet, Search, X } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { format } from "date-fns";
 import { id } from "date-fns/locale";
@@ -57,6 +58,8 @@ export default function PpidInfoRequestsPage() {
   const { toast } = useToast();
   const [page, setPage] = useState(1);
   const [statusFilter, setStatusFilter] = useState("all");
+  const [search, setSearch] = useState("");
+  const [searchInput, setSearchInput] = useState("");
   const [exporting, setExporting] = useState(false);
 
   async function handleExport() {
@@ -82,8 +85,25 @@ export default function PpidInfoRequestsPage() {
     }
   }
 
+  function handleSearch(e: React.FormEvent) {
+    e.preventDefault();
+    setSearch(searchInput);
+    setPage(1);
+  }
+
+  function clearSearch() {
+    setSearchInput("");
+    setSearch("");
+    setPage(1);
+  }
+
   const { data, isLoading } = useQuery<{ items: InfoRequest[]; total: number }>({
-    queryKey: ["/api/admin/ppid/information-requests", { page: String(page), limit: "20", status: statusFilter === "all" ? undefined : statusFilter }],
+    queryKey: ["/api/admin/ppid/information-requests", {
+      page: String(page),
+      limit: "20",
+      status: statusFilter === "all" ? undefined : statusFilter,
+      search: search || undefined,
+    }],
   });
 
   const items = data?.items || [];
@@ -99,7 +119,7 @@ export default function PpidInfoRequestsPage() {
           </h1>
           <p className="text-muted-foreground text-sm mt-1">{total} permohonan masuk</p>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <Button variant="outline" size="sm" onClick={handleExport} disabled={exporting} className="gap-2">
             <FileSpreadsheet className="w-4 h-4" />
             {exporting ? "Mengekspor..." : "Export Excel"}
@@ -118,6 +138,25 @@ export default function PpidInfoRequestsPage() {
           </Select>
         </div>
       </div>
+
+      <form onSubmit={handleSearch} className="flex gap-2">
+        <div className="relative flex-1 max-w-sm">
+          <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+          <Input
+            className="pl-9 pr-8"
+            placeholder="Cari nama, NIK, telepon, kode..."
+            value={searchInput}
+            onChange={e => setSearchInput(e.target.value)}
+            data-testid="input-search"
+          />
+          {searchInput && (
+            <button type="button" onClick={clearSearch} className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground">
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+        <Button type="submit" size="sm" variant="outline" data-testid="button-search">Cari</Button>
+      </form>
 
       <Card>
         <Table>
@@ -143,7 +182,7 @@ export default function PpidInfoRequestsPage() {
             ) : items.length === 0 ? (
               <TableRow>
                 <TableCell colSpan={6} className="text-center py-12 text-muted-foreground">
-                  Belum ada permohonan informasi masuk
+                  {search ? `Tidak ada hasil untuk "${search}"` : "Belum ada permohonan informasi masuk"}
                 </TableCell>
               </TableRow>
             ) : (

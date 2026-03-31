@@ -345,6 +345,30 @@ export async function sendKeberatanConfirmation(opts: {
   });
 }
 
+// ─── OTP Reset Password ────────────────────────────────────────────────────────
+export async function sendOtpResetEmail(opts: {
+  to: string;
+  fullName: string;
+  otp: string;
+}) {
+  const body = `
+    <h3>🔑 Kode OTP Reset Password</h3>
+    <p>Yth. <strong>${opts.fullName}</strong>,</p>
+    <p>Kami menerima permintaan reset password untuk akun Anda di BAPPERIDA Kalimantan Tengah. Gunakan kode OTP berikut untuk melanjutkan proses reset password:</p>
+    <div class="token-box">${opts.otp}</div>
+    <p>Kode OTP ini <strong>berlaku selama 10 menit</strong>. Jangan bagikan kode ini kepada siapapun.</p>
+    <div class="privacy-box">
+      <strong>⚠️ Penting:</strong> Jika Anda tidak meminta reset password, abaikan email ini. Akun Anda tetap aman.
+    </div>
+    ${addressBlock()}
+  `;
+  return sendMail({
+    to: opts.to,
+    subject: `[BAPPERIDA] Kode OTP Reset Password Anda`,
+    html: wrapHtml("Reset Password", body, "#7c3aed"),
+  });
+}
+
 export async function sendPpidInfoRequestReply(opts: {
   to: string;
   fullName: string;

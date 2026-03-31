@@ -13,6 +13,7 @@ import { NotificationBell } from "@/components/notification-bell";
 import { Sun, Moon } from "lucide-react";
 
 import LoginPage from "@/pages/login";
+import ForgotPasswordPage from "@/pages/forgot-password";
 import Dashboard from "@/pages/dashboard";
 import NewsPage from "@/pages/news/index";
 import NewsFormPage from "@/pages/news/form";
@@ -155,6 +156,9 @@ function Router() {
     <Switch>
       <Route path="/login">
         {user ? <Redirect to="/" /> : <LoginPage />}
+      </Route>
+      <Route path="/forgot-password">
+        {user ? <Redirect to="/" /> : <ForgotPasswordPage />}
       </Route>
       <Route path="/" component={() => <ProtectedRoute component={Dashboard} />} />
       <Route path="/news" component={() => <ProtectedRoute component={NewsPage} roles={["super_admin", "admin_bpp"]} />} />
