@@ -241,6 +241,13 @@ export interface IStorage {
   markOtpVerified(id: string): Promise<void>;
   deleteOtpForUser(userId: string): Promise<void>;
 
+  // Refresh Tokens
+  createRefreshToken(userId: string, token: string, expiresAt: Date): Promise<void>;
+  getRefreshToken(token: string): Promise<any>;
+  revokeRefreshToken(token: string): Promise<void>;
+  revokeAllRefreshTokensForUser(userId: string): Promise<void>;
+  deleteExpiredRefreshTokens(): Promise<void>;
+
   // Banners
   deactivateExpiredBanners(): Promise<void>;
 
@@ -1389,6 +1396,33 @@ export class DatabaseStorage implements IStorage {
 
   async deleteOtpForUser(userId: string) {
     await db.delete(schema.passwordResetOtps).where(eq(schema.passwordResetOtps.userId, userId));
+  }
+
+  // ── Refresh Tokens ────────────────────────────────────────────────────────────
+  async createRefreshToken(userId: string, token: string, expiresAt: Date) {
+    await db.execute(sql`
+      INSERT INTO refresh_tokens (user_id, token, expires_at)
+      VALUES (${userId}, ${token}, ${expiresAt})
+    `);
+  }
+
+  async getRefreshToken(token: string) {
+    const rows = await db.execute(sql`
+      SELECT * FROM refresh_tokens WHERE token = ${token} LIMIT 1
+    `);
+    return rows.rows[0] || null;
+  }
+
+  async revokeRefreshToken(token: string) {
+    await db.execute(sql`UPDATE refresh_tokens SET revoked = TRUE WHERE token = ${token}`);
+  }
+
+  async revokeAllRefreshTokensForUser(userId: string) {
+    await db.execute(sql`UPDATE refresh_tokens SET revoked = TRUE WHERE user_id = ${userId}`);
+  }
+
+  async deleteExpiredRefreshTokens() {
+    await db.execute(sql`DELETE FROM refresh_tokens WHERE expires_at < now() OR revoked = TRUE`);
   }
 
   // ── Banner: Auto-deactivate expired ──────────────────────────────────────────

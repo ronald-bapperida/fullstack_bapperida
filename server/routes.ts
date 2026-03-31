@@ -6,7 +6,7 @@ import fs from "fs";
 // import { createRequire } from "module";
 // const require = createRequire(import.meta.url);
 import { storage as db } from "./storage";
-import { authMiddleware, requireRole, hashPassword, verifyPassword, signToken } from "./auth";
+import { authMiddleware, requireRole, hashPassword, verifyPassword, signToken, generateRefreshToken } from "./auth";
 import { randomUUID } from "crypto";
 import {
   sendPermitSubmittedEmail,
@@ -899,9 +899,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const user = await db.getUserByUsername(username) || await db.getUserByEmail(username);
       if (!user || !user.isActive) return res.status(401).json({ error: "Username atau password salah" });
       if (!verifyPassword(password, user.password)) return res.status(401).json({ error: "Username atau password salah" });
-      const token = signToken({ id: user.id, username: user.username, role: user.role });
+      const accessToken  = signToken({ id: user.id, username: user.username, role: user.role });
+      const refreshToken = generateRefreshToken();
+      const expiresAt    = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+      await db.createRefreshToken(user.id, refreshToken, expiresAt);
+      await db.deleteExpiredRefreshTokens().catch(() => {});
       const { password: _, ...userWithoutPassword } = user;
-      return res.json({ token, user: userWithoutPassword });
+      return res.json({ token: accessToken, refresh_token: refreshToken, user: userWithoutPassword });
     } catch (e: any) {
       return res.status(500).json({ error: e.message });
     }
@@ -972,7 +976,33 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (new_password.length < 6) return res.status(400).json({ error: "Password minimal 6 karakter" });
       await db.updateUser(payload.userId, { password: hashPassword(new_password) });
       await db.deleteOtpForUser(payload.userId);
+      await db.revokeAllRefreshTokensForUser(payload.userId).catch(() => {});
       return res.json({ ok: true, message: "Password berhasil direset" });
+    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+  });
+
+  // ─── Auth: Refresh Token ─────────────────────────────────────────────────────
+  app.post("/api/auth/refresh", async (req, res) => {
+    try {
+      const { refresh_token } = req.body;
+      if (!refresh_token) return res.status(400).json({ error: "Refresh token diperlukan" });
+      const record = await db.getRefreshToken(refresh_token);
+      if (!record || record.revoked || new Date(record.expires_at) < new Date()) {
+        return res.status(401).json({ error: "Refresh token tidak valid atau sudah kedaluwarsa" });
+      }
+      const user = await db.getUser(record.user_id);
+      if (!user || !user.isActive) return res.status(401).json({ error: "Akun tidak aktif" });
+      const accessToken = signToken({ id: user.id, username: user.username, role: user.role });
+      return res.json({ token: accessToken });
+    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+  });
+
+  // ─── Auth: Logout ────────────────────────────────────────────────────────────
+  app.post("/api/auth/logout", async (req, res) => {
+    try {
+      const { refresh_token } = req.body;
+      if (refresh_token) await db.revokeRefreshToken(refresh_token).catch(() => {});
+      return res.json({ ok: true });
     } catch (e: any) { return res.status(500).json({ error: e.message }); }
   });
 

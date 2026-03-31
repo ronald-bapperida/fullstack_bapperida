@@ -778,7 +778,7 @@ export function registerFlutterApiRoutes(app: express.Express) {
       }
       
       // Verify password (using bcrypt from auth.ts)
-      const { verifyPassword, signToken } = await import("./auth");
+      const { verifyPassword, signToken, generateRefreshToken } = await import("./auth");
       
       if (!verifyPassword(password, user.password)) {
         return res.status(401).json({
@@ -787,14 +787,19 @@ export function registerFlutterApiRoutes(app: express.Express) {
         });
       }
       
-      const token = signToken({ id: user.id, username: user.username, role: user.role });
+      const accessToken  = signToken({ id: user.id, username: user.username, role: user.role });
+      const refreshToken = generateRefreshToken();
+      const expiresAt    = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000);
+      await db.createRefreshToken(user.id, refreshToken, expiresAt);
       
       const { password: _, ...userWithoutPassword } = user;
       
       return res.json({
         success: true,
         data: {
-          token,
+          token: accessToken,
+          access_token: accessToken,
+          refresh_token: refreshToken,
           user: {
             id: userWithoutPassword.id,
             name: userWithoutPassword.fullName,
@@ -885,6 +890,48 @@ export function registerFlutterApiRoutes(app: express.Express) {
         message: "Registration failed",
         error: error.message
       });
+    }
+  });
+
+  /**
+   * @route   POST /api/flutter/v1/auth/refresh
+   * @desc    Refresh access token using refresh token
+   * @access  Public
+   */
+  flutterRouter.post("/v1/auth/refresh", async (req: Request, res: Response) => {
+    try {
+      const { refresh_token } = req.body;
+      if (!refresh_token) {
+        return res.status(400).json({ success: false, message: "Refresh token is required" });
+      }
+      const record = await db.getRefreshToken(refresh_token);
+      if (!record || record.revoked || new Date(record.expires_at) < new Date()) {
+        return res.status(401).json({ success: false, message: "Refresh token invalid or expired" });
+      }
+      const user = await db.getUser(record.user_id);
+      if (!user || !user.isActive) {
+        return res.status(401).json({ success: false, message: "Account is inactive" });
+      }
+      const { signToken } = await import("./auth");
+      const accessToken = signToken({ id: user.id, username: user.username, role: user.role });
+      return res.json({ success: true, data: { token: accessToken, access_token: accessToken } });
+    } catch (error: any) {
+      return res.status(500).json({ success: false, message: "Failed to refresh token", error: error.message });
+    }
+  });
+
+  /**
+   * @route   POST /api/flutter/v1/auth/logout
+   * @desc    Revoke refresh token
+   * @access  Public
+   */
+  flutterRouter.post("/v1/auth/logout", async (req: Request, res: Response) => {
+    try {
+      const { refresh_token } = req.body;
+      if (refresh_token) await db.revokeRefreshToken(refresh_token).catch(() => {});
+      return res.json({ success: true, message: "Logged out successfully" });
+    } catch (error: any) {
+      return res.status(500).json({ success: false, message: "Failed to logout", error: error.message });
     }
   });
 
