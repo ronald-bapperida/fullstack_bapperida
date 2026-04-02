@@ -497,3 +497,15 @@ export const notifications = mysqlTable("notifications", {
   createdAt:    timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
 });
 export type Notification = typeof notifications.$inferSelect;
+
+export const refreshTokens = mysqlTable("refresh_tokens", {
+  id:        varchar("id", { length: 36 }).primaryKey().default(uuidDefault),
+  userId:    varchar("user_id", { length: 36 }).notNull().references(() => users.id, { onDelete: "cascade" }),
+  token:     varchar("token", { length: 255 }).notNull().unique(),
+  expiresAt: timestamp("expires_at").notNull(),
+  revoked:   boolean("revoked").notNull().default(false),
+  createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
+});
+
+export type RefreshToken = typeof refreshTokens.$inferSelect;
+export type InsertRefreshToken = typeof refreshTokens.$inferInsert;

@@ -1213,8 +1213,24 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         const data = { ...req.body };
         if (req.files?.imageDesktop?.[0]) data.imageDesktop = fileUrl("banners", req.files.imageDesktop[0].filename);
         if (req.files?.imageMobile?.[0]) data.imageMobile = fileUrl("banners", req.files.imageMobile[0].filename);
-        if (data.startAt) data.startAt = new Date(data.startAt);
-        if (data.endAt) data.endAt = new Date(data.endAt);
+        if (data.startAt && data.startAt !== "") {
+          data.startAt = new Date(data.startAt);
+          // Check if valid date
+          if (isNaN(data.startAt.getTime())) {
+            return res.status(400).json({ error: "Format tanggal mulai tidak valid" });
+          }
+        } else {
+          delete data.startAt; // Remove empty values
+        }
+        
+        if (data.endAt && data.endAt !== "") {
+          data.endAt = new Date(data.endAt);
+          if (isNaN(data.endAt.getTime())) {
+            return res.status(400).json({ error: "Format tanggal selesai tidak valid" });
+          }
+        } else {
+          delete data.endAt;
+        }
         if (data.startAt && data.endAt && new Date(data.endAt) < new Date(data.startAt)) {
           return res.status(400).json({ error: "Tanggal selesai harus setelah tanggal mulai" });
         }
@@ -1229,8 +1245,24 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         const data = { ...req.body };
         if (req.files?.imageDesktop?.[0]) data.imageDesktop = fileUrl("banners", req.files.imageDesktop[0].filename);
         if (req.files?.imageMobile?.[0]) data.imageMobile = fileUrl("banners", req.files.imageMobile[0].filename);
-        if (data.startAt) data.startAt = new Date(data.startAt);
-        if (data.endAt) data.endAt = new Date(data.endAt);
+        if (data.startAt && data.startAt !== "") {
+          data.startAt = new Date(data.startAt);
+          // Check if valid date
+          if (isNaN(data.startAt.getTime())) {
+            return res.status(400).json({ error: "Format tanggal mulai tidak valid" });
+          }
+        } else {
+          delete data.startAt; // Remove empty values
+        }
+        
+        if (data.endAt && data.endAt !== "") {
+          data.endAt = new Date(data.endAt);
+          if (isNaN(data.endAt.getTime())) {
+            return res.status(400).json({ error: "Format tanggal selesai tidak valid" });
+          }
+        } else {
+          delete data.endAt;
+        }
         if (data.startAt && data.endAt && new Date(data.endAt) < new Date(data.startAt)) {
           return res.status(400).json({ error: "Tanggal selesai harus setelah tanggal mulai" });
         }
