@@ -210,12 +210,12 @@ export async function sendPermitStatusEmail(opts: {
       </tr>
       ${opts.note ? `<tr><td>Catatan</td><td><em>${opts.note}</em></td></tr>` : ""}
     </table>
-    ${opts.pdfAttachment ? `<p>📎 <strong>Surat Izin Penelitian (PDF)</strong> terlampir bersama email ini. Harap simpan sebagai bukti resmi.</p>` : ""}
     ${opts.status === "revision_requested" ? `
       <div class="note-box">Tindakan diperlukan: Perbaiki dokumen sesuai catatan di atas, lalu unggah kembali melalui aplikasi BAPPERIDA.</div>` : ""}
     ${privacyNotice()}
     ${addressBlock()}
   `;
+  // ${opts.pdfAttachment ? `<p>📎 <strong>Surat Izin Penelitian (PDF)</strong> terlampir bersama email ini. Harap simpan sebagai bukti resmi.</p>` : ""}
 
   const attachments: MailAttachment[] = [];
   if (opts.pdfAttachment && opts.pdfFileName) {
@@ -230,7 +230,7 @@ export async function sendPermitStatusEmail(opts: {
     to: opts.to,
     subject: `[BAPPERIDA] Status Izin Penelitian ${opts.requestNumber} — ${cfg.label}`,
     html: wrapHtml(`Status Permohonan: ${cfg.label}`, body, accentColor),
-    attachments,
+    // attachments,
   });
 }
 

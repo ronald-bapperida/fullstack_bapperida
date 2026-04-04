@@ -1621,7 +1621,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   
       return res.json({
         ...permit,
-        fileUrl: letter?.fileUrl,
+        fileUrl: letter?.pdfFileUrl,
         customerStatus,
       });
   
