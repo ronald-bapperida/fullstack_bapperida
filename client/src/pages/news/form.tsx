@@ -230,19 +230,19 @@ export default function NewsFormPage() {
                   )} */}
                 </div>
 
-                <div className="flex flex-col gap-2">
+                {/* <div className="flex flex-col gap-2">
                   <Label>Tanggal Kegiatan</Label>
                   <Input 
                     type="datetime-local" 
                     {...register("eventAt")}
                     data-testid="input-event-at"
-                  />
+                  /> */}
                   {/* {watchedEventAt && (
                     <p className="text-xs text-green-600">
                       Terisi: {new Date(watchedEventAt).toLocaleString()}
                     </p>
                   )} */}
-                </div>
+                {/* </div> */}
 
                 <div className="flex flex-col gap-2">
                   <Label>Kategori</Label>

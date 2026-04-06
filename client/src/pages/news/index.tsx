@@ -243,7 +243,7 @@ export default function NewsPage() {
                   </div>
                 </TableCell>
                 <TableCell className="text-sm text-muted-foreground">
-                  {format(new Date(item.publishedAt || item.createdAt), "d MMM yyyy HH:mm", { locale: id })}
+                  {format(new Date(item.publishedAt!), "d MMM yyyy HH:mm", { locale: id })}
                 </TableCell>
                 <TableCell className="text-right text-sm">
                   <span className="flex items-center justify-end gap-1">
