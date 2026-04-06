@@ -684,10 +684,10 @@ export class DatabaseStorage implements IStorage {
     if (!cur) throw new Error("Berita tidak ditemukan");
 
     const newStatus = cur.status === "published" ? "draft" : "published";
-    const publishedAt = newStatus === "published" ? new Date() : null;
+    // const publishedAt = newStatus === "published" ? new Date() : null;
 
     await db.update(schema.news)
-      .set({ status: newStatus as any, publishedAt, updatedAt: new Date() })
+      .set({ status: newStatus as any, updatedAt: new Date() })
       .where(eq(schema.news.id, id));
 
     const [r] = await db.select().from(schema.news).where(eq(schema.news.id, id));
