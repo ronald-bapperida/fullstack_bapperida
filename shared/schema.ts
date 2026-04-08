@@ -494,6 +494,7 @@ export const notifications = mysqlTable("notifications", {
   targetRole:   varchar("target_role", { length: 50 }).notNull().default("all"),
   isRead:       boolean("is_read").notNull().default(false),
   readBy:       text("read_by"),
+  targetUserId: text("target_user_id"),
   createdAt:    timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
 });
 export type Notification = typeof notifications.$inferSelect;

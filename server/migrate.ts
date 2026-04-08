@@ -81,8 +81,6 @@ export async function runMigrations() {
     
     // 3. Add columns to generated_letters (check each column individually)
     const generatedColumns = [
-      { name: "pdf_url", type: "TEXT NULL" },
-      { name: "pdf_path", type: "TEXT NULL" },
       { name: "pdf_file_url", type: "TEXT NULL" }
     ];
     
@@ -108,6 +106,7 @@ export async function runMigrations() {
           resource_id VARCHAR(36),
           resource_type VARCHAR(50),
           target_role VARCHAR(50) NOT NULL DEFAULT 'all',
+          target_user_id TEXT,
           is_read BOOLEAN NOT NULL DEFAULT FALSE,
           read_by TEXT,
           created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP

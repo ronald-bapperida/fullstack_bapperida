@@ -1055,6 +1055,7 @@ export function registerFlutterApiRoutes(app: express.Express) {
         data: {
           id: userWithoutPassword.id,
           name: userWithoutPassword.fullName,
+          phone: userWithoutPassword.phone,
           email: userWithoutPassword.email,
           username: userWithoutPassword.username,
           role: userWithoutPassword.role,
@@ -1312,6 +1313,16 @@ export function registerFlutterApiRoutes(app: express.Express) {
           resourceType: "ppid_objection",
           targetRole: "admin_bpp",
         }).catch(() => {});
+
+        db.createNotification({
+          type: "new_objection",
+          title: "Keberatan",
+          message: `${data.requestCode} ini adalah token untuk cek informasi keberatan anda.`,
+          resourceId: result.id,
+          resourceType: "ppid_objection",
+          targetRole: "user",
+          targetUserId: req.user.id
+        }).catch(() => {});
         // Kirim email konfirmasi ke pemohon (jika ada email)
         if (email) {
           sendKeberatanConfirmation({
@@ -1390,6 +1401,15 @@ export function registerFlutterApiRoutes(app: express.Express) {
           resourceId: result.id,
           resourceType: "ppid_info_request",
           targetRole: "admin_bpp",
+        }).catch(() => {});
+        db.createNotification({
+          type: "new_info_request",
+          title: "Permohonan Informasi",
+          message: `${data.token} ini adalah token permohonan informasi publik anda.`,
+          resourceId: result.id,
+          resourceType: "ppid_objection",
+          targetRole: "user",
+          targetUserId: req.user.id
         }).catch(() => {});
         // Kirim email konfirmasi dengan token jika email tersedia
         if (email) {
@@ -1542,6 +1562,175 @@ export function registerFlutterApiRoutes(app: express.Express) {
       return res.json({ success: true, data: results });
     } catch (error: any) {
       return res.status(500).json({ success: false, message: error.message });
+    }
+  });
+
+    /**
+   * @route   GET /api/v1/notifications
+   * @desc    Get notifications for the logged-in user
+   *          (targetRole = "user" OR targetRole = "all")
+   * @access  Private (requires Bearer token)
+   * @query   page    number  default 1
+   * @query   limit   number  default 20
+   */
+  flutterRouter.get("/v1/notifications", authMiddleware, async (req: any, res: Response) => {
+    try {
+      const page  = Math.max(1, parseInt(req.query.page  as string) || 1);
+      const limit = Math.min(50, parseInt(req.query.limit as string) || 20);
+      const offset = (page - 1) * limit;
+      const userId = req.user.id as string;
+
+      // Query notifications where targetRole is 'user' or 'all'
+      // Sort newest first; only return undeleted records
+      const items = await drizzleDb
+        .select()
+        .from(schema.notifications)
+        .where(
+          sql`${schema.notifications.targetUserId} IS NULL OR ${schema.notifications.targetUserId} = ${userId}`
+        )
+        .orderBy(desc(schema.notifications.createdAt))
+        .limit(limit)
+        .offset(offset);
+
+      // Determine per-item read status for this user.
+      // The `readBy` column is a JSON array of userIds who have read it.
+      // We check if req.user.id is in that array.
+      const formatted = items.map((n) => {
+        let readBy: string[] = [];
+        if (n.readBy) {
+          try { readBy = JSON.parse(n.readBy); } catch { readBy = []; }
+        }
+        return {
+          id:           n.id,
+          type:         n.type,
+          title:        n.title,
+          message:      n.message,
+          resourceId:   n.resourceId,
+          resourceType: n.resourceType,
+          targetRole:   n.targetRole,
+          isRead:       readBy.includes(userId),
+          createdAt:    n.createdAt,
+        };
+      });
+
+      const unreadCount = formatted.filter((n) => !n.isRead).length;
+
+      return res.json({
+        success: true,
+        data: {
+          items: formatted,
+          unread_count: unreadCount,
+          page,
+          limit,
+        },
+        message: "Notifications retrieved successfully",
+      });
+    } catch (error: any) {
+      return res.status(500).json({
+        success: false,
+        message: "Failed to retrieve notifications",
+        error: error.message,
+      });
+    }
+  });
+
+  /**
+   * @route   POST /api/v1/notifications/:id/read
+   * @desc    Mark a single notification as read for the current user
+   * @access  Private
+   */
+  flutterRouter.patch("/v1/notifications/:id/read", authMiddleware, async (req: any, res: Response) => {
+    try {
+      const { id } = req.params;
+      const userId = req.user.id as string;
+  
+      // Get current notification
+      const [notification] = await drizzleDb
+        .select()
+        .from(schema.notifications)
+        .where(eq(schema.notifications.id, id));
+  
+      if (!notification) {
+        return res.status(404).json({
+          success: false,
+          message: "Notification not found",
+        });
+      }
+  
+      // Check if user is allowed to read this notification
+      if (notification.targetUserId && notification.targetUserId !== userId) {
+        return res.status(403).json({
+          success: false,
+          message: "You don't have permission to read this notification",
+        });
+      }
+  
+      // Update readBy array
+      let readBy: string[] = [];
+      if (notification.readBy) {
+        try { readBy = JSON.parse(notification.readBy); } catch { readBy = []; }
+      }
+      
+      if (!readBy.includes(userId)) {
+        readBy.push(userId);
+        await drizzleDb
+          .update(schema.notifications)
+          .set({ readBy: JSON.stringify(readBy) })
+          .where(eq(schema.notifications.id, id));
+      }
+  
+      return res.json({
+        success: true,
+        message: "Notification marked as read",
+      });
+    } catch (error: any) {
+      return res.status(500).json({
+        success: false,
+        message: "Failed to mark notification as read",
+        error: error.message,
+      });
+    }
+  });
+
+  /**
+   * @route   POST /api/v1/notifications/mark-all-read
+   * @desc    Mark ALL user-targeted notifications as read for the current user
+   * @access  Private
+   */
+  flutterRouter.post("/v1/notifications/mark-all-read", authMiddleware, async (req: any, res: Response) => {
+    try {
+      const userId = req.user.id as string;
+
+      // Fetch all user-targeted notifications
+      const items = await drizzleDb
+        .select()
+        .from(schema.notifications)
+        .where(sql`${schema.notifications.targetRole} IN ('user', 'all')`);
+
+      // Update each one that doesn't yet include this user in readBy
+      await Promise.all(
+        items.map(async (n) => {
+          let readBy: string[] = [];
+          if (n.readBy) {
+            try { readBy = JSON.parse(n.readBy); } catch { readBy = []; }
+          }
+          if (!readBy.includes(userId)) {
+            readBy.push(userId);
+            await drizzleDb
+              .update(schema.notifications)
+              .set({ readBy: JSON.stringify(readBy) })
+              .where(eq(schema.notifications.id, n.id));
+          }
+        })
+      );
+
+      return res.json({ success: true, message: "All notifications marked as read" });
+    } catch (error: any) {
+      return res.status(500).json({
+        success: false,
+        message: "Failed to mark all as read",
+        error: error.message,
+      });
     }
   });
 

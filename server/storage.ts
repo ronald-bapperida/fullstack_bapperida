@@ -1336,7 +1336,7 @@ export class DatabaseStorage implements IStorage {
   }
 
   // ── Notifications ────────────────────────────────────────────────────────────
-  async createNotification(data: { type: string; title: string; message: string; resourceId?: string; resourceType?: string; targetRole?: string }): Promise<schema.Notification> {
+  async createNotification(data: { type: string; title: string; message: string; resourceId?: string; resourceType?: string; targetRole?: string, targetUserId?: string  }): Promise<schema.Notification> {
     const id = randomUUID();
     await db.insert(schema.notifications).values({
       id,
@@ -1346,6 +1346,7 @@ export class DatabaseStorage implements IStorage {
       resourceId: data.resourceId || null,
       resourceType: data.resourceType || null,
       targetRole: data.targetRole || "all",
+      targetUserId: data.targetUserId || null,
       isRead: false,
       readBy: null,
     });
