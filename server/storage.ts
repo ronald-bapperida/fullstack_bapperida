@@ -280,7 +280,30 @@ export interface IStorage {
     }>;
     total: number;
   }>;
-  
+
+  listDocumentRequestersGrouped(opts?: { page?: number; limit?: number; search?: string }): Promise<{
+    items: Array<{ userId: string; name: string; email: string; phone: string; requestCount: number; latestAt: Date | null }>;
+    total: number;
+  }>;
+
+  getUserDocumentDetails(userId: string): Promise<{
+    user: { id: string; name: string; email: string; phone: string };
+    documents: Array<{
+      requestId: string;
+      documentId: string;
+      documentTitle: string;
+      kindName: string | null;
+      categoryName: string | null;
+      typeName: string | null;
+      fileUrl: string | null;
+      purpose: string;
+      requestedAt: Date | null;
+    }>;
+    total: number;
+  }>;
+
+  deleteDocumentRequestsByUser(userId: string): Promise<void>;
+
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1594,6 +1617,131 @@ export class DatabaseStorage implements IStorage {
       documents: result,
       total: result.length,
     };
+  }
+
+  async listDocumentRequestersGrouped(opts: { page?: number; limit?: number; search?: string } = {}): Promise<{
+    items: Array<{ userId: string; name: string; email: string; phone: string; requestCount: number; latestAt: Date | null }>;
+    total: number;
+  }> {
+    const { page = 1, limit = 20, search } = opts;
+    const offset = (page - 1) * limit;
+
+    const baseWhere = isNull(schema.documentRequests.deletedAt);
+
+    const allRows = await db
+      .select({
+        userId: schema.documentRequests.userId,
+        name: schema.documentRequests.name,
+        email: schema.documentRequests.email,
+        phone: schema.documentRequests.phone,
+        createdAt: schema.documentRequests.createdAt,
+      })
+      .from(schema.documentRequests)
+      .where(baseWhere)
+      .orderBy(desc(schema.documentRequests.createdAt));
+
+    // Group by userId in JS
+    const map = new Map<string, { userId: string; name: string; email: string; phone: string; requestCount: number; latestAt: Date | null }>();
+    for (const r of allRows) {
+      if (!r.userId) continue;
+      const key = r.userId;
+      if (!map.has(key)) {
+        map.set(key, { userId: key, name: r.name, email: r.email || '', phone: r.phone, requestCount: 0, latestAt: null });
+      }
+      const entry = map.get(key)!;
+      entry.requestCount++;
+      const ts = r.createdAt ? new Date(r.createdAt) : null;
+      if (ts && (!entry.latestAt || ts > entry.latestAt)) entry.latestAt = ts;
+    }
+
+    let items = Array.from(map.values());
+    if (search) {
+      const q = search.toLowerCase();
+      items = items.filter(i => i.name.toLowerCase().includes(q) || i.email.toLowerCase().includes(q) || i.phone.includes(q));
+    }
+    const total = items.length;
+    const paged = items.slice(offset, offset + limit);
+    return { items: paged, total };
+  }
+
+  async getUserDocumentDetails(userId: string): Promise<{
+    user: { id: string; name: string; email: string; phone: string };
+    documents: Array<{
+      requestId: string;
+      documentId: string;
+      documentTitle: string;
+      kindName: string | null;
+      categoryName: string | null;
+      typeName: string | null;
+      fileUrl: string | null;
+      purpose: string;
+      requestedAt: Date | null;
+    }>;
+    total: number;
+  }> {
+    const requests = await db
+      .select({
+        requestId: schema.documentRequests.id,
+        documentId: schema.documentRequests.documentId,
+        name: schema.documentRequests.name,
+        email: schema.documentRequests.email,
+        phone: schema.documentRequests.phone,
+        purpose: schema.documentRequests.purpose,
+        requestedAt: schema.documentRequests.createdAt,
+      })
+      .from(schema.documentRequests)
+      .where(and(eq(schema.documentRequests.userId, userId), isNull(schema.documentRequests.deletedAt)))
+      .orderBy(desc(schema.documentRequests.createdAt));
+
+    const docIds = [...new Set(requests.map(r => r.documentId))];
+    let docs: any[] = [];
+    if (docIds.length > 0) {
+      docs = await db
+        .select({
+          id: schema.documents.id,
+          title: schema.documents.title,
+          fileUrl: schema.documents.fileUrl,
+          kindId: schema.documents.kindId,
+          categoryId: schema.documents.categoryId,
+          typeId: schema.documents.typeId,
+        })
+        .from(schema.documents)
+        .where(sql`${schema.documents.id} IN (${docIds.join(',')})`);
+    }
+
+    const kinds = await db.select({ id: schema.documentKinds.id, name: schema.documentKinds.name }).from(schema.documentKinds);
+    const categories = await db.select({ id: schema.documentCategories.id, name: schema.documentCategories.name }).from(schema.documentCategories);
+    const types = await db.select({ id: schema.documentTypes.id, name: schema.documentTypes.name }).from(schema.documentTypes);
+
+    const kindMap = new Map(kinds.map(k => [k.id, k.name]));
+    const catMap = new Map(categories.map(c => [c.id, c.name]));
+    const typeMap = new Map(types.map(t => [t.id, t.name]));
+    const docMap = new Map(docs.map(d => [d.id, d]));
+
+    const user = requests[0] ? { id: userId, name: requests[0].name, email: requests[0].email || '', phone: requests[0].phone } : { id: userId, name: '-', email: '', phone: '' };
+
+    const documents = requests.map(r => {
+      const doc = docMap.get(r.documentId);
+      return {
+        requestId: r.requestId,
+        documentId: r.documentId,
+        documentTitle: doc?.title || '-',
+        kindName: doc?.kindId ? (kindMap.get(doc.kindId) || null) : null,
+        categoryName: doc?.categoryId ? (catMap.get(doc.categoryId) || null) : null,
+        typeName: doc?.typeId ? (typeMap.get(doc.typeId) || null) : null,
+        fileUrl: doc?.fileUrl || null,
+        purpose: r.purpose,
+        requestedAt: r.requestedAt ? new Date(r.requestedAt) : null,
+      };
+    });
+
+    return { user, documents, total: documents.length };
+  }
+
+  async deleteDocumentRequestsByUser(userId: string): Promise<void> {
+    await db.update(schema.documentRequests)
+      .set({ deletedAt: new Date() })
+      .where(and(eq(schema.documentRequests.userId, userId), isNull(schema.documentRequests.deletedAt)));
   }
 
   // ── Notifications ────────────────────────────────────────────────────────────

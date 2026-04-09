@@ -12,6 +12,7 @@ import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { apiRequest } from "@/lib/queryClient";
 import { ArrowLeft, Download, FileQuestion, ExternalLink, Upload, Loader2 } from "lucide-react";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { format } from "date-fns";
 import { id } from "date-fns/locale";
 
@@ -241,15 +242,30 @@ export default function PpidInfoRequestDetailPage() {
                   <p className="text-xs text-green-600">File dipilih: {responseFile.name}</p>
                 )}
               </div>
-              <Button
-                className="w-full gap-2"
-                disabled={!newStatus || mutation.isPending}
-                onClick={() => mutation.mutate()}
-                data-testid="button-update-status"
-              >
-                {mutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
-                {mutation.isPending ? "Menyimpan..." : "Simpan & Kirim Email"}
-              </Button>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button
+                    className="w-full gap-2"
+                    disabled={!newStatus || mutation.isPending}
+                    data-testid="button-update-status"
+                  >
+                    {mutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Upload className="w-4 h-4" />}
+                    {mutation.isPending ? "Menyimpan..." : "Simpan & Kirim Email"}
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Konfirmasi Perubahan Status</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Apakah Anda yakin ingin menyimpan perubahan status dan mengirim notifikasi email kepada pemohon?
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Batal</AlertDialogCancel>
+                    <AlertDialogAction onClick={() => mutation.mutate()}>Simpan & Kirim</AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
               {item.email && (
                 <p className="text-xs text-muted-foreground text-center">Notifikasi email akan dikirim ke: {item.email}</p>
               )}

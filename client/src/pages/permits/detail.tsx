@@ -15,6 +15,10 @@ import {
 import {
   Tooltip, TooltipContent, TooltipProvider, TooltipTrigger,
 } from "@/components/ui/tooltip";
+import {
+  AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
+  AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger,
+} from "@/components/ui/alert-dialog";
 
 import {
   ArrowLeft, FileText, Clock, CheckCircle, XCircle, FileCheck, Send,
@@ -358,15 +362,31 @@ function GenerateCard({
           </div>
         ) : (
           <div className="flex flex-wrap items-center gap-2 pt-1 border-t">
-            <Button
-              variant="secondary"
-              onClick={() => generateMutation.mutate()}
-              disabled={generateMutation.isPending || downloadDocxMutation.isPending}
-              className="gap-2"
-            >
-              {generateMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileCheck className="w-4 h-4" />}
-              Generate & Simpan (PDF)
-            </Button>
+            <AlertDialog>
+              <AlertDialogTrigger asChild>
+                <Button
+                  variant="secondary"
+                  disabled={generateMutation.isPending || downloadDocxMutation.isPending}
+                  className="gap-2"
+                  data-testid="button-generate-pdf"
+                >
+                  {generateMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <FileCheck className="w-4 h-4" />}
+                  Generate & Simpan (PDF)
+                </Button>
+              </AlertDialogTrigger>
+              <AlertDialogContent>
+                <AlertDialogHeader>
+                  <AlertDialogTitle>Generate Surat PDF</AlertDialogTitle>
+                  <AlertDialogDescription>
+                    Apakah Anda yakin ingin generate surat PDF untuk permohonan ini? Surat yang sudah ada akan ditimpa.
+                  </AlertDialogDescription>
+                </AlertDialogHeader>
+                <AlertDialogFooter>
+                  <AlertDialogCancel>Batal</AlertDialogCancel>
+                  <AlertDialogAction onClick={() => generateMutation.mutate()}>Generate</AlertDialogAction>
+                </AlertDialogFooter>
+              </AlertDialogContent>
+            </AlertDialog>
             {/* <Button
               variant="outline"
               onClick={() => downloadDocxMutation.mutate()}
@@ -592,15 +612,31 @@ function LetterActionButtons({ permit, permitId }: { permit: any; permitId: stri
 
         {/* Kirim ke Email Button */}
         {permit.status === "generated_letter" && (
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button size="sm" onClick={() => sendLetterMutation.mutate()} disabled={sendLetterMutation.isPending} className="gap-2">
-                {sendLetterMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Mail className="w-3.5 h-3.5" />}
-                Kirim ke Email
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Kirim surat ke email pemohon dan ubah status ke Terkirim</TooltipContent>
-          </Tooltip>
+          <AlertDialog>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <AlertDialogTrigger asChild>
+                  <Button size="sm" disabled={sendLetterMutation.isPending} className="gap-2" data-testid="button-send-letter">
+                    {sendLetterMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Mail className="w-3.5 h-3.5" />}
+                    Kirim ke Email
+                  </Button>
+                </AlertDialogTrigger>
+              </TooltipTrigger>
+              <TooltipContent>Kirim surat ke email pemohon dan ubah status ke Terkirim</TooltipContent>
+            </Tooltip>
+            <AlertDialogContent>
+              <AlertDialogHeader>
+                <AlertDialogTitle>Kirim Surat ke Email</AlertDialogTitle>
+                <AlertDialogDescription>
+                  Apakah Anda yakin ingin mengirim surat ke email pemohon? Status permohonan akan berubah menjadi <b>Terkirim</b>.
+                </AlertDialogDescription>
+              </AlertDialogHeader>
+              <AlertDialogFooter>
+                <AlertDialogCancel>Batal</AlertDialogCancel>
+                <AlertDialogAction onClick={() => sendLetterMutation.mutate()}>Kirim</AlertDialogAction>
+              </AlertDialogFooter>
+            </AlertDialogContent>
+          </AlertDialog>
         )}
       </div>
     </TooltipProvider>
@@ -828,13 +864,31 @@ export default function PermitDetailPage() {
                     <Label>Catatan (opsional)</Label>
                     <Textarea value={note} onChange={(e) => setNote(e.target.value)} placeholder="Tambahkan catatan untuk pemohon..." />
                   </div>
-                  <Button
-                    onClick={() => statusMutation.mutate({ status: newStatus, note })}
-                    disabled={!newStatus || statusMutation.isPending}
-                    data-testid="button-update-status"
-                  >
-                    {statusMutation.isPending ? "Memproses..." : "Update Status"}
-                  </Button>
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button
+                        disabled={!newStatus || statusMutation.isPending}
+                        data-testid="button-update-status"
+                      >
+                        {statusMutation.isPending ? "Memproses..." : "Update Status"}
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Konfirmasi Update Status</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Apakah Anda yakin ingin mengubah status permohonan menjadi <b>{STATUS_LABELS[newStatus] || newStatus}</b>?
+                          {note && <><br /><span className="text-xs mt-1 block">Catatan: {note}</span></>}
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Batal</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => statusMutation.mutate({ status: newStatus, note })}>
+                          Konfirmasi
+                        </AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
                 </>
               ) : (
                 <p className="text-sm text-muted-foreground text-center py-4">Status sudah final</p>
@@ -849,26 +903,56 @@ export default function PermitDetailPage() {
                       <Mail className="w-3 h-3" /> Email sudah pernah dikirim
                     </p>
                   )}
-                  <Button
-                    variant="outline"
-                    className="w-full justify-start gap-2 text-blue-700 border-blue-300 hover:bg-blue-50"
-                    onClick={() => sendPickupEmailMutation.mutate()}
-                    disabled={sendPickupEmailMutation.isPending}
-                    data-testid="button-send-email-pickup"
-                  >
-                    <Mail className="w-4 h-4" />
-                    {sendPickupEmailMutation.isPending ? "Mengirim..." : "Kirim Email: Ambil Surat di Kantor"}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    className="w-full justify-start gap-2 text-green-700 border-green-300 hover:bg-green-50"
-                    onClick={() => sendCheckStatusEmailMutation.mutate()}
-                    disabled={sendCheckStatusEmailMutation.isPending}
-                    data-testid="button-send-email-check-status"
-                  >
-                    <Mail className="w-4 h-4" />
-                    {sendCheckStatusEmailMutation.isPending ? "Mengirim..." : "Kirim Email: Cek Status di Web App"}
-                  </Button>
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className="w-full justify-start gap-2 text-blue-700 border-blue-300 hover:bg-blue-50"
+                        disabled={sendPickupEmailMutation.isPending}
+                        data-testid="button-send-email-pickup"
+                      >
+                        <Mail className="w-4 h-4" />
+                        {sendPickupEmailMutation.isPending ? "Mengirim..." : "Kirim Email: Ambil Surat di Kantor"}
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Kirim Notifikasi Email</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Apakah Anda yakin ingin mengirim email notifikasi kepada pemohon untuk mengambil surat di kantor?
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Batal</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => sendPickupEmailMutation.mutate()}>Kirim Email</AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
+                  <AlertDialog>
+                    <AlertDialogTrigger asChild>
+                      <Button
+                        variant="outline"
+                        className="w-full justify-start gap-2 text-green-700 border-green-300 hover:bg-green-50"
+                        disabled={sendCheckStatusEmailMutation.isPending}
+                        data-testid="button-send-email-check-status"
+                      >
+                        <Mail className="w-4 h-4" />
+                        {sendCheckStatusEmailMutation.isPending ? "Mengirim..." : "Kirim Email: Cek Status di Web App"}
+                      </Button>
+                    </AlertDialogTrigger>
+                    <AlertDialogContent>
+                      <AlertDialogHeader>
+                        <AlertDialogTitle>Kirim Notifikasi Email</AlertDialogTitle>
+                        <AlertDialogDescription>
+                          Apakah Anda yakin ingin mengirim email notifikasi kepada pemohon untuk memeriksa status di web app?
+                        </AlertDialogDescription>
+                      </AlertDialogHeader>
+                      <AlertDialogFooter>
+                        <AlertDialogCancel>Batal</AlertDialogCancel>
+                        <AlertDialogAction onClick={() => sendCheckStatusEmailMutation.mutate()}>Kirim Email</AlertDialogAction>
+                      </AlertDialogFooter>
+                    </AlertDialogContent>
+                  </AlertDialog>
                 </div>
               )}
             </CardContent>

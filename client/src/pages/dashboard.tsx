@@ -526,6 +526,7 @@ export default function Dashboard() {
                 <ExportBtn endpoint="/api/admin/export/news" icon={<Newspaper className="w-3.5 h-3.5" />} label="Berita" testId="button-export-news" dateFrom={exportFromStr} dateTo={exportToStr} />
                 <ExportBtn endpoint="/api/admin/export/ppid-info-requests" icon={<FileText className="w-3.5 h-3.5" />} label="Permohonan Informasi" testId="button-export-info-requests" dateFrom={exportFromStr} dateTo={exportToStr} />
                 <ExportBtn endpoint="/api/admin/export/ppid-objections" icon={<ClipboardList className="w-3.5 h-3.5" />} label="Keberatan PPID" testId="button-export-objections" dateFrom={exportFromStr} dateTo={exportToStr} />
+                <ExportBtn endpoint="/api/admin/export/document-requests" icon={<Download className="w-3.5 h-3.5" />} label="Permohonan Dokumen" testId="button-export-doc-requests" dateFrom={exportFromStr} dateTo={exportToStr} />
               </>
             )}
             {isRIDA && (

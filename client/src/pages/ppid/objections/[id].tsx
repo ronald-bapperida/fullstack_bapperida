@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { useToast } from "@/hooks/use-toast";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { ArrowLeft, Download, AlertTriangle } from "lucide-react";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
 import { format } from "date-fns";
 import { id } from "date-fns/locale";
 
@@ -202,14 +203,29 @@ export default function PpidObjectionDetailPage() {
                   data-testid="input-review-note"
                 />
               </div>
-              <Button
-                className="w-full"
-                disabled={!newStatus || mutation.isPending}
-                onClick={() => mutation.mutate()}
-                data-testid="button-update-status"
-              >
-                {mutation.isPending ? "Menyimpan..." : "Simpan Status"}
-              </Button>
+              <AlertDialog>
+                <AlertDialogTrigger asChild>
+                  <Button
+                    className="w-full"
+                    disabled={!newStatus || mutation.isPending}
+                    data-testid="button-update-status"
+                  >
+                    {mutation.isPending ? "Menyimpan..." : "Simpan Status"}
+                  </Button>
+                </AlertDialogTrigger>
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Konfirmasi Perubahan Status</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      Apakah Anda yakin ingin menyimpan perubahan status keberatan ini?
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel>Batal</AlertDialogCancel>
+                    <AlertDialogAction onClick={() => mutation.mutate()}>Simpan</AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
             </CardContent>
           </Card>
         </div>

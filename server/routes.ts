@@ -1614,6 +1614,35 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
   
+  // Get grouped document requesters (unique users)
+  app.get("/api/admin/document-requests/grouped", authMiddleware, requireRole("super_admin", "admin_bpp"), async (req: any, res) => {
+    try {
+      const page = Math.max(1, parseInt(req.query.page as string) || 1);
+      const limit = Math.min(50, parseInt(req.query.limit as string) || 20);
+      const search = req.query.search as string | undefined;
+      const { items, total } = await db.listDocumentRequestersGrouped({ page, limit, search });
+      return res.json({ success: true, data: { items, total, page, totalPages: Math.ceil(total / limit) } });
+    } catch (e: any) { return routeError(res, e, "memuat daftar pemohon dokumen"); }
+  });
+
+  // Get documents for a specific user
+  app.get("/api/admin/document-requests/user/:userId", authMiddleware, requireRole("super_admin", "admin_bpp"), async (req: any, res) => {
+    try {
+      const { userId } = req.params;
+      const result = await db.getUserDocumentDetails(userId);
+      return res.json({ success: true, data: result });
+    } catch (e: any) { return routeError(res, e, "memuat detail permohonan dokumen"); }
+  });
+
+  // Delete all document requests by a user
+  app.delete("/api/admin/document-requests/user/:userId", authMiddleware, requireRole("super_admin", "admin_bpp"), async (req: any, res) => {
+    try {
+      const { userId } = req.params;
+      await db.deleteDocumentRequestsByUser(userId);
+      return res.json({ success: true, message: "Semua permohonan dokumen pengguna berhasil dihapus" });
+    } catch (e: any) { return routeError(res, e, "menghapus permohonan dokumen pengguna"); }
+  });
+
   // Get single document request by ID
   app.get("/api/admin/document-requests/:id", authMiddleware, requireRole("super_admin", "admin_bpp"), async (req: any, res) => {
     try {

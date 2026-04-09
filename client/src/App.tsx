@@ -33,7 +33,8 @@ import LetterTemplatesEditPage from "@/pages/letter-templates/[id]/edit";
 import LetterTemplatesPreviewPage from "@/pages/letter-templates/[id]/index";
 import UsersPage from "@/pages/users/index";
 import PushNotificationPage from "@/pages/push-notification";
-import DocumentRequestsPage from "@/pages/document-requests";
+import DocumentRequestsPage from "@/pages/document-requests/index";
+import DocumentRequestDetailPage from "@/pages/document-requests/detail";
 import PpidObjectionsPage from "@/pages/ppid/objections/index";
 import PpidObjectionDetailPage from "@/pages/ppid/objections/[id]";
 import PpidInfoRequestsPage from "@/pages/ppid/information-requests/index";
@@ -184,6 +185,7 @@ function Router() {
       <Route path="/letter-templates/:id" component={() => <ProtectedRoute component={LetterTemplatesPreviewPage} roles={["super_admin", "admin_rida"]}/>} />
       <Route path="/push-notification" component={() => <ProtectedRoute component={PushNotificationPage} roles={["super_admin"]} />} />
       <Route path="/document-requests" component={() => <ProtectedRoute component={DocumentRequestsPage} roles={["super_admin", "admin_bpp"]} />} />
+      <Route path="/document-requests/:userId" component={() => <ProtectedRoute component={DocumentRequestDetailPage} roles={["super_admin", "admin_bpp"]} />} />
       <Route path="/users" component={() => <ProtectedRoute component={UsersPage} roles={["super_admin"]} />} />
       <Route path="/ppid/objections" component={() => <ProtectedRoute component={PpidObjectionsPage} roles={["super_admin", "admin_bpp"]} />} />
       <Route path="/ppid/objections/:id" component={() => <ProtectedRoute component={PpidObjectionDetailPage} roles={["super_admin", "admin_bpp"]} />} />
