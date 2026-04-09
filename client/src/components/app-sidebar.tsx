@@ -11,17 +11,24 @@ import {
   LayoutDashboard, Newspaper, Tag, Image, Menu, FileText,
   ClipboardList, BarChart2, Upload, MessageSquare, FileEdit,
   Users, LogOut, ChevronDown, Layers, FileType2, FolderOpen,
-  AlertTriangle, FileQuestion,
+  AlertTriangle, FileQuestion, Bell, Lock, KeyRound,
 } from "lucide-react";
 import { useAuth } from "@/contexts/auth";
 import { useLang } from "@/contexts/language";
 import { Button } from "@/components/ui/button";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent,
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+} from "@/components/ui/dialog";
+import { useToast } from "@/hooks/use-toast";
+import { apiRequest } from "@/lib/queryClient";
 import logoBapperida from "@assets/logo_bapperida_1771921692764.png";
 import logoKalteng from "@assets/logo_1771921695925.png";
 
@@ -91,10 +98,108 @@ function SubNavItem({ href, label }: { href: string; label: string }) {
   );
 }
 
+function ChangePasswordDialog({ open, onClose }: { open: boolean; onClose: () => void }) {
+  const { t } = useLang();
+  const { toast } = useToast();
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (newPassword !== confirmPassword) {
+      toast({ title: t("passwordMismatch"), variant: "destructive" });
+      return;
+    }
+    setLoading(true);
+    try {
+      await apiRequest("POST", "/api/admin/auth/change-password", {
+        currentPassword,
+        newPassword,
+      });
+      toast({ title: t("passwordChanged") });
+      setCurrentPassword("");
+      setNewPassword("");
+      setConfirmPassword("");
+      onClose();
+    } catch (err: any) {
+      const msg = err.message?.includes("salah") || err.message?.includes("incorrect")
+        ? t("passwordWrong")
+        : t("errorSaveData");
+      toast({ title: msg, variant: "destructive" });
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={v => !v && onClose()}>
+      <DialogContent className="max-w-sm">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <KeyRound className="w-4 h-4" />
+            {t("changePassword")}
+          </DialogTitle>
+        </DialogHeader>
+        <form onSubmit={handleSubmit} className="space-y-4 py-2">
+          <div className="space-y-1.5">
+            <Label htmlFor="current-password">{t("currentPassword")}</Label>
+            <Input
+              id="current-password"
+              type="password"
+              value={currentPassword}
+              onChange={e => setCurrentPassword(e.target.value)}
+              required
+              autoComplete="current-password"
+              data-testid="input-current-password"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="new-password">{t("newPassword")}</Label>
+            <Input
+              id="new-password"
+              type="password"
+              value={newPassword}
+              onChange={e => setNewPassword(e.target.value)}
+              required
+              minLength={6}
+              autoComplete="new-password"
+              data-testid="input-new-password"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label htmlFor="confirm-password">{t("confirmPassword")}</Label>
+            <Input
+              id="confirm-password"
+              type="password"
+              value={confirmPassword}
+              onChange={e => setConfirmPassword(e.target.value)}
+              required
+              minLength={6}
+              autoComplete="new-password"
+              data-testid="input-confirm-password"
+            />
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={onClose} disabled={loading}>
+              {t("cancel")}
+            </Button>
+            <Button type="submit" disabled={loading} data-testid="button-change-password-submit">
+              {loading ? t("saving") : t("changePasswordBtn")}
+            </Button>
+          </DialogFooter>
+        </form>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export function AppSidebar() {
   const { user, logout } = useAuth();
   const { t } = useLang();
   const [logoutDialog, setLogoutDialog] = useState(false);
+  const [changePasswordDialog, setChangePasswordDialog] = useState(false);
 
   if (!user) return null;
 
@@ -154,6 +259,7 @@ export function AppSidebar() {
                     <SubNavItem href="/ppid/information-requests" label={t("permohonanInformasi")} />
                     <SubNavItem href="/ppid/objections" label={t("keberatan")} />
                   </CollapsibleNav>
+                  <NavItem href="/document-requests" icon={FileQuestion} label={t("documentRequests")} />
                 </SidebarMenu>
               </SidebarGroupContent>
             </SidebarGroup>
@@ -179,6 +285,7 @@ export function AppSidebar() {
               <SidebarGroupLabel>{t("administration")}</SidebarGroupLabel>
               <SidebarGroupContent>
                 <SidebarMenu>
+                  <NavItem href="/push-notification" icon={Bell} label={t("pushNotification")} />
                   <NavItem href="/users" icon={Users} label={t("users")} />
                 </SidebarMenu>
               </SidebarGroupContent>
@@ -200,6 +307,16 @@ export function AppSidebar() {
               </Badge>
             </div>
           </div>
+          <Button
+            variant="outline"
+            size="sm"
+            className="w-full gap-2 mb-2"
+            onClick={() => setChangePasswordDialog(true)}
+            data-testid="button-change-password"
+          >
+            <Lock className="w-4 h-4" />
+            {t("changePassword")}
+          </Button>
           <Button
             variant="outline"
             size="sm"
@@ -227,6 +344,11 @@ export function AppSidebar() {
           </AlertDialogFooter>
         </AlertDialogContent>
       </AlertDialog>
+
+      <ChangePasswordDialog
+        open={changePasswordDialog}
+        onClose={() => setChangePasswordDialog(false)}
+      />
     </>
   );
 }

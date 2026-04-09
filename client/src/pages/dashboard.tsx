@@ -3,15 +3,13 @@ import { useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { Calendar } from "@/components/ui/calendar";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import {
   Newspaper, ClipboardList, BarChart2, Image, FileText, Clock,
   CheckCircle, TrendingUp, Download, MapPin, Users,
-  Activity, Star, ArrowUpRight, CalendarDays, Building2, CalendarIcon,
+  Activity, Star, ArrowUpRight, CalendarDays, Building2,
 } from "lucide-react";
 import { useAuth } from "@/contexts/auth";
 import { useToast } from "@/hooks/use-toast";
@@ -209,6 +207,19 @@ export default function Dashboard() {
   });
   const { data: documentDownloads, isLoading: docsLoading } = useQuery<DocumentDownloadStats>({
     queryKey: ["/api/admin/stats/document-downloads", selectedYear],
+    enabled: !!user && (user.role === "super_admin" || user.role === "admin_bpp"),
+  });
+
+  const { data: topDocuments, isLoading: topDocsLoading } = useQuery<any[]>({
+    queryKey: ["/api/admin/stats/top-documents"],
+    queryFn: async () => {
+      const token = localStorage.getItem("token");
+      const res = await fetch("/api/admin/stats/top-documents?limit=10", {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
     enabled: !!user && (user.role === "super_admin" || user.role === "admin_bpp"),
   });
   const { data: permitOrigins, isLoading: permitsLoading } = useQuery<PermitOriginStats[]>({
@@ -485,28 +496,22 @@ export default function Dashboard() {
             </div>
             {/* Date range picker */}
             <div className="flex items-center gap-1.5 border rounded-md px-2 py-1 bg-muted/30">
-              <CalendarIcon className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
-              <Popover>
-                <PopoverTrigger asChild>
-                  <button className="text-xs text-muted-foreground hover:text-foreground min-w-[80px]" data-testid="button-export-from">
-                    {exportFrom ? format(exportFrom, "dd MMM yyyy", { locale: id }) : "Dari tanggal"}
-                  </button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar mode="single" selected={exportFrom} onSelect={setExportFrom} initialFocus />
-                </PopoverContent>
-              </Popover>
+              <CalendarDays className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+              <input
+                type="date"
+                className="text-xs bg-transparent border-none outline-none text-muted-foreground focus:text-foreground"
+                value={exportFromStr || ""}
+                onChange={e => setExportFrom(e.target.value ? new Date(e.target.value + "T00:00:00") : undefined)}
+                data-testid="input-export-from"
+              />
               <span className="text-xs text-muted-foreground">–</span>
-              <Popover>
-                <PopoverTrigger asChild>
-                  <button className="text-xs text-muted-foreground hover:text-foreground min-w-[80px]" data-testid="button-export-to">
-                    {exportTo ? format(exportTo, "dd MMM yyyy", { locale: id }) : "Sampai tanggal"}
-                  </button>
-                </PopoverTrigger>
-                <PopoverContent className="w-auto p-0" align="start">
-                  <Calendar mode="single" selected={exportTo} onSelect={setExportTo} initialFocus />
-                </PopoverContent>
-              </Popover>
+              <input
+                type="date"
+                className="text-xs bg-transparent border-none outline-none text-muted-foreground focus:text-foreground"
+                value={exportToStr || ""}
+                onChange={e => setExportTo(e.target.value ? new Date(e.target.value + "T23:59:59") : undefined)}
+                data-testid="input-export-to"
+              />
               {(exportFrom || exportTo) && (
                 <button onClick={() => { setExportFrom(undefined); setExportTo(undefined); }}
                   className="text-xs text-muted-foreground hover:text-destructive ml-1" title="Reset">✕</button>
@@ -627,7 +632,7 @@ export default function Dashboard() {
               </Card>
             )}
 
-            {docsLoading ? <ChartSkeleton /> : (
+            {topDocsLoading ? <ChartSkeleton /> : (
               <Card className="border-0 shadow-md overflow-hidden">
                 <div className="h-1 bg-gradient-to-r from-violet-500 via-purple-400 to-pink-400" />
                 <CardHeader className="pb-3">
@@ -638,69 +643,71 @@ export default function Dashboard() {
                     Dokumen Paling Banyak Diunduh
                   </CardTitle>
                   <CardDescription>
-                    Tahun {selectedYear} &middot; Total: {documentDownloads?.monthly?.reduce((acc, m) => acc + m.total_downloads, 0).toLocaleString() || 0} downloads
+                    Total: {topDocuments?.reduce((acc, d) => acc + (d.downloadedCount || 0), 0).toLocaleString() || 0} downloads &middot; Top 10 dokumen
                   </CardDescription>
                 </CardHeader>
                 <CardContent>
-                  <div className="h-72">
-                    <ResponsiveContainer width="100%" height="100%">
-                      <BarChart data={documentDownloads?.chart || []} barSize={22}>
-                        <defs>
-                          <linearGradient id="purpleGrad" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.9} />
-                            <stop offset="95%" stopColor="#a78bfa" stopOpacity={0.7} />
-                          </linearGradient>
-                        </defs>
-                        <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" vertical={false} />
-                        <XAxis dataKey="month" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
-                        <YAxis tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
-                        <Tooltip
-                          content={({ active, payload, label }) => {
-                            if (active && payload && payload.length) {
-                              const monthData = documentDownloads?.monthly?.find(m => m.month.substring(0, 3) === label);
-                              return (
-                                <div className="bg-white dark:bg-card border rounded-xl shadow-lg p-3 text-sm">
-                                  <p className="font-semibold">{monthData?.month} {selectedYear}</p>
-                                  <p className="text-muted-foreground">Downloads: <span className="font-bold text-foreground">{payload[0].value?.toLocaleString()}</span></p>
-                                  {monthData?.top_documents?.slice(0,3).map((d, i) => (
-                                    <div key={i} className="text-xs mt-1 text-muted-foreground flex justify-between gap-3">
-                                      <span className="truncate max-w-[140px]">{d.title}</span>
-                                      <span className="font-mono shrink-0">{d.downloads}</span>
+                  {!topDocuments || topDocuments.length === 0 ? (
+                    <div className="h-40 flex items-center justify-center text-muted-foreground text-sm">Belum ada data unduhan</div>
+                  ) : (
+                    <>
+                      <div className="h-64">
+                        <ResponsiveContainer width="100%" height="100%">
+                          <BarChart
+                            data={topDocuments.slice(0, 10).map(d => ({
+                              name: d.title.length > 22 ? d.title.substring(0, 22) + "…" : d.title,
+                              downloads: d.downloadedCount || 0,
+                            }))}
+                            layout="vertical"
+                            margin={{ left: 8, right: 8 }}
+                            barSize={14}
+                          >
+                            <defs>
+                              <linearGradient id="purpleGrad" x1="0" y1="0" x2="1" y2="0">
+                                <stop offset="5%" stopColor="#8b5cf6" stopOpacity={0.9} />
+                                <stop offset="95%" stopColor="#a78bfa" stopOpacity={0.7} />
+                              </linearGradient>
+                            </defs>
+                            <CartesianGrid strokeDasharray="3 3" stroke="#f0f0f0" horizontal={false} />
+                            <XAxis type="number" tick={{ fontSize: 11 }} axisLine={false} tickLine={false} />
+                            <YAxis type="category" dataKey="name" tick={{ fontSize: 10 }} axisLine={false} tickLine={false} width={130} />
+                            <Tooltip
+                              content={({ active, payload }) => {
+                                if (active && payload && payload.length) {
+                                  return (
+                                    <div className="bg-white dark:bg-card border rounded-xl shadow-lg p-3 text-sm">
+                                      <p className="text-muted-foreground">Downloads: <span className="font-bold text-foreground">{payload[0].value?.toLocaleString()}</span></p>
                                     </div>
-                                  ))}
-                                </div>
-                              );
-                            }
-                            return null;
-                          }}
-                        />
-                        <Bar dataKey="downloads" fill="url(#purpleGrad)" radius={[4, 4, 0, 0]} />
-                      </BarChart>
-                    </ResponsiveContainer>
-                  </div>
-                  {documentDownloads?.monthly && documentDownloads.monthly.length > 0 && (
-                    <div className="mt-4 rounded-xl border overflow-hidden text-sm">
-                      <table className="w-full">
-                        <thead className="bg-muted/60">
-                          <tr>
-                            <th className="px-3 py-2 text-left font-medium">Bulan</th>
-                            <th className="px-3 py-2 text-right font-medium">Downloads</th>
-                            <th className="px-3 py-2 text-left font-medium hidden md:table-cell">Terpopuler</th>
-                          </tr>
-                        </thead>
-                        <tbody>
-                          {documentDownloads.monthly.map((m, i) => (
-                            <tr key={m.month} className={`border-t ${i % 2 === 0 ? "" : "bg-muted/20"}`}>
-                              <td className="px-3 py-2 font-medium">{m.month}</td>
-                              <td className="px-3 py-2 text-right font-mono text-violet-600">{m.total_downloads.toLocaleString()}</td>
-                              <td className="px-3 py-2 text-muted-foreground hidden md:table-cell">
-                                <span className="truncate block max-w-[160px]">{m.top_documents[0]?.title || "–"}</span>
-                              </td>
+                                  );
+                                }
+                                return null;
+                              }}
+                            />
+                            <Bar dataKey="downloads" fill="url(#purpleGrad)" radius={[0, 4, 4, 0]} />
+                          </BarChart>
+                        </ResponsiveContainer>
+                      </div>
+                      <div className="mt-4 rounded-xl border overflow-hidden text-sm">
+                        <table className="w-full">
+                          <thead className="bg-muted/60">
+                            <tr>
+                              <th className="px-3 py-2 text-left font-medium">No</th>
+                              <th className="px-3 py-2 text-left font-medium">Judul Dokumen</th>
+                              <th className="px-3 py-2 text-right font-medium">Downloads</th>
                             </tr>
-                          ))}
-                        </tbody>
-                      </table>
-                    </div>
+                          </thead>
+                          <tbody>
+                            {topDocuments.slice(0, 10).map((doc, i) => (
+                              <tr key={doc.id} className={`border-t ${i % 2 === 0 ? "" : "bg-muted/20"}`}>
+                                <td className="px-3 py-2 text-muted-foreground font-mono text-xs">{i + 1}</td>
+                                <td className="px-3 py-2 font-medium truncate max-w-[200px]">{doc.title}</td>
+                                <td className="px-3 py-2 text-right font-mono text-violet-600">{(doc.downloadedCount || 0).toLocaleString()}</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </div>
+                    </>
                   )}
                 </CardContent>
               </Card>

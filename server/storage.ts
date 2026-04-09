@@ -219,6 +219,7 @@ export interface IStorage {
    // Dashboard stats tambahan
    getNewsViewsStats(year?: number, month?: string): Promise<any>;
    getDocumentDownloadsStats(year?: number, month?: string): Promise<any>;
+   getTopDocuments(limit?: number): Promise<any[]>;
    getPermitOriginStats(year?: number): Promise<any[]>;
    getSurveySatisfactionStats(year?: number): Promise<any>;
    getPermitMonthlyStats(year: number): Promise<any[]>;
@@ -252,7 +253,7 @@ export interface IStorage {
   deactivateExpiredBanners(): Promise<void>;
 
   // Notifications
-  createNotification(data: { type: string; title: string; message: string; resourceId?: string; resourceType?: string; targetRole?: string }): Promise<schema.Notification>;
+  createNotification(data: { type: string; title: string; message: string; resourceId?: string; resourceType?: string; targetRole?: string; targetUserId?: string }): Promise<schema.Notification>;
   listNotifications(opts: { targetRole: string; limit?: number }): Promise<schema.Notification[]>;
   markNotificationRead(id: string, userId: string): Promise<void>;
   markAllNotificationsRead(targetRole: string, userId: string): Promise<void>;
@@ -1106,6 +1107,22 @@ export class DatabaseStorage implements IStorage {
     );
 
     return monthlyStats;
+  }
+
+  async getTopDocuments(limit = 10): Promise<any[]> {
+    const docs = await db
+      .select({
+        id: schema.documents.id,
+        title: schema.documents.title,
+        downloadedCount: schema.documents.downloadedCount,
+        fileUrl: schema.documents.fileUrl,
+        publishedAt: schema.documents.publishedAt,
+      })
+      .from(schema.documents)
+      .where(and(isNull(schema.documents.deletedAt), eq(schema.documents.status, "published")))
+      .orderBy(desc(schema.documents.downloadedCount))
+      .limit(limit);
+    return docs;
   }
   
   async getAvailableYears(): Promise<number[]> {

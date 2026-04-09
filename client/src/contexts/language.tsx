@@ -315,6 +315,45 @@ const translations: Record<Lang, Record<string, string>> = {
     // Access denied
     accessDenied: "Akses Ditolak",
     accessDeniedDesc: "Anda tidak memiliki izin untuk mengakses halaman ini.",
+    // Push Notification
+    pushNotification: "Push Notifikasi",
+    pushNotifTitle: "Kirim Push Notifikasi",
+    pushNotifSubtitle: "Kirim notifikasi ke semua pengguna sistem",
+    notifTitle: "Judul Notifikasi",
+    notifTitlePlaceholder: "Contoh: Pengumuman Penting",
+    notifMessage: "Pesan Notifikasi",
+    notifMessagePlaceholder: "Tulis isi pesan notifikasi di sini...",
+    sendNotif: "Kirim Notifikasi",
+    sending: "Mengirim...",
+    notifSent: "Notifikasi terkirim!",
+    notifSentDesc: "Notifikasi berhasil dikirim ke semua pengguna",
+    notifTargetAll: "Kirim ke Semua Pengguna",
+    notifTargetAllDesc: "Notifikasi akan diterima oleh seluruh admin yang terdaftar di sistem",
+    // Change Password
+    changePassword: "Ganti Password",
+    currentPassword: "Password Lama",
+    newPassword: "Password Baru",
+    confirmPassword: "Konfirmasi Password Baru",
+    passwordChanged: "Password berhasil diubah",
+    passwordMismatch: "Password baru tidak cocok",
+    passwordWrong: "Password lama salah",
+    changePasswordBtn: "Ganti Password",
+    // Document Requests
+    documentRequests: "Permohonan Dokumen",
+    docReqTitle: "Permohonan Informasi PPID",
+    docReqSubtitle: "Daftar permohonan informasi dari masyarakat",
+    requestPurpose: "Tujuan Permohonan",
+    informationDetail: "Detail Informasi yang Diminta",
+    docResponseFile: "File Jawaban",
+    viewFile: "Lihat File",
+    // Error messages
+    errorFetchData: "Gagal mengambil data",
+    errorSaveData: "Gagal menyimpan data",
+    errorDeleteData: "Gagal menghapus data",
+    errorUpdateData: "Gagal memperbarui data",
+    errorUpload: "Gagal mengunggah file",
+    // Export labels
+    exportApplicants: "Pemohon",
   },
   en: {
     // Navigation
@@ -628,6 +667,45 @@ const translations: Record<Lang, Record<string, string>> = {
     // Access denied
     accessDenied: "Access Denied",
     accessDeniedDesc: "You do not have permission to access this page.",
+    // Push Notification
+    pushNotification: "Push Notification",
+    pushNotifTitle: "Send Push Notification",
+    pushNotifSubtitle: "Send a notification to all system users",
+    notifTitle: "Notification Title",
+    notifTitlePlaceholder: "e.g. Important Announcement",
+    notifMessage: "Notification Message",
+    notifMessagePlaceholder: "Write the notification message here...",
+    sendNotif: "Send Notification",
+    sending: "Sending...",
+    notifSent: "Notification sent!",
+    notifSentDesc: "Notification successfully sent to all users",
+    notifTargetAll: "Send to All Users",
+    notifTargetAllDesc: "Notification will be received by all registered admins in the system",
+    // Change Password
+    changePassword: "Change Password",
+    currentPassword: "Current Password",
+    newPassword: "New Password",
+    confirmPassword: "Confirm New Password",
+    passwordChanged: "Password changed successfully",
+    passwordMismatch: "New passwords do not match",
+    passwordWrong: "Current password is incorrect",
+    changePasswordBtn: "Change Password",
+    // Document Requests
+    documentRequests: "Document Requests",
+    docReqTitle: "PPID Information Requests",
+    docReqSubtitle: "List of information requests from the public",
+    requestPurpose: "Request Purpose",
+    informationDetail: "Information Detail Requested",
+    docResponseFile: "Response File",
+    viewFile: "View File",
+    // Error messages
+    errorFetchData: "Failed to fetch data",
+    errorSaveData: "Failed to save data",
+    errorDeleteData: "Failed to delete data",
+    errorUpdateData: "Failed to update data",
+    errorUpload: "Failed to upload file",
+    // Export labels
+    exportApplicants: "Applicants",
   },
 };
 

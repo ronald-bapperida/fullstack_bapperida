@@ -1,5 +1,10 @@
 import express, { type Express, type Request, type Response } from "express";
 import { createServer, type Server } from "http";
+
+function routeError(res: Response, e: any, operation = "memproses data") {
+  console.error("[route error]", e);
+  return res.status(500).json({ error: `Gagal ${operation}. Silakan coba lagi.` });
+}
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -939,7 +944,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         await sendOtpResetEmail(user.email, otp, user.fullName || user.username).catch(console.error);
       }
       return res.json({ ok: true, message: "Jika email terdaftar, kode OTP telah dikirim" });
-    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+    } catch (e: any) { return routeError(res, e); }
   });
 
   app.post("/api/auth/verify-otp", async (req, res) => {
@@ -963,7 +968,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         { expiresIn: "15m" }
       );
       return res.json({ ok: true, reset_token: resetToken });
-    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+    } catch (e: any) { return routeError(res, e); }
   });
 
   app.post("/api/auth/reset-password", async (req, res) => {
@@ -980,7 +985,21 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       await db.deleteOtpForUser(payload.userId);
       await db.revokeAllRefreshTokensForUser(payload.userId).catch(() => {});
       return res.json({ ok: true, message: "Password berhasil direset" });
-    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+    } catch (e: any) { return routeError(res, e); }
+  });
+
+  // ─── Auth: Change Password ────────────────────────────────────────────────────
+  app.post("/api/admin/auth/change-password", authMiddleware, async (req: any, res) => {
+    try {
+      const { currentPassword, newPassword } = req.body;
+      if (!currentPassword || !newPassword) return res.status(400).json({ error: "Password lama dan baru wajib diisi" });
+      if (newPassword.length < 6) return res.status(400).json({ error: "Password baru minimal 6 karakter" });
+      const user = await db.getUser(req.user.id);
+      if (!user) return res.status(404).json({ error: "User tidak ditemukan" });
+      if (!verifyPassword(currentPassword, user.password)) return res.status(400).json({ error: "Password lama salah" });
+      await db.updateUser(req.user.id, { password: hashPassword(newPassword) });
+      return res.json({ ok: true, message: "Password berhasil diubah" });
+    } catch (e: any) { return routeError(res, e, "mengubah password"); }
   });
 
   // ─── Auth: Refresh Token ─────────────────────────────────────────────────────
@@ -996,7 +1015,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (!user || !user.isActive) return res.status(401).json({ error: "Akun tidak aktif" });
       const accessToken = signToken({ id: user.id, username: user.username, role: user.role });
       return res.json({ token: accessToken });
-    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+    } catch (e: any) { return routeError(res, e); }
   });
 
   // ─── Auth: Logout ────────────────────────────────────────────────────────────
@@ -1005,7 +1024,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const { refresh_token } = req.body;
       if (refresh_token) await db.revokeRefreshToken(refresh_token).catch(() => {});
       return res.json({ ok: true });
-    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+    } catch (e: any) { return routeError(res, e); }
   });
 
   // ─── Admin: Users ───────────────────────────────────────────────────────────
@@ -1013,7 +1032,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const users = await db.listUsers();
       return res.json(users.map(({ password: _, ...u }) => u));
-    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+    } catch (e: any) { return routeError(res, e); }
   });
 
   app.post("/api/admin/users", authMiddleware, requireRole("super_admin"), async (req, res) => {
@@ -1022,7 +1041,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const user = await db.createUser({ username, email, password: hashPassword(password), fullName, role, isActive: true });
       const { password: _, ...u } = user;
       return res.json(u);
-    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+    } catch (e: any) { return routeError(res, e); }
   });
 
   app.patch("/api/admin/users/:id", authMiddleware, requireRole("super_admin"), async (req, res) => {
@@ -1033,7 +1052,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const user = await db.updateUser(req.params.id, data);
       const { password: _, ...u } = user;
       return res.json(u);
-    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+    } catch (e: any) { return routeError(res, e); }
   });
 
   // ─── Dashboard ──────────────────────────────────────────────────────────────
@@ -1041,7 +1060,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const stats = await db.getDashboardStats();
       return res.json(stats);
-    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+    } catch (e: any) { return routeError(res, e); }
   });
 
   // ─── News Categories ────────────────────────────────────────────────────────
@@ -1071,7 +1090,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const { page = "1", limit = "10", categoryId, search } = req.query as any;
       const result = await db.listNews({ page: +page, limit: +limit, categoryId, search, status: "published" });
       return res.json(result);
-    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+    } catch (e: any) { return routeError(res, e); }
   });
 
   app.get("/api/news/:slug", async (req, res) => {
@@ -1080,7 +1099,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (!item) return res.status(404).json({ error: "Not found" });
       await db.updateNews(item.id, { viewCount: (item.viewCount || 0) + 1 });
       return res.json(item);
-    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+    } catch (e: any) { return routeError(res, e); }
   });
 
   app.get("/api/admin/news", authMiddleware, async (req: any, res) => {
@@ -1093,7 +1112,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const safeSortBy = allowedSort.has(sortBy) ? sortBy : "publishedAt";
       const result = await db.listNews({ page: +page, limit: +limit, categoryId, search, status, trash: trash === "true", sortBy: safeSortBy, sortDir: sortDir });
       return res.json(result);
-    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+    } catch (e: any) { return routeError(res, e); }
   });
 
   app.get("/api/admin/news/:id", authMiddleware, async (req, res) => {
@@ -1101,7 +1120,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const item = await db.getNews(req.params.id);
       if (!item) return res.status(404).json({ error: "Not found" });
       return res.json(item);
-    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+    } catch (e: any) { return routeError(res, e); }
   });
 
   const newsUpload = getMulter("news", 1);
@@ -1115,7 +1134,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         data.authorId = req.user.id;
         const item = await db.createNews(data);
         return res.json(item);
-      } catch (e: any) { return res.status(500).json({ error: e.message }); }
+      } catch (e: any) { return routeError(res, e); }
     });
 
   app.patch("/api/admin/news/:id", authMiddleware, requireRole("super_admin", "admin_bpp"),
@@ -1127,7 +1146,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         if (data.eventAt) data.eventAt = new Date(data.eventAt);
         const item = await db.updateNews(req.params.id, data);
         return res.json(item);
-      } catch (e: any) { return res.status(500).json({ error: e.message }); }
+      } catch (e: any) { return routeError(res, e); }
     });
 
   app.delete("/api/admin/news/:id", authMiddleware, requireRole("super_admin", "admin_bpp"), async (req, res) => {
@@ -1151,7 +1170,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       if (!req.file) return res.status(400).json({ error: "No file" });
       return res.json({ url: fileUrl("news", req.file.filename) });
-    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+    } catch (e: any) { return routeError(res, e); }
   });
 
   // News Media
@@ -1175,7 +1194,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           sortOrder: +(req.body.sortOrder || 0),
         });
         return res.json(media);
-      } catch (e: any) { return res.status(500).json({ error: e.message }); }
+      } catch (e: any) { return routeError(res, e); }
     });
 
   app.delete("/api/admin/news-media/:id", authMiddleware, requireRole("super_admin", "admin_bpp"), async (req, res) => {
@@ -1186,7 +1205,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
       }
       return res.json({ ok: true });
-    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+    } catch (e: any) { return routeError(res, e); }
   });
 
   // ─── Banners ─────────────────────────────────────────────────────────────────
@@ -1238,7 +1257,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         }
         data.isActive = data.isActive === "true" || data.isActive === true;
         return res.json(await db.createBanner(data));
-      } catch (e: any) { return res.status(500).json({ error: e.message }); }
+      } catch (e: any) { return routeError(res, e); }
     });
 
   app.patch("/api/admin/banners/:id", authMiddleware, requireRole("super_admin", "admin_bpp"),
@@ -1270,7 +1289,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         }
         if (data.isActive !== undefined) data.isActive = data.isActive === "true" || data.isActive === true;
         return res.json(await db.updateBanner(req.params.id, data));
-      } catch (e: any) { return res.status(500).json({ error: e.message }); }
+      } catch (e: any) { return routeError(res, e); }
     });
 
   app.delete("/api/admin/banners/:id", authMiddleware, requireRole("super_admin", "admin_bpp"), async (req, res) => {
@@ -1287,7 +1306,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         items: await db.listMenuItems(m.id),
       })));
       return res.json(result);
-    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+    } catch (e: any) { return routeError(res, e); }
   });
 
   app.get("/api/admin/menus", authMiddleware, async (req, res) => {
@@ -1298,7 +1317,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         items: await db.listMenuItems(m.id),
       })));
       return res.json(result);
-    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+    } catch (e: any) { return routeError(res, e); }
   });
 
   app.post("/api/admin/menus", authMiddleware, requireRole("super_admin", "admin_bpp"), async (req, res) => {
@@ -1445,7 +1464,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const { page = "1", limit = "10", search, kindId, categoryId, typeId } = req.query as any;
       return res.json(await db.listDocuments({ page: +page, limit: +limit, search, kindId, categoryId, typeId }));
-    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+    } catch (e: any) { return routeError(res, e); }
   });
 
   app.get("/api/admin/documents", authMiddleware, async (req, res) => {
@@ -1456,7 +1475,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const safeSortBy = allowedSort.has(sortBy) ? sortBy : "publishedAt";
       const { page = "1", limit = "10", search, trash, kindId, categoryId, typeId } = req.query as any;
       return res.json(await db.listDocuments({ page: +page, limit: +limit, search, trash: trash === "true", kindId, categoryId, typeId, sortBy: safeSortBy, sortDir: sortDir }));
-    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+    } catch (e: any) { return routeError(res, e); }
   });
 
   const docUpload = getMulterUnlimited("documents");
@@ -1467,7 +1486,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         if (req.file) data.fileUrl = fileUrl("documents", req.file.filename);
         if (data.publishedAt) data.publishedAt = new Date(data.publishedAt);
         return res.json(await db.createDocument(data));
-      } catch (e: any) { return res.status(500).json({ error: e.message }); }
+      } catch (e: any) { return routeError(res, e); }
     });
 
   app.patch("/api/admin/documents/:id", authMiddleware, requireRole("super_admin", "admin_bpp"),
@@ -1479,7 +1498,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           data.publishedAt = normalizeDate(data.publishedAt);
         }
         return res.json(await db.updateDocument(req.params.id, data));
-      } catch (e: any) { return res.status(500).json({ error: e.message }); }
+      } catch (e: any) { return routeError(res, e); }
     });
 
   app.delete("/api/admin/documents/:id", authMiddleware, requireRole("super_admin", "admin_bpp"), async (req, res) => {
@@ -1583,7 +1602,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         }).catch((err: any) => console.error("Email submit permit failed:", err));
       }
       return res.json(permit);
-    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+    } catch (e: any) { return routeError(res, e); }
   });
 
   // Public: Get permit by email
@@ -1592,7 +1611,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const { email } = req.query as any;
       if (!email) return res.status(400).json({ error: "Email required" });
       return res.json(await db.getPermitByEmail(email));
-    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+    } catch (e: any) { return routeError(res, e); }
   });
 
   app.get("/api/permits/by-number/:number", async (req, res) => {
@@ -1638,7 +1657,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (!p) return res.status(404).json({ error: "Not found" });
       const letter = await db.getGeneratedLetter(p.id);
       return res.json({ ...p, generatedLetter: letter });
-    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+    } catch (e: any) { return routeError(res, e); }
   });
 
   // Admin: List permits
@@ -1646,7 +1665,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const { page = "1", limit = "10", status, search } = req.query as any;
       return res.json(await db.listPermits({ page: +page, limit: +limit, status, search }));
-    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+    } catch (e: any) { return routeError(res, e); }
   });
 
   app.get("/api/admin/permits/:id", authMiddleware, requireRole("super_admin", "admin_rida"), async (req, res) => {
@@ -1656,7 +1675,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const history = await db.getPermitHistory(p.id);
       const letter = await db.getGeneratedLetter(p.id);
       return res.json({ ...p, history, generatedLetter: letter });
-    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+    } catch (e: any) { return routeError(res, e); }
   });
 
   app.patch("/api/admin/permits/:id/status", authMiddleware, requireRole("super_admin", "admin_rida"), async (req: any, res) => {
@@ -1696,7 +1715,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         })();
       }
       return res.json(p);
-    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+    } catch (e: any) { return routeError(res, e); }
   });
 
   // Update permit admin fields (nomor surat, tanggal, penerima, dll.)
@@ -1713,7 +1732,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (isSurvei !== undefined) updateData.isSurvei = Boolean(isSurvei);
       const p = await db.updatePermit(req.params.id, updateData);
       return res.json(p);
-    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+    } catch (e: any) { return routeError(res, e); }
   });
 
   // Toggle isSurvei flag (admin)
@@ -1723,7 +1742,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (typeof isSurvei !== "boolean") return res.status(400).json({ error: "isSurvei harus boolean" });
       const p = await db.updatePermit(req.params.id, { isSurvei });
       return res.json(p);
-    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+    } catch (e: any) { return routeError(res, e); }
   });
 
   // Generate letter HTML
@@ -1752,7 +1771,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const letter = await db.createGeneratedLetter({ permitId: permit.id, templateId: template.id, fileUrl: fileUrl2 });
       await db.updatePermitStatus(permit.id, "generated_letter", "Surat izin berhasil digenerate", req.user.id);
       return res.json({ letter, html });
-    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+    } catch (e: any) { return routeError(res, e); }
   });
 
   // Multer untuk menerima template DOCX langsung dari frontend
@@ -2728,7 +2747,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const { page = "1", limit = "10" } = req.query as any;
       return res.json(await db.listSurveys({ page: +page, limit: +limit }));
-    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+    } catch (e: any) { return routeError(res, e); }
   });
 
   // ─── Final Reports ────────────────────────────────────────────────────────────
@@ -2748,14 +2767,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         targetRole: "admin_rida",
       }).catch(() => {});
       return res.json(report);
-    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+    } catch (e: any) { return routeError(res, e); }
   });
 
   app.get("/api/admin/final-reports", authMiddleware, requireRole("super_admin", "admin_rida"), async (req, res) => {
     try {
       const { page = "1", limit = "10" } = req.query as any;
       return res.json(await db.listFinalReports({ page: +page, limit: +limit }));
-    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+    } catch (e: any) { return routeError(res, e); }
   });
 
   // ─── Suggestion Box ───────────────────────────────────────────────────────────
@@ -2768,7 +2787,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const { page = "1", limit = "10" } = req.query as any;
       return res.json(await db.listSuggestions({ page: +page, limit: +limit }));
-    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+    } catch (e: any) { return routeError(res, e); }
   });
   
   app.get("/api/admin/stats/news-views", authMiddleware, requireRole("super_admin", "admin_bpp"), async (req, res) => {
@@ -2834,6 +2853,15 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
   
+  // ─── Top Downloaded Documents ─────────────────────────────────────────────────
+  app.get("/api/admin/stats/top-documents", authMiddleware, requireRole("super_admin", "admin_bpp"), async (req, res) => {
+    try {
+      const limit = req.query.limit ? parseInt(req.query.limit as string) : 10;
+      const docs = await db.getTopDocuments(limit);
+      return res.json(docs);
+    } catch (e: any) { return routeError(res, e, "mengambil data dokumen"); }
+  });
+
   // ─── Available Years for Filter ───────────────────────────────────────────────
   app.get("/api/admin/stats/available-years", authMiddleware, async (req, res) => {
     try {
@@ -2927,7 +2955,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         year, total, overallIkm, qAvgs, monthlyTrend, genderDist, educationDist, recent,
         suggestions: { total: suggTotal, recent: suggestionResult.items },
       });
-    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+    } catch (e: any) { return routeError(res, e); }
   });
 
   // ─── PPID Keberatan (Admin) ──────────────────────────────────────────────────
@@ -2938,7 +2966,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const status = req.query.status as string | undefined;
       const search = req.query.search as string | undefined;
       return res.json(await db.listPpidObjections({ page, limit, status, search }));
-    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+    } catch (e: any) { return routeError(res, e); }
   });
 
   app.get("/api/admin/ppid/objections/:id", authMiddleware, requireRole("super_admin", "admin_bpp"), async (req, res) => {
@@ -2946,7 +2974,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const item = await db.getPpidObjection(req.params.id);
       if (!item) return res.status(404).json({ error: "Not found" });
       return res.json(item);
-    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+    } catch (e: any) { return routeError(res, e); }
   });
 
   app.patch("/api/admin/ppid/objections/:id/status", authMiddleware, requireRole("super_admin", "admin_bpp"), async (req: any, res) => {
@@ -2955,7 +2983,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (!status) return res.status(400).json({ error: "Status diperlukan" });
       const updated = await db.updatePpidObjectionStatus(req.params.id, { status, reviewNote, processedBy: req.user.id });
       return res.json(updated);
-    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+    } catch (e: any) { return routeError(res, e); }
   });
 
   // ─── PPID Permohonan Informasi (Admin) ───────────────────────────────────────
@@ -2966,7 +2994,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const status = req.query.status as string | undefined;
       const search = req.query.search as string | undefined;
       return res.json(await db.listPpidInfoRequests({ page, limit, status, search }));
-    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+    } catch (e: any) { return routeError(res, e); }
   });
 
   app.get("/api/admin/ppid/information-requests/:id", authMiddleware, requireRole("super_admin", "admin_bpp"), async (req, res) => {
@@ -2974,7 +3002,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const item = await db.getPpidInfoRequest(req.params.id);
       if (!item) return res.status(404).json({ error: "Not found" });
       return res.json(item);
-    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+    } catch (e: any) { return routeError(res, e); }
   });
 
   // Upload file response for PPID info request
@@ -3009,7 +3037,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           }).catch((err: any) => console.error("PPID reply email failed:", err));
         }
         return res.json(updated);
-      } catch (e: any) { return res.status(500).json({ error: e.message }); }
+      } catch (e: any) { return routeError(res, e); }
     }
   );
 
@@ -3062,7 +3090,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
       res.setHeader("Content-Disposition", `attachment; filename="IzinPenelitian-${Date.now()}.xlsx"`);
       await wb.xlsx.write(res);
-    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+    } catch (e: any) { return routeError(res, e); }
   });
 
   app.get("/api/admin/export/ppid-objections", authMiddleware, requireRole("super_admin", "admin_bpp"), async (req, res) => {
@@ -3091,7 +3119,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
       res.setHeader("Content-Disposition", `attachment; filename="PPID-Keberatan-${Date.now()}.xlsx"`);
       await wb.xlsx.write(res);
-    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+    } catch (e: any) { return routeError(res, e); }
   });
 
   app.get("/api/admin/export/ppid-info-requests", authMiddleware, requireRole("super_admin", "admin_bpp"), async (req, res) => {
@@ -3122,7 +3150,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
       res.setHeader("Content-Disposition", `attachment; filename="PPID-Permohonan-${Date.now()}.xlsx"`);
       await wb.xlsx.write(res);
-    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+    } catch (e: any) { return routeError(res, e); }
   });
 
   // ─── Export Berita (News) ─────────────────────────────────────────────────────
@@ -3155,7 +3183,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
       res.setHeader("Content-Disposition", `attachment; filename="Berita-${new Date().getFullYear()}.xlsx"`);
       await wb.xlsx.write(res);
-    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+    } catch (e: any) { return routeError(res, e); }
   });
 
   // ─── Export Survey ─────────────────────────────────────────────────────────
@@ -3182,7 +3210,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
       res.setHeader("Content-Disposition", `attachment; filename="Survei-${new Date().getFullYear()}.xlsx"`);
       await wb.xlsx.write(res);
-    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+    } catch (e: any) { return routeError(res, e); }
   });
 
   // ─── Export Laporan Akhir ──────────────────────────────────────────────────
@@ -3211,7 +3239,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
       res.setHeader("Content-Disposition", `attachment; filename="LaporanAkhir-${new Date().getFullYear()}.xlsx"`);
       await wb.xlsx.write(res);
-    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+    } catch (e: any) { return routeError(res, e); }
   });
 
   // ─── Export Survei IKM ────────────────────────────────────────────────────
@@ -3253,7 +3281,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
       res.setHeader("Content-Disposition", `attachment; filename="SurveiIKM-${new Date().getFullYear()}.xlsx"`);
       await wb.xlsx.write(res);
-    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+    } catch (e: any) { return routeError(res, e); }
   });
 
   // ─── Notifications API ────────────────────────────────────────────────────────
@@ -3267,28 +3295,44 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         isReadByMe: n.readBy ? JSON.parse(n.readBy).includes(userId) : false,
       }));
       return res.json(formatted);
-    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+    } catch (e: any) { return routeError(res, e); }
   });
 
   app.get("/api/admin/notifications/unread-count", authMiddleware, async (req: any, res) => {
     try {
       const count = await db.countUnreadNotifications(req.user.role, req.user.id);
       return res.json({ count });
-    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+    } catch (e: any) { return routeError(res, e); }
   });
 
   app.patch("/api/admin/notifications/:id/read", authMiddleware, async (req: any, res) => {
     try {
       await db.markNotificationRead(req.params.id, req.user.id);
       return res.json({ ok: true });
-    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+    } catch (e: any) { return routeError(res, e); }
   });
 
   app.patch("/api/admin/notifications/read-all", authMiddleware, async (req: any, res) => {
     try {
       await db.markAllNotificationsRead(req.user.role, req.user.id);
       return res.json({ ok: true });
-    } catch (e: any) { return res.status(500).json({ error: e.message }); }
+    } catch (e: any) { return routeError(res, e, "memperbarui notifikasi"); }
+  });
+
+  // ─── Broadcast Notification to All Users ─────────────────────────────────────
+  app.post("/api/admin/notifications/broadcast", authMiddleware, requireRole("super_admin"), async (req: any, res) => {
+    try {
+      const { title, message } = req.body;
+      if (!title || !message) return res.status(400).json({ error: "Judul dan pesan wajib diisi" });
+      await db.createNotification({
+        type: "announcement",
+        title,
+        message,
+        targetRole: "all",
+        targetUserId: "all",
+      });
+      return res.json({ ok: true, message: "Notifikasi berhasil dikirim ke semua pengguna" });
+    } catch (e: any) { return routeError(res, e, "mengirim notifikasi"); }
   });
 
   return httpServer;
