@@ -1564,6 +1564,103 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
+  app.get("/api/admin/users/:userId/downloaded-documents", authMiddleware, requireRole("super_admin", "admin_bpp"), async (req: any, res) => {
+    try {
+      const { userId } = req.params;
+      const { from, to } = req.query as any;
+      
+      const result = await db.getUserDownloadedDocuments(userId, { from, to });
+      
+      return res.json({
+        success: true,
+        data: result,
+      });
+    } catch (error: any) {
+      console.error("Get user downloaded documents error:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Failed to retrieve user downloaded documents",
+        error: error.message,
+      });
+    }
+  });
+
+  app.get("/api/admin/document-requests", authMiddleware, requireRole("super_admin", "admin_bpp"), async (req: any, res) => {
+    try {
+      const page = Math.max(1, parseInt(req.query.page as string) || 1);
+      const limit = Math.min(50, parseInt(req.query.limit as string) || 20);
+      const search = req.query.search as string | undefined;
+      const from = req.query.from as string | undefined;
+      const to = req.query.to as string | undefined;
+  
+      const { items, total } = await db.listDocumentRequestsWithDocuments({ page, limit, search, from, to });
+  
+      return res.json({
+        success: true,
+        data: {
+          items,
+          total,
+          page,
+          totalPages: Math.ceil(total / limit),
+        },
+      });
+    } catch (error: any) {
+      console.error("Get document requests error:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Failed to retrieve document requests",
+        error: error.message,
+      });
+    }
+  });
+  
+  // Get single document request by ID
+  app.get("/api/admin/document-requests/:id", authMiddleware, requireRole("super_admin", "admin_bpp"), async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      const request = await db.getDocumentRequestWithDocument(id);
+  
+      if (!request) {
+        return res.status(404).json({
+          success: false,
+          message: "Document request not found",
+        });
+      }
+  
+      return res.json({
+        success: true,
+        data: request,
+      });
+    } catch (error: any) {
+      console.error("Get document request error:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Failed to retrieve document request",
+        error: error.message,
+      });
+    }
+  });
+  
+  // Delete document request (soft delete)
+  app.delete("/api/admin/document-requests/:id", authMiddleware, requireRole("super_admin", "admin_bpp"), async (req: any, res) => {
+    try {
+      const { id } = req.params;
+      await db.deleteDocumentRequest(id);
+  
+      return res.json({
+        success: true,
+        message: "Document request deleted successfully",
+      });
+    } catch (error: any) {
+      console.error("Delete document request error:", error);
+      return res.status(500).json({
+        success: false,
+        message: "Failed to delete document request",
+        error: error.message,
+      });
+    }
+  });
+
   // ─── Research Permits ────────────────────────────────────────────────────────
   const permitUpload = getMulter("permits", 40);
 
@@ -3282,6 +3379,172 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       res.setHeader("Content-Disposition", `attachment; filename="SurveiIKM-${new Date().getFullYear()}.xlsx"`);
       await wb.xlsx.write(res);
     } catch (e: any) { return routeError(res, e); }
+  });
+
+  app.get("/api/admin/export/document-requests", authMiddleware, requireRole("super_admin", "admin_bpp"), async (req, res) => {
+    try {
+      const ExcelJS = require("exceljs");
+      const { from, to, search } = req.query as any;
+      
+      // Get all document requests with filters (no pagination)
+      const allItems = await db.getAllDocumentRequests({ search, from, to });
+      
+      // Get document titles for each request
+      const documentIds = [...new Set(allItems.map(item => item.documentId))];
+      let documents: any[] = [];
+      if (documentIds.length > 0) {
+        documents = await db
+          .select({ id: schema.documents.id, title: schema.documents.title })
+          .from(schema.documents)
+          .where(sql`${schema.documents.id} IN (${documentIds.join(',')})`);
+      }
+      const documentMap = new Map(documents.map(d => [d.id, d.title]));
+      
+      const wb = new ExcelJS.Workbook();
+      const ws = wb.addWorksheet("Permohonan Dokumen");
+      
+      // Define columns
+      ws.columns = [
+        { header: "No", key: "no", width: 8 },
+        { header: "ID", key: "id", width: 36 },
+        { header: "Nama Pemohon", key: "name", width: 30 },
+        { header: "Email", key: "email", width: 30 },
+        { header: "No HP", key: "phone", width: 18 },
+        { header: "Judul Dokumen", key: "documentTitle", width: 40 },
+        { header: "Tujuan Penggunaan", key: "purpose", width: 50 },
+        { header: "Tanggal Permohonan", key: "createdAt", width: 20 },
+        { header: "Status", key: "status", width: 15 },
+      ];
+      
+      // Style header row
+      ws.getRow(1).font = { bold: true, color: { argb: "FFFFFFFF" } };
+      ws.getRow(1).fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "FF4F46E5" },
+      };
+      ws.getRow(1).alignment = { horizontal: "center", vertical: "middle" };
+      
+      // Add rows
+      let no = 1;
+      for (const item of allItems) {
+        ws.addRow({
+          no: no++,
+          id: item.id,
+          name: item.name,
+          email: item.email,
+          phone: item.phone,
+          documentTitle: documentMap.get(item.documentId) || '-',
+          purpose: item.purpose,
+          createdAt: item.createdAt ? new Date(item.createdAt).toLocaleDateString("id-ID") : "",
+          status: "Aktif",
+        });
+      }
+      
+      // Auto-fit columns
+      ws.columns.forEach(column => {
+        column.width = Math.max(column.width || 10, 10);
+      });
+      
+      // Set response headers
+      const fileName = `Permohonan_Dokumen_${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.xlsx`;
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+      
+      await wb.xlsx.write(res);
+    } catch (e: any) {
+      console.error("Export document requests error:", e);
+      return routeError(res, e, "mengekspor data permohonan dokumen");
+    }
+  });
+  
+  // Export document requests for a specific user
+  app.get("/api/admin/export/document-requests/user/:userId", authMiddleware, requireRole("super_admin", "admin_bpp"), async (req, res) => {
+    try {
+      const ExcelJS = require("exceljs");
+      const { userId } = req.params;
+      const { from, to } = req.query as any;
+      
+      const { user, documents } = await db.getUserDownloadedDocuments(userId, { from, to });
+      
+      const wb = new ExcelJS.Workbook();
+      const ws = wb.addWorksheet(`Permohonan_${user.name.replace(/[^a-zA-Z0-9]/g, '_')}`);
+      
+      // Add user info header
+      ws.mergeCells('A1:F1');
+      ws.getCell('A1').value = `LAPORAN PERMOHONAN DOKUMEN`;
+      ws.getCell('A1').font = { bold: true, size: 14 };
+      ws.getCell('A1').alignment = { horizontal: "center" };
+      
+      ws.mergeCells('A2:F2');
+      ws.getCell('A2').value = `Nama: ${user.name}`;
+      ws.getCell('A2').alignment = { horizontal: "center" };
+      
+      ws.mergeCells('A3:F3');
+      ws.getCell('A3').value = `Email: ${user.email}`;
+      ws.getCell('A3').alignment = { horizontal: "center" };
+      
+      if (from || to) {
+        ws.mergeCells('A4:F4');
+        let dateRange = '';
+        if (from && to) dateRange = `${from} s/d ${to}`;
+        else if (from) dateRange = `Mulai ${from}`;
+        else if (to) dateRange = `Sampai ${to}`;
+        ws.getCell('A4').value = `Periode: ${dateRange}`;
+        ws.getCell('A4').alignment = { horizontal: "center" };
+        ws.getCell('A4').font = { italic: true };
+      }
+      
+      ws.addRow([]); // Empty row
+      
+      // Define columns
+      ws.columns = [
+        { header: "No", key: "no", width: 8 },
+        { header: "ID Permohonan", key: "requestId", width: 36 },
+        { header: "No HP", key: "phone", width: 18 },
+        { header: "Judul Dokumen", key: "documentTitle", width: 40 },
+        { header: "Tujuan Penggunaan", key: "purpose", width: 50 },
+        { header: "Tanggal Permohonan", key: "requestedAt", width: 20 },
+      ];
+      
+      // Style header row
+      const headerRowNum = from || to ? 6 : 5;
+      const headerRow = ws.getRow(headerRowNum);
+      headerRow.font = { bold: true, color: { argb: "FFFFFFFF" } };
+      headerRow.fill = {
+        type: "pattern",
+        pattern: "solid",
+        fgColor: { argb: "FF4F46E5" },
+      };
+      headerRow.alignment = { horizontal: "center", vertical: "middle" };
+      
+      // Add rows
+      let no = 1;
+      for (const doc of documents) {
+        ws.addRow({
+          no: no++,
+          requestId: doc.requestId,
+          phone: doc.phone,
+          documentTitle: doc.documentTitle,
+          purpose: doc.purpose,
+          requestedAt: doc.requestedAt ? new Date(doc.requestedAt).toLocaleDateString("id-ID") : "",
+        });
+      }
+      
+      // Auto-fit columns
+      ws.columns.forEach(column => {
+        column.width = Math.max(column.width || 10, 10);
+      });
+      
+      const fileName = `Permohonan_Dokumen_${user.name.replace(/[^a-zA-Z0-9]/g, '_')}_${new Date().toISOString().slice(0, 19).replace(/:/g, '-')}.xlsx`;
+      res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
+      res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
+      
+      await wb.xlsx.write(res);
+    } catch (e: any) {
+      console.error("Export user document requests error:", e);
+      return routeError(res, e, "mengekspor data permohonan dokumen user");
+    }
   });
 
   // ─── Notifications API ────────────────────────────────────────────────────────

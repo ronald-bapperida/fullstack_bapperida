@@ -258,6 +258,29 @@ export interface IStorage {
   markNotificationRead(id: string, userId: string): Promise<void>;
   markAllNotificationsRead(targetRole: string, userId: string): Promise<void>;
   countUnreadNotifications(targetRole: string, userId: string): Promise<number>;
+
+  listDocumentRequests(opts?: { page?: number; limit?: number; search?: string; from?: string; to?: string }): Promise<{ items: DocumentRequest[]; total: number }>;
+  getAllDocumentRequests(opts?: { search?: string; from?: string; to?: string }): Promise<DocumentRequest[]>;
+  getDocumentRequest(id: string): Promise<DocumentRequest | undefined>;
+  deleteDocumentRequest(id: string): Promise<void>;
+  listDocumentRequestsWithDocuments(opts?: { page?: number; limit?: number; search?: string; from?: string; to?: string }): Promise<{ items: Array<DocumentRequest & { documentTitle: string }>; total: number }>;
+  getDocumentRequestWithDocument(id: string): Promise<(DocumentRequest & { documentTitle: string }) | undefined>;
+
+  getUserDownloadedDocuments(userId: string, opts?: { from?: string; to?: string }): Promise<{ 
+    user: { id: string; name: string; email: string };
+    documents: Array<{
+      requestId: string;
+      documentId: string;
+      documentTitle: string;
+      documentFileUrl: string | null;
+      documentDownloadCount: number;
+      purpose: string;
+      phone: string;
+      requestedAt: Date | null;
+    }>;
+    total: number;
+  }>;
+  
 }
 
 export class DatabaseStorage implements IStorage {
@@ -1356,6 +1379,221 @@ export class DatabaseStorage implements IStorage {
       processedAt: new Date(),
       updatedAt: new Date(),
     });
+  }
+
+  async listDocumentRequestsWithDocuments(opts: { page?: number; limit?: number; search?: string; from?: string; to?: string } = {}): Promise<{ items: Array<DocumentRequest & { documentTitle: string }>; total: number }> {
+    const { page = 1, limit = 20, search, from, to } = opts;
+    const offset = (page - 1) * limit;
+  
+    // Build where clause SQL
+    let whereSql = sql`1=1`;
+    const conditions: any[] = [];
+  
+    if (search) {
+      conditions.push(
+        sql`${schema.documentRequests.name} LIKE ${`%${search}%`} OR 
+            ${schema.documentRequests.email} LIKE ${`%${search}%`} OR 
+            ${schema.documentRequests.phone} LIKE ${`%${search}%`} OR 
+            ${schema.documentRequests.purpose} LIKE ${`%${search}%`}`
+      );
+    }
+  
+    if (from) {
+      conditions.push(sql`${schema.documentRequests.createdAt} >= ${new Date(from)}`);
+    }
+    if (to) {
+      conditions.push(sql`${schema.documentRequests.createdAt} <= ${new Date(to + "T23:59:59")}`);
+    }
+  
+    if (conditions.length > 0) {
+      whereSql = and(...conditions) as any;
+    }
+  
+    // Get total count
+    const countResult = await db
+      .select({ count: sql<number>`count(*)` })
+      .from(schema.documentRequests)
+      .where(whereSql);
+    const total = Number(countResult[0]?.count) || 0;
+  
+    // Get paginated items
+    const items = await db
+      .select()
+      .from(schema.documentRequests)
+      .where(whereSql)
+      .orderBy(desc(schema.documentRequests.createdAt))
+      .limit(limit)
+      .offset(offset);
+  
+    // Get document titles for each request
+    const documentIds = [...new Set(items.map(item => item.documentId))];
+    let documents: any[] = [];
+    if (documentIds.length > 0) {
+      documents = await db
+        .select({ id: schema.documents.id, title: schema.documents.title })
+        .from(schema.documents)
+        .where(sql`${schema.documents.id} IN (${documentIds.map(id => `'${id}'`).join(',')})`);
+    }
+    const documentMap = new Map(documents.map(d => [d.id, d.title]));
+  
+    // Format items with document titles
+    const formattedItems = items.map(item => ({
+      ...item,
+      documentTitle: documentMap.get(item.documentId) || '-',
+    }));
+  
+    return { items: formattedItems, total };
+  }
+  
+  async getAllDocumentRequests(opts: { search?: string; from?: string; to?: string } = {}): Promise<DocumentRequest[]> {
+    const { search, from, to } = opts;
+  
+    // Build where clause SQL
+    let whereSql = sql`1=1`;
+    const conditions: any[] = [];
+  
+    if (search) {
+      conditions.push(
+        sql`${schema.documentRequests.name} LIKE ${`%${search}%`} OR 
+            ${schema.documentRequests.email} LIKE ${`%${search}%`} OR 
+            ${schema.documentRequests.phone} LIKE ${`%${search}%`} OR 
+            ${schema.documentRequests.purpose} LIKE ${`%${search}%`}`
+      );
+    }
+  
+    if (from) {
+      conditions.push(sql`${schema.documentRequests.createdAt} >= ${new Date(from)}`);
+    }
+    if (to) {
+      conditions.push(sql`${schema.documentRequests.createdAt} <= ${new Date(to + "T23:59:59")}`);
+    }
+  
+    if (conditions.length > 0) {
+      whereSql = and(...conditions) as any;
+    }
+  
+    return await db
+      .select()
+      .from(schema.documentRequests)
+      .where(whereSql)
+      .orderBy(desc(schema.documentRequests.createdAt));
+  }
+  
+  async getDocumentRequest(id: string): Promise<DocumentRequest | undefined> {
+    const [item] = await db.select().from(schema.documentRequests).where(eq(schema.documentRequests.id, id));
+    return item;
+  }
+  
+  async deleteDocumentRequest(id: string): Promise<void> {
+    await db.update(schema.documentRequests)
+      .set({ deletedAt: new Date() })
+      .where(eq(schema.documentRequests.id, id));
+  }
+  
+  async getDocumentRequestWithDocument(id: string): Promise<(DocumentRequest & { documentTitle: string }) | undefined> {
+    const [item] = await db.select().from(schema.documentRequests).where(eq(schema.documentRequests.id, id));
+    if (!item) return undefined;
+  
+    // Get document title
+    const [document] = await db
+      .select({ title: schema.documents.title })
+      .from(schema.documents)
+      .where(eq(schema.documents.id, item.documentId));
+  
+    return {
+      ...item,
+      documentTitle: document?.title || '-',
+    };
+  }
+
+  async getUserDownloadedDocuments(userId: string, opts: { from?: string; to?: string } = {}): Promise<{
+    user: { id: string; name: string; email: string };
+    documents: Array<{
+      requestId: string;
+      documentId: string;
+      documentTitle: string;
+      documentFileUrl: string | null;
+      documentDownloadCount: number;
+      purpose: string;
+      phone: string;
+      requestedAt: Date | null;
+    }>;
+    total: number;
+  }> {
+    const { from, to } = opts;
+  
+    // Build conditions for user filter
+    const conditions: any[] = [eq(schema.documentRequests.userId, userId)];
+    
+    if (from) {
+      conditions.push(sql`${schema.documentRequests.createdAt} >= ${new Date(from)}`);
+    }
+    if (to) {
+      conditions.push(sql`${schema.documentRequests.createdAt} <= ${new Date(to + "T23:59:59")}`);
+    }
+    
+    const whereClause = and(...conditions);
+    
+    // Get user document requests
+    const requests = await db
+      .select({
+        requestId: schema.documentRequests.id,
+        documentId: schema.documentRequests.documentId,
+        purpose: schema.documentRequests.purpose,
+        phone: schema.documentRequests.phone,
+        requestedAt: schema.documentRequests.createdAt,
+      })
+      .from(schema.documentRequests)
+      .where(whereClause)
+      .orderBy(desc(schema.documentRequests.createdAt));
+    
+    // Get user info
+    const [user] = await db
+      .select({ 
+        id: schema.users.id,
+        name: schema.users.fullName, 
+        email: schema.users.email 
+      })
+      .from(schema.users)
+      .where(eq(schema.users.id, userId));
+    
+    // Get document details
+    const documentIds = [...new Set(requests.map(r => r.documentId))];
+    let documents: any[] = [];
+    if (documentIds.length > 0) {
+      documents = await db
+        .select({
+          id: schema.documents.id,
+          title: schema.documents.title,
+          fileUrl: schema.documents.fileUrl,
+          downloadedCount: schema.documents.downloadedCount,
+        })
+        .from(schema.documents)
+        .where(sql`${schema.documents.id} IN (${documentIds.join(',')})`);
+    }
+    const documentMap = new Map(documents.map(d => [d.id, d]));
+    
+    // Format response
+    const result = requests.map(req => ({
+      requestId: req.requestId,
+      documentId: req.documentId,
+      documentTitle: documentMap.get(req.documentId)?.title || '-',
+      documentFileUrl: documentMap.get(req.documentId)?.fileUrl || null,
+      documentDownloadCount: documentMap.get(req.documentId)?.downloadedCount || 0,
+      purpose: req.purpose,
+      phone: req.phone,
+      requestedAt: req.requestedAt,
+    }));
+    
+    return {
+      user: {
+        id: user?.id || userId,
+        name: user?.name || '-',
+        email: user?.email || '-',
+      },
+      documents: result,
+      total: result.length,
+    };
   }
 
   // ── Notifications ────────────────────────────────────────────────────────────
