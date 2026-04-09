@@ -319,7 +319,7 @@ async function ensurePermit(opts: {
   phoneWa: string;
   institution: string;
   researchTitle: string;
-  status?: typeof schema.permitStatusEnum.enumValues[number];
+  status?: "submitted" | "in_review" | "revision_requested" | "approved" | "generated_letter" | "sent" | "rejected";
   processedBy?: string | null;
 }) {
   const [exist] = await db
