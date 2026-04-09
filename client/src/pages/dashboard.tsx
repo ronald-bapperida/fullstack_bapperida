@@ -18,6 +18,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useLang } from "@/contexts/language";
 import { format } from "date-fns";
 import { id } from "date-fns/locale";
+import logoPpid from "@assets/LOGO_PPID_MERAH_1775711463015.png";
 
 import {
   BarChart,
@@ -387,14 +388,17 @@ export default function Dashboard() {
             </div>
           </div>
 
-          {/* BAPPERIDA branding */}
-          <div className="hidden sm:flex flex-col items-end shrink-0">
+          {/* BAPPERIDA + PPID branding */}
+          <div className="hidden sm:flex items-center gap-3 shrink-0">
             <div className="flex items-center gap-2 bg-white/10 rounded-xl px-4 py-2 backdrop-blur-sm">
               <Building2 className="w-5 h-5 text-white/80" />
               <div className="text-right">
                 <p className="text-xs font-bold text-white">BAPPERIDA</p>
                 <p className="text-xs text-white/60">Kalimantan Tengah</p>
               </div>
+            </div>
+            <div className="flex items-center justify-center bg-white/10 rounded-xl p-2 backdrop-blur-sm">
+              <img src={logoPpid} alt="Logo PPID" className="h-9 object-contain" />
             </div>
           </div>
         </div>

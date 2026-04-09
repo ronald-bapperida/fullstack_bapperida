@@ -432,3 +432,73 @@ export async function sendPpidInfoRequestReply(opts: {
     attachments,
   });
 }
+
+// ─── Izin Penelitian: Notifikasi ambil surat cap basah di kantor ───────────────
+export async function sendPermitPickupEmail(opts: {
+  to: string;
+  fullName: string;
+  requestNumber: string;
+}) {
+  const body = `
+    <h3>📋 Surat Izin Penelitian Siap Diambil</h3>
+    <p>Yth. <strong>${opts.fullName}</strong>,</p>
+    <p>Dengan hormat, kami sampaikan bahwa Surat Izin Penelitian Anda telah <strong>selesai diproses</strong> dan siap untuk diambil di kantor BAPPERIDA Kalimantan Tengah.</p>
+    <table class="info-table">
+      <tr><td>Nomor Permohonan</td><td><strong>${opts.requestNumber}</strong></td></tr>
+      <tr><td>Nama Pemohon</td><td>${opts.fullName}</td></tr>
+      <tr><td>Status</td><td><span class="status-pill" style="background:#dbeafe;color:#1e40af;">📄 Surat Siap Diambil</span></td></tr>
+    </table>
+    <p>Silahkan <strong>datang ke kantor BAPPERIDA Kalimantan Tengah</strong> untuk mengambil Surat Izin Penelitian asli beserta cap basah resmi.</p>
+    <p><strong>Mohon membawa:</strong></p>
+    <ul>
+      <li>Kartu identitas (KTP/KTM) asli</li>
+      <li>Surat pengantar dari institusi Anda</li>
+      <li>Bukti permohonan (nomor: <strong>${opts.requestNumber}</strong>)</li>
+    </ul>
+    <p>Jam pelayanan: Senin – Jumat, pukul 08.00 – 16.00 WITA.</p>
+    ${privacyNotice()}
+    ${addressBlock()}
+  `;
+
+  return sendMail({
+    to: opts.to,
+    subject: `[BAPPERIDA] Surat Izin Penelitian Siap Diambil — ${opts.requestNumber}`,
+    html: wrapHtml("Surat Izin Siap Diambil di Kantor", body, "#1e40af"),
+  });
+}
+
+// ─── Izin Penelitian: Notifikasi cek status di web app ────────────────────────
+export async function sendPermitCheckStatusEmail(opts: {
+  to: string;
+  fullName: string;
+  requestNumber: string;
+  webUrl?: string;
+}) {
+  const webUrl = opts.webUrl || "https://bapperida.kalteng.go.id";
+  const body = `
+    <h3>✅ Surat Izin Penelitian Anda Telah Terbit</h3>
+    <p>Yth. <strong>${opts.fullName}</strong>,</p>
+    <p>Dengan hormat, kami sampaikan bahwa Surat Izin Penelitian Anda telah <strong>diterbitkan secara resmi</strong> oleh BAPPERIDA Kalimantan Tengah.</p>
+    <table class="info-table">
+      <tr><td>Nomor Permohonan</td><td><strong>${opts.requestNumber}</strong></td></tr>
+      <tr><td>Nama Pemohon</td><td>${opts.fullName}</td></tr>
+      <tr><td>Status</td><td><span class="status-pill" style="background:#d1fae5;color:#065f46;">✅ Surat Telah Terbit</span></td></tr>
+    </table>
+    <p>Silahkan <strong>kunjungi Web App Izin Penelitian BAPPERIDA</strong> untuk melihat dan mengunduh surat izin Anda secara online.</p>
+    <div style="text-align:center;margin:24px 0;">
+      <a href="${webUrl}" style="background:#2563eb;color:#fff;padding:12px 28px;border-radius:8px;text-decoration:none;font-weight:600;font-size:15px;">
+        🌐 Cek Status di Web App
+      </a>
+    </div>
+    <p style="font-size:13px;color:#6b7280;">Atau salin tautan berikut: <a href="${webUrl}">${webUrl}</a></p>
+    ${privacyNotice()}
+    ${addressBlock()}
+  `;
+
+  return sendMail({
+    to: opts.to,
+    subject: `[BAPPERIDA] Surat Izin Penelitian Tersedia Online — ${opts.requestNumber}`,
+    html: wrapHtml("Surat Izin Penelitian Tersedia Online", body, "#065f46"),
+  });
+}
+

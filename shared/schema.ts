@@ -1,13 +1,13 @@
 import { sql } from "drizzle-orm";
 import {
-  pgTable,
+  mysqlTable,
   text,
   varchar,
   boolean,
-  integer,
+  int,
   timestamp,
   json,
-} from "drizzle-orm/pg-core";
+} from "drizzle-orm/mysql-core";
 import { createInsertSchema } from "drizzle-zod";
 import { z } from "zod";
 
@@ -30,11 +30,11 @@ export const accessLevelValues = ["terbuka", "terbatas", "rahasia"] as const;
 export const genderValues = ["laki-laki", "perempuan"] as const;
 export const citizenshipValues = ["WNI", "WNA"] as const;
 
-// PostgreSQL UUID default
-const uuidDefault = sql`gen_random_uuid()`;
+// MySQL UUID default
+const uuidDefault = sql`(UUID())`;
 
 // ─── Users & Auth ─────────────────────────────────────────────────────────────
-export const users = pgTable("users", {
+export const users = mysqlTable("users", {
   id:        varchar("id", { length: 36 }).primaryKey().default(uuidDefault),
   username:  varchar("username", { length: 64 }).notNull().unique(),
   email:     varchar("email", { length: 191 }).notNull().unique(),
@@ -43,16 +43,17 @@ export const users = pgTable("users", {
   fullName:  varchar("full_name", { length: 191 }).notNull(),
   role:      varchar("role", { length: 30 }).notNull().default("user"),
   isActive:  boolean("is_active").notNull().default(true),
+  deletedAt: timestamp("deleted_at"),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
   updatedAt: timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`),
 });
 
-export const insertUserSchema = createInsertSchema(users).omit({ id: true, createdAt: true, updatedAt: true });
+export const insertUserSchema = createInsertSchema(users).omit({ id: true, createdAt: true, updatedAt: true, deletedAt: true });
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
 
 // ─── Password Reset OTPs ──────────────────────────────────────────────────────
-export const passwordResetOtps = pgTable("password_reset_otps", {
+export const passwordResetOtps = mysqlTable("password_reset_otps", {
   id:        varchar("id", { length: 36 }).primaryKey().default(uuidDefault),
   userId:    varchar("user_id", { length: 36 }).notNull().references(() => users.id),
   otp:       varchar("otp", { length: 6 }).notNull(),
@@ -62,7 +63,7 @@ export const passwordResetOtps = pgTable("password_reset_otps", {
 });
 
 // ─── News Categories ──────────────────────────────────────────────────────────
-export const newsCategories = pgTable("news_categories", {
+export const newsCategories = mysqlTable("news_categories", {
   id:          varchar("id", { length: 36 }).primaryKey().default(uuidDefault),
   name:        text("name").notNull(),
   slug:        varchar("slug", { length: 191 }).notNull().unique(),
@@ -76,7 +77,7 @@ export type InsertNewsCategory = z.infer<typeof insertNewsCategorySchema>;
 export type NewsCategory = typeof newsCategories.$inferSelect;
 
 // ─── News ─────────────────────────────────────────────────────────────────────
-export const news = pgTable("news", {
+export const news = mysqlTable("news", {
   id:              varchar("id", { length: 36 }).primaryKey().default(uuidDefault),
   title:           text("title").notNull(),
   slug:            varchar("slug", { length: 191 }).notNull().unique(),
@@ -90,7 +91,7 @@ export const news = pgTable("news", {
   eventAt:         timestamp("event_at"),
   publishedAt:     timestamp("published_at"),
   authorId:        varchar("author_id", { length: 36 }).references(() => users.id),
-  viewCount:       integer("view_count").notNull().default(0),
+  viewCount:       int("view_count").notNull().default(0),
   deletedAt:       timestamp("deleted_at"),
   createdAt:       timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
   updatedAt:       timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`),
@@ -101,18 +102,18 @@ export type InsertNews = z.infer<typeof insertNewsSchema>;
 export type News = typeof news.$inferSelect;
 
 // ─── News Media ───────────────────────────────────────────────────────────────
-export const newsMedia = pgTable("news_media", {
+export const newsMedia = mysqlTable("news_media", {
   id:                   varchar("id", { length: 36 }).primaryKey().default(uuidDefault),
   newsId:               varchar("news_id", { length: 36 }).notNull().references(() => news.id),
   fileUrl:              text("file_url").notNull(),
   fileName:             text("file_name").notNull(),
-  fileSize:             integer("file_size").notNull(),
+  fileSize:             int("file_size").notNull(),
   mimeType:             text("mime_type").notNull(),
   caption:              text("caption"),
   isMain:               boolean("is_main").notNull().default(false),
   type:                 text("type").notNull().default("image"),
-  insertAfterParagraph: integer("insert_after_paragraph").default(0),
-  sortOrder:            integer("sort_order").default(0),
+  insertAfterParagraph: int("insert_after_paragraph").default(0),
+  sortOrder:            int("sort_order").default(0),
   deletedAt:            timestamp("deleted_at"),
   createdAt:            timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
 });
@@ -121,7 +122,7 @@ export type NewsMedia = typeof newsMedia.$inferSelect;
 export type InsertNewsMedia = typeof newsMedia.$inferInsert;
 
 // ─── Banners ──────────────────────────────────────────────────────────────────
-export const banners = pgTable("banners", {
+export const banners = mysqlTable("banners", {
   id:           varchar("id", { length: 36 }).primaryKey().default(uuidDefault),
   title:        text("title").notNull(),
   slug:         varchar("slug", { length: 191 }),
@@ -132,12 +133,12 @@ export const banners = pgTable("banners", {
   linkType:     varchar("link_type", { length: 20 }).notNull().default("external"),
   linkUrl:      text("link_url"),
   target:       varchar("target", { length: 20 }).notNull().default("_self"),
-  sortOrder:    integer("sort_order").notNull().default(0),
+  sortOrder:    int("sort_order").notNull().default(0),
   startAt:      timestamp("start_at"),
   endAt:        timestamp("end_at"),
   isActive:     boolean("is_active").notNull().default(true),
-  viewCount:    integer("view_count").notNull().default(0),
-  clickCount:   integer("click_count").notNull().default(0),
+  viewCount:    int("view_count").notNull().default(0),
+  clickCount:   int("click_count").notNull().default(0),
   deletedAt:    timestamp("deleted_at"),
   createdAt:    timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
   updatedAt:    timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`),
@@ -148,7 +149,7 @@ export type InsertBanner = z.infer<typeof insertBannerSchema>;
 export type Banner = typeof banners.$inferSelect;
 
 // ─── Menus ────────────────────────────────────────────────────────────────────
-export const menus = pgTable("menus", {
+export const menus = mysqlTable("menus", {
   id:        varchar("id", { length: 36 }).primaryKey().default(uuidDefault),
   name:      text("name").notNull(),
   location:  varchar("location", { length: 30 }).notNull().default("header"),
@@ -160,7 +161,7 @@ export const menus = pgTable("menus", {
 export type Menu = typeof menus.$inferSelect;
 export type InsertMenu = typeof menus.$inferInsert;
 
-export const menuItems = pgTable("menu_items", {
+export const menuItems = mysqlTable("menu_items", {
   id:           varchar("id", { length: 36 }).primaryKey().default(uuidDefault),
   menuId:       varchar("menu_id", { length: 36 }).notNull().references(() => menus.id),
   parentId:     varchar("parent_id", { length: 36 }),
@@ -170,7 +171,7 @@ export const menuItems = pgTable("menu_items", {
   icon:         text("icon"),
   target:       text("target"),
   requiresAuth: boolean("requires_auth").notNull().default(false),
-  sortOrder:    integer("sort_order").notNull().default(0),
+  sortOrder:    int("sort_order").notNull().default(0),
   deletedAt:    timestamp("deleted_at"),
   createdAt:    timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
 });
@@ -179,22 +180,22 @@ export type MenuItem = typeof menuItems.$inferSelect;
 export type InsertMenuItem = typeof menuItems.$inferInsert;
 
 // ─── Document Archive ──────────────────────────────────────────────────────────
-export const documentCategories = pgTable("document_categories", {
+export const documentCategories = mysqlTable("document_categories", {
   id:        varchar("id", { length: 36 }).primaryKey().default(uuidDefault),
   name:      text("name").notNull(),
-  level:     integer("level"),
+  level:     int("level"),
   deletedAt: timestamp("deleted_at"),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
 });
 
-export const documentKinds = pgTable("document_kinds", {
+export const documentKinds = mysqlTable("document_kinds", {
   id:        varchar("id", { length: 36 }).primaryKey().default(uuidDefault),
   name:      text("name").notNull(),
   deletedAt: timestamp("deleted_at"),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
 });
 
-export const documentTypes = pgTable("document_types", {
+export const documentTypes = mysqlTable("document_types", {
   id:        varchar("id", { length: 36 }).primaryKey().default(uuidDefault),
   name:      text("name").notNull(),
   extension: text("extension"),
@@ -202,7 +203,7 @@ export const documentTypes = pgTable("document_types", {
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
 });
 
-export const documentRequests = pgTable("document_requests", {
+export const documentRequests = mysqlTable("document_requests", {
   id:         varchar("id", { length: 36 }).primaryKey().default(uuidDefault),
   userId:     varchar("user_id", { length: 36 }).notNull().references(() => users.id),
   documentId: varchar("document_id", { length: 36 }).notNull(),
@@ -218,7 +219,7 @@ export const insertDocumentRequestSchema = createInsertSchema(documentRequests).
 export type InsertDocumentRequest = z.infer<typeof insertDocumentRequestSchema>;
 export type DocumentRequest = typeof documentRequests.$inferSelect;
 
-export const documents = pgTable("documents", {
+export const documents = mysqlTable("documents", {
   id:              varchar("id", { length: 36 }).primaryKey().default(uuidDefault),
   title:           text("title").notNull(),
   docNo:           text("doc_no"),
@@ -229,7 +230,7 @@ export const documents = pgTable("documents", {
   content:         text("content"),
   fileUrl:         text("file_url"),
   filePath:        text("file_path"),
-  downloadedCount: integer("downloaded_count").notNull().default(0),
+  downloadedCount: int("downloaded_count").notNull().default(0),
   accessLevel:     varchar("access_level", { length: 20 }).notNull().default("terbuka"),
   publishedAt:     timestamp("published_at"),
   status:          varchar("status", { length: 20 }).notNull().default("draft"),
@@ -243,13 +244,13 @@ export type InsertDocument = z.infer<typeof insertDocumentSchema>;
 export type Document = typeof documents.$inferSelect;
 
 // ─── Research Permit ──────────────────────────────────────────────────────────
-export const requestSequences = pgTable("request_sequences", {
+export const requestSequences = mysqlTable("request_sequences", {
   id:      varchar("id", { length: 36 }).primaryKey().default(uuidDefault),
-  year:    integer("year").notNull(),
-  lastSeq: integer("last_seq").notNull().default(0),
+  year:    int("year").notNull(),
+  lastSeq: int("last_seq").notNull().default(0),
 });
 
-export const researchPermitRequests = pgTable("research_permit_requests", {
+export const researchPermitRequests = mysqlTable("research_permit_requests", {
   id:              varchar("id", { length: 36 }).primaryKey().default(uuidDefault),
   requestNumber:   varchar("request_number", { length: 64 }).notNull().unique(),
   email:           varchar("email", { length: 191 }).notNull(),
@@ -279,6 +280,7 @@ export const researchPermitRequests = pgTable("research_permit_requests", {
   fileSurvey:      text("file_survey"),
   agreementFinalReport: boolean("agreement_final_report").notNull().default(false),
   isSurvei:        boolean("is_survei").notNull().default(false),
+  isSendData:      boolean("is_send_data").notNull().default(false),
   status:          varchar("status", { length: 30 }).notNull().default("submitted"),
   reviewNote:      text("review_note"),
   processedBy:     varchar("processed_by", { length: 36 }).references(() => users.id),
@@ -289,12 +291,12 @@ export const researchPermitRequests = pgTable("research_permit_requests", {
 
 export const insertResearchPermitSchema = createInsertSchema(researchPermitRequests).omit({
   id: true, requestNumber: true, status: true, reviewNote: true,
-  processedBy: true, deletedAt: true, createdAt: true, updatedAt: true,
+  processedBy: true, deletedAt: true, createdAt: true, updatedAt: true, isSendData: true,
 });
 export type InsertResearchPermit = z.infer<typeof insertResearchPermitSchema>;
 export type ResearchPermit = typeof researchPermitRequests.$inferSelect;
 
-export const permitStatusHistories = pgTable("permit_status_histories", {
+export const permitStatusHistories = mysqlTable("permit_status_histories", {
   id:         varchar("id", { length: 36 }).primaryKey().default(uuidDefault),
   permitId:   varchar("permit_id", { length: 36 }).notNull().references(() => researchPermitRequests.id),
   fromStatus: varchar("from_status", { length: 30 }),
@@ -307,7 +309,7 @@ export const permitStatusHistories = pgTable("permit_status_histories", {
 // ─── Letter Templates & Generated Letters ─────────────────────────────────────
 export const templateCategoryValues = ["surat_izin", "rekomendasi"] as const;
 
-export const letterTemplates = pgTable("letter_templates", {
+export const letterTemplates = mysqlTable("letter_templates", {
   id:               varchar("id", { length: 36 }).primaryKey().default(uuidDefault),
   name:             text("name").notNull(),
   type:             text("type"),
@@ -321,13 +323,14 @@ export const letterTemplates = pgTable("letter_templates", {
   city:             text("city"),
   tembusan:         text("tembusan"),
   kepada:           text("kepada"),
+  deletedAt:        timestamp("deleted_at"),
   createdBy:        varchar("created_by", { length: 36 }).references(() => users.id),
   updatedBy:        varchar("updated_by", { length: 36 }).references(() => users.id),
   createdAt:        timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
   updatedAt:        timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`),
 });
 
-export const generatedLetters = pgTable("generated_letters", {
+export const generatedLetters = mysqlTable("generated_letters", {
   id:           varchar("id", { length: 36 }).primaryKey().default(uuidDefault),
   permitId:     varchar("permit_id", { length: 36 }).notNull().references(() => researchPermitRequests.id),
   templateId:   varchar("template_id", { length: 36 }).references(() => letterTemplates.id),
@@ -345,19 +348,20 @@ export const generatedLetters = pgTable("generated_letters", {
   createdAt:    timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
 });
 
-export const letterTemplateFiles = pgTable("letter_template_files", {
+export const letterTemplateFiles = mysqlTable("letter_template_files", {
   id:         varchar("id", { length: 36 }).primaryKey().default(uuidDefault),
   templateId: varchar("template_id", { length: 36 }).notNull().references(() => letterTemplates.id),
   fileUrl:    text("file_url").notNull(),
   filePath:   text("file_path").notNull(),
   fileName:   varchar("file_name", { length: 191 }).notNull(),
   mimeType:   varchar("mime_type", { length: 100 }),
-  fileSize:   integer("file_size"),
+  fileSize:   int("file_size"),
+  deletedAt:  timestamp("deleted_at"),
   createdAt:  timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
 });
 
 // ─── Final Reports ────────────────────────────────────────────────────────────
-export const finalReports = pgTable("final_reports", {
+export const finalReports = mysqlTable("final_reports", {
   id:              varchar("id", { length: 36 }).primaryKey().default(uuidDefault),
   name:            text("name"),
   email:           text("email"),
@@ -365,6 +369,7 @@ export const finalReports = pgTable("final_reports", {
   permitRequestId: varchar("permit_request_id", { length: 36 }).references(() => researchPermitRequests.id),
   fileUrl:         text("file_url"),
   suggestion:      text("suggestion"),
+  deletedAt:       timestamp("deleted_at"),
   createdAt:       timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
 });
 
@@ -372,45 +377,47 @@ export type FinalReport = typeof finalReports.$inferSelect;
 export type InsertFinalReport = typeof finalReports.$inferInsert;
 
 // ─── Suggestion Box ───────────────────────────────────────────────────────────
-export const suggestionBox = pgTable("suggestion_box", {
+export const suggestionBox = mysqlTable("suggestion_box", {
   id:        varchar("id", { length: 36 }).primaryKey().default(uuidDefault),
   name:      text("name"),
   email:     text("email"),
   message:   text("message").notNull(),
+  deletedAt: timestamp("deleted_at"),
   createdAt: timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
 });
 
-export const insertSuggestionSchema = createInsertSchema(suggestionBox).omit({ id: true, createdAt: true });
+export const insertSuggestionSchema = createInsertSchema(suggestionBox).omit({ id: true, createdAt: true, deletedAt: true });
 export type InsertSuggestion = z.infer<typeof insertSuggestionSchema>;
 export type Suggestion = typeof suggestionBox.$inferSelect;
 
 // ─── Surveys ──────────────────────────────────────────────────────────────────
-export const surveys = pgTable("surveys", {
+export const surveys = mysqlTable("surveys", {
   id:            varchar("id", { length: 36 }).primaryKey().default(uuidDefault),
   respondentName: text("respondent_name"),
-  age:           integer("age"),
+  age:           int("age"),
   gender:        varchar("gender", { length: 20 }),
   education:     text("education"),
   occupation:    text("occupation"),
-  q1:            integer("q1"),
-  q2:            integer("q2"),
-  q3:            integer("q3"),
-  q4:            integer("q4"),
-  q5:            integer("q5"),
-  q6:            integer("q6"),
-  q7:            integer("q7"),
-  q8:            integer("q8"),
-  q9:            integer("q9"),
+  q1:            int("q1"),
+  q2:            int("q2"),
+  q3:            int("q3"),
+  q4:            int("q4"),
+  q5:            int("q5"),
+  q6:            int("q6"),
+  q7:            int("q7"),
+  q8:            int("q8"),
+  q9:            int("q9"),
   suggestion:    text("suggestion"),
+  deletedAt:     timestamp("deleted_at"),
   createdAt:     timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
 });
 
-export const insertSurveySchema = createInsertSchema(surveys).omit({ id: true, createdAt: true });
+export const insertSurveySchema = createInsertSchema(surveys).omit({ id: true, createdAt: true, deletedAt: true });
 export type InsertSurvey = z.infer<typeof insertSurveySchema>;
 export type Survey = typeof surveys.$inferSelect;
 
 // ─── PPID ────────────────────────────────────────────────────────────────────
-export const ppidObjections = pgTable("ppid_objections", {
+export const ppidObjections = mysqlTable("ppid_objections", {
   id:               varchar("id", { length: 36 }).primaryKey().default(uuidDefault),
   requestCode:      varchar("request_code", { length: 50 }),
   fullName:         text("full_name").notNull(),
@@ -429,17 +436,18 @@ export const ppidObjections = pgTable("ppid_objections", {
   reviewNote:       text("review_note"),
   processedBy:      varchar("processed_by", { length: 36 }).references(() => users.id),
   processedAt:      timestamp("processed_at"),
+  deletedAt:        timestamp("deleted_at"),
   createdAt:        timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
   updatedAt:        timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`),
 });
 
 export const insertPpidObjectionSchema = createInsertSchema(ppidObjections).omit({
-  id: true, status: true, reviewNote: true, processedBy: true, processedAt: true, createdAt: true, updatedAt: true,
+  id: true, status: true, reviewNote: true, processedBy: true, processedAt: true, createdAt: true, updatedAt: true, deletedAt: true,
 });
 export type InsertPpidObjection = z.infer<typeof insertPpidObjectionSchema>;
 export type PpidObjection = typeof ppidObjections.$inferSelect;
 
-export const ppidInformationRequests = pgTable("ppid_information_requests", {
+export const ppidInformationRequests = mysqlTable("ppid_information_requests", {
   id:                varchar("id", { length: 36 }).primaryKey().default(uuidDefault),
   token:             varchar("token", { length: 16 }),
   fullName:          text("full_name").notNull(),
@@ -457,18 +465,19 @@ export const ppidInformationRequests = pgTable("ppid_information_requests", {
   responseFileUrl:   text("response_file_url"),
   processedBy:       varchar("processed_by", { length: 36 }).references(() => users.id),
   processedAt:       timestamp("processed_at"),
+  deletedAt:         timestamp("deleted_at"),
   createdAt:         timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
   updatedAt:         timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`),
 });
 
 export const insertPpidInfoRequestSchema = createInsertSchema(ppidInformationRequests).omit({
-  id: true, status: true, reviewNote: true, processedBy: true, processedAt: true, createdAt: true, updatedAt: true,
+  id: true, status: true, reviewNote: true, processedBy: true, processedAt: true, createdAt: true, updatedAt: true, deletedAt: true,
 });
 export type InsertPpidInfoRequest = z.infer<typeof insertPpidInfoRequestSchema>;
 export type PpidInfoRequest = typeof ppidInformationRequests.$inferSelect;
 
 // ─── Audit Logs ───────────────────────────────────────────────────────────────
-export const auditLogs = pgTable("audit_logs", {
+export const auditLogs = mysqlTable("audit_logs", {
   id:        varchar("id", { length: 36 }).primaryKey().default(uuidDefault),
   userId:    varchar("user_id", { length: 36 }).references(() => users.id),
   action:    text("action").notNull(),
@@ -483,7 +492,7 @@ export const notificationTypeValues = [
   "new_permit", "new_info_request", "new_objection", "new_final_report", "permit_status", "new_survey",
 ] as const;
 
-export const notifications = pgTable("notifications", {
+export const notifications = mysqlTable("notifications", {
   id:           varchar("id", { length: 36 }).primaryKey().default(uuidDefault),
   type:         varchar("type", { length: 50 }).notNull(),
   title:        varchar("title", { length: 255 }).notNull(),
@@ -494,11 +503,12 @@ export const notifications = pgTable("notifications", {
   isRead:       boolean("is_read").notNull().default(false),
   readBy:       text("read_by"),
   targetUserId: text("target_user_id"),
+  deletedAt:    timestamp("deleted_at"),
   createdAt:    timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
 });
 export type Notification = typeof notifications.$inferSelect;
 
-export const refreshTokens = pgTable("refresh_tokens", {
+export const refreshTokens = mysqlTable("refresh_tokens", {
   id:        varchar("id", { length: 36 }).primaryKey().default(uuidDefault),
   userId:    varchar("user_id", { length: 36 }).notNull().references(() => users.id, { onDelete: "cascade" }),
   token:     varchar("token", { length: 255 }).notNull().unique(),

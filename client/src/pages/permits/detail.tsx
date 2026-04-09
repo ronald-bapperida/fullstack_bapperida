@@ -689,6 +689,32 @@ export default function PermitDetailPage() {
     onError: (e: any) => toast({ title: "Error", description: e.message, variant: "destructive" }),
   });
 
+  const sendPickupEmailMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/admin/permits/${permitId}/send-email-pickup`);
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/admin/permits/${permitId}`] });
+      toast({ title: "Email terkirim", description: "Notifikasi ambil surat berhasil dikirim ke pemohon." });
+    },
+    onError: (e: any) => toast({ title: "Gagal kirim email", description: e.message, variant: "destructive" }),
+  });
+
+  const sendCheckStatusEmailMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", `/api/admin/permits/${permitId}/send-email-check-status`);
+      if (!res.ok) throw new Error(await res.text());
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: [`/api/admin/permits/${permitId}`] });
+      toast({ title: "Email terkirim", description: "Notifikasi cek status web berhasil dikirim ke pemohon." });
+    },
+    onError: (e: any) => toast({ title: "Gagal kirim email", description: e.message, variant: "destructive" }),
+  });
+
   if (isLoading)
     return (
       <div className="flex flex-col gap-6 p-6">
@@ -812,6 +838,38 @@ export default function PermitDetailPage() {
                 </>
               ) : (
                 <p className="text-sm text-muted-foreground text-center py-4">Status sudah final</p>
+              )}
+
+              {/* Tombol notifikasi email — tampil hanya saat status generated_letter */}
+              {permit?.status === "generated_letter" && (
+                <div className="flex flex-col gap-2 pt-2 border-t">
+                  <Label className="text-xs text-muted-foreground uppercase tracking-wide">Notifikasi Email Pemohon</Label>
+                  {permit.isSendData && (
+                    <p className="text-xs text-green-600 font-medium flex items-center gap-1">
+                      <Mail className="w-3 h-3" /> Email sudah pernah dikirim
+                    </p>
+                  )}
+                  <Button
+                    variant="outline"
+                    className="w-full justify-start gap-2 text-blue-700 border-blue-300 hover:bg-blue-50"
+                    onClick={() => sendPickupEmailMutation.mutate()}
+                    disabled={sendPickupEmailMutation.isPending}
+                    data-testid="button-send-email-pickup"
+                  >
+                    <Mail className="w-4 h-4" />
+                    {sendPickupEmailMutation.isPending ? "Mengirim..." : "Kirim Email: Ambil Surat di Kantor"}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    className="w-full justify-start gap-2 text-green-700 border-green-300 hover:bg-green-50"
+                    onClick={() => sendCheckStatusEmailMutation.mutate()}
+                    disabled={sendCheckStatusEmailMutation.isPending}
+                    data-testid="button-send-email-check-status"
+                  >
+                    <Mail className="w-4 h-4" />
+                    {sendCheckStatusEmailMutation.isPending ? "Mengirim..." : "Kirim Email: Cek Status di Web App"}
+                  </Button>
+                </div>
               )}
             </CardContent>
           </Card>

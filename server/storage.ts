@@ -277,7 +277,7 @@ export class DatabaseStorage implements IStorage {
     return insertAndGet<User>(schema.users, schema.users.id, user);
   }
   async listUsers() {
-    return db.select().from(schema.users).orderBy(desc(schema.users.createdAt));
+    return db.select().from(schema.users).where(isNull(schema.users.deletedAt)).orderBy(desc(schema.users.createdAt));
   }
   async updateUser(id: string, data: Partial<InsertUser>) {
     return updateAndGet<User>(schema.users, schema.users.id, id, { ...data, updatedAt: new Date() });
@@ -833,7 +833,7 @@ export class DatabaseStorage implements IStorage {
 
   // ── Letter Templates ────────────────────────────────────────────────────────
   async listTemplates() {
-    return db.select().from(schema.letterTemplates).orderBy(desc(schema.letterTemplates.createdAt));
+    return db.select().from(schema.letterTemplates).where(isNull(schema.letterTemplates.deletedAt)).orderBy(desc(schema.letterTemplates.createdAt));
   }
 
   async getTemplate(id: string) {
@@ -851,10 +851,12 @@ export class DatabaseStorage implements IStorage {
 
   async deleteTemplate(id: string) {
     await db
-      .delete(schema.letterTemplateFiles)
+      .update(schema.letterTemplateFiles)
+      .set({ deletedAt: new Date() })
       .where(eq(schema.letterTemplateFiles.templateId, id));
     await db
-      .delete(schema.letterTemplates)
+      .update(schema.letterTemplates)
+      .set({ deletedAt: new Date() })
       .where(eq(schema.letterTemplates.id, id));
   }
 
@@ -888,7 +890,7 @@ export class DatabaseStorage implements IStorage {
     return db
       .select()
       .from(schema.letterTemplateFiles)
-      .where(eq(schema.letterTemplateFiles.templateId, templateId));
+      .where(and(eq(schema.letterTemplateFiles.templateId, templateId), isNull(schema.letterTemplateFiles.deletedAt)));
   }
 
   // ── Generated Letters ───────────────────────────────────────────────────────
@@ -934,8 +936,8 @@ export class DatabaseStorage implements IStorage {
     const { page = 1, limit = 10 } = opts;
     const offset = (page - 1) * limit;
 
-    const [{ count }] = await db.select({ count: sql<number>`count(*)` }).from(schema.surveys);
-    const items = await db.select().from(schema.surveys).orderBy(desc(schema.surveys.createdAt)).limit(limit).offset(offset);
+    const [{ count }] = await db.select({ count: sql<number>`count(*)` }).from(schema.surveys).where(isNull(schema.surveys.deletedAt));
+    const items = await db.select().from(schema.surveys).where(isNull(schema.surveys.deletedAt)).orderBy(desc(schema.surveys.createdAt)).limit(limit).offset(offset);
 
     return { items, total: Number(count) };
   }
@@ -949,8 +951,8 @@ export class DatabaseStorage implements IStorage {
     const { page = 1, limit = 10 } = opts;
     const offset = (page - 1) * limit;
 
-    const [{ count }] = await db.select({ count: sql<number>`count(*)` }).from(schema.finalReports);
-    const items = await db.select().from(schema.finalReports).orderBy(desc(schema.finalReports.createdAt)).limit(limit).offset(offset);
+    const [{ count }] = await db.select({ count: sql<number>`count(*)` }).from(schema.finalReports).where(isNull(schema.finalReports.deletedAt));
+    const items = await db.select().from(schema.finalReports).where(isNull(schema.finalReports.deletedAt)).orderBy(desc(schema.finalReports.createdAt)).limit(limit).offset(offset);
 
     return { items, total: Number(count) };
   }
@@ -964,8 +966,8 @@ export class DatabaseStorage implements IStorage {
     const { page = 1, limit = 10 } = opts;
     const offset = (page - 1) * limit;
 
-    const [{ count }] = await db.select({ count: sql<number>`count(*)` }).from(schema.suggestionBox);
-    const items = await db.select().from(schema.suggestionBox).orderBy(desc(schema.suggestionBox.createdAt)).limit(limit).offset(offset);
+    const [{ count }] = await db.select({ count: sql<number>`count(*)` }).from(schema.suggestionBox).where(isNull(schema.suggestionBox.deletedAt));
+    const items = await db.select().from(schema.suggestionBox).where(isNull(schema.suggestionBox.deletedAt)).orderBy(desc(schema.suggestionBox.createdAt)).limit(limit).offset(offset);
 
     return { items, total: Number(count) };
   }
@@ -1108,11 +1110,11 @@ export class DatabaseStorage implements IStorage {
   
   async getAvailableYears(): Promise<number[]> {
     const rows = await db
-      .select({ year: sql<number>`EXTRACT(YEAR FROM ${schema.researchPermitRequests.createdAt})` })
+      .select({ year: sql<number>`YEAR(${schema.researchPermitRequests.createdAt})` })
       .from(schema.researchPermitRequests)
       .where(isNull(schema.researchPermitRequests.deletedAt))
-      .groupBy(sql`EXTRACT(YEAR FROM ${schema.researchPermitRequests.createdAt})`)
-      .orderBy(sql`EXTRACT(YEAR FROM ${schema.researchPermitRequests.createdAt})`);
+      .groupBy(sql`YEAR(${schema.researchPermitRequests.createdAt})`)
+      .orderBy(sql`YEAR(${schema.researchPermitRequests.createdAt})`);
     const years = rows.map(r => Number(r.year)).filter(y => !isNaN(y));
     const currentYear = new Date().getFullYear();
     if (!years.includes(currentYear)) years.push(currentYear);
@@ -1126,7 +1128,7 @@ export class DatabaseStorage implements IStorage {
 
     const rows = await db
       .select({
-        month: sql<number>`EXTRACT(MONTH FROM ${schema.researchPermitRequests.createdAt})`,
+        month: sql<number>`MONTH(${schema.researchPermitRequests.createdAt})`,
         status: schema.researchPermitRequests.status,
         count: sql<number>`count(*)`,
       })
@@ -1137,7 +1139,7 @@ export class DatabaseStorage implements IStorage {
           sql`${schema.researchPermitRequests.createdAt} BETWEEN ${startDate} AND ${endDate}`
         )
       )
-      .groupBy(sql`EXTRACT(MONTH FROM ${schema.researchPermitRequests.createdAt})`, schema.researchPermitRequests.status);
+      .groupBy(sql`MONTH(${schema.researchPermitRequests.createdAt})`, schema.researchPermitRequests.status);
 
     const result = monthNames.map((name, i) => {
       const monthNum = i + 1;
@@ -1247,6 +1249,10 @@ export class DatabaseStorage implements IStorage {
   //   };
   // }
 
+  async getSurveySatisfactionStats(year?: number): Promise<any> {
+    return { total_responses: 0, satisfaction_rate: 0, categories: [], monthly_trend: [] };
+  }
+
   // ── PPID Keberatan ──────────────────────────────────────────────────────────
   async createPpidObjection(data: any) {
     return insertAndGet<any>(schema.ppidObjections, schema.ppidObjections.id, data);
@@ -1268,12 +1274,12 @@ export class DatabaseStorage implements IStorage {
     const where = conditions.length > 0 ? and(...conditions) : undefined;
     const [items, [{ count }]] = await Promise.all([
       db.select().from(schema.ppidObjections)
-        .where(where)
+        .where(where ? and(where, isNull(schema.ppidObjections.deletedAt)) : isNull(schema.ppidObjections.deletedAt))
         .orderBy(desc(schema.ppidObjections.createdAt))
         .limit(limit).offset(offset),
-      db.select({ count: sql<number>`count(*)::int` }).from(schema.ppidObjections).where(where),
+      db.select({ count: sql<number>`count(*)` }).from(schema.ppidObjections).where(where ? and(where, isNull(schema.ppidObjections.deletedAt)) : isNull(schema.ppidObjections.deletedAt)),
     ]);
-    return { items, total: count };
+    return { items, total: Number(count) };
   }
 
   async getPpidObjection(id: string) {
@@ -1309,12 +1315,12 @@ export class DatabaseStorage implements IStorage {
     const where = conditions.length > 0 ? and(...conditions) : undefined;
     const [items, [{ count }]] = await Promise.all([
       db.select().from(schema.ppidInformationRequests)
-        .where(where)
+        .where(where ? and(where, isNull(schema.ppidInformationRequests.deletedAt)) : isNull(schema.ppidInformationRequests.deletedAt))
         .orderBy(desc(schema.ppidInformationRequests.createdAt))
         .limit(limit).offset(offset),
-      db.select({ count: sql<number>`count(*)::int` }).from(schema.ppidInformationRequests).where(where),
+      db.select({ count: sql<number>`count(*)` }).from(schema.ppidInformationRequests).where(where ? and(where, isNull(schema.ppidInformationRequests.deletedAt)) : isNull(schema.ppidInformationRequests.deletedAt)),
     ]);
-    return { items, total: count };
+    return { items, total: Number(count) };
   }
 
   async getPpidInfoRequest(id: string) {
@@ -1408,10 +1414,10 @@ export class DatabaseStorage implements IStorage {
   }
 
   async getRefreshToken(token: string) {
-    const rows = await db.execute(sql`
+    const [rows] = await db.execute(sql`
       SELECT * FROM refresh_tokens WHERE token = ${token} LIMIT 1
     `);
-    return rows.rows[0] || null;
+    return (rows as any)[0] || null;
   }
 
   async revokeRefreshToken(token: string) {

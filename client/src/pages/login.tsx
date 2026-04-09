@@ -10,6 +10,7 @@ import { Alert, AlertDescription } from "@/components/ui/alert";
 import { LogIn, Eye, EyeOff } from "lucide-react";
 import { Link } from "wouter";
 import logoBapperida from "@assets/logo_bapperida_1771921692764.png";
+import logoPpid from "@assets/LOGO_PPID_MERAH_1775711463015.png";
 
 export default function LoginPage() {
   const [, setLoc] = useLocation();
@@ -39,12 +40,17 @@ export default function LoginPage() {
     <div className="min-h-screen bg-background flex items-center justify-center p-4">
       <div className="w-full max-w-sm">
         <div className="flex flex-col items-center gap-4 mb-8">
-          <div className="flex items-center justify-center rounded-xl text-primary-foreground shadow-lg">
-            {/* <Building2 className="w-8 h-8" /> */}
+          <div className="flex items-center justify-center gap-4 rounded-xl text-primary-foreground">
             <img
               src={logoBapperida}
               alt="Logo BAPPERIDA"
-              className="object-contain shrink-0"
+              className="h-16 object-contain shrink-0"
+            />
+            <div className="w-px h-12 bg-border" />
+            <img
+              src={logoPpid}
+              alt="Logo PPID"
+              className="h-14 object-contain shrink-0"
             />
           </div>
           <div className="text-center">

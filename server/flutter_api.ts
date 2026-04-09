@@ -1580,13 +1580,13 @@ export function registerFlutterApiRoutes(app: express.Express) {
       const offset = (page - 1) * limit;
       const userId = req.user.id as string;
 
-      // Query notifications where targetRole is 'user' or 'all'
+      // Query notifications where targetUserId matches user OR is broadcast to 'all'
       // Sort newest first; only return undeleted records
       const items = await drizzleDb
         .select()
         .from(schema.notifications)
         .where(
-          sql`${schema.notifications.targetUserId} = ${userId}`
+          sql`(${schema.notifications.targetUserId} = ${userId} OR ${schema.notifications.targetUserId} = 'all')`
         )
         .orderBy(desc(schema.notifications.createdAt))
         .limit(limit)

@@ -12,6 +12,8 @@ import {
   sendPermitSubmittedEmail,
   sendPermitStatusEmail,
   sendPermitLetterEmail,
+  sendPermitPickupEmail,
+  sendPermitCheckStatusEmail,
   sendPpidInfoRequestConfirmation,
   sendPpidInfoRequestReply,
 } from "./email";
@@ -2109,6 +2111,60 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return res.json({ ok: true });
       } catch (e: any) {
         console.error("Send letter email error:", e);
+        return res.status(500).json({ error: e.message });
+      }
+    }
+  );
+
+  // Kirim email notifikasi: silahkan ambil surat cap basah di kantor
+  app.post(
+    "/api/admin/permits/:id/send-email-pickup",
+    authMiddleware,
+    requireRole("super_admin", "admin_bpp", "admin_rida"),
+    async (req: any, res) => {
+      try {
+        const permit = await db.getPermit(req.params.id);
+        if (!permit) return res.status(404).json({ error: "Permit tidak ditemukan" });
+        if (!permit.email) return res.status(400).json({ error: "Email pemohon kosong" });
+
+        await sendPermitPickupEmail({
+          to: permit.email,
+          fullName: permit.fullName,
+          requestNumber: permit.requestNumber,
+        });
+
+        await db.updatePermit(permit.id, { isSendData: true } as any);
+        return res.json({ ok: true, message: "Email notifikasi ambil surat berhasil dikirim" });
+      } catch (e: any) {
+        console.error("Send pickup email error:", e);
+        return res.status(500).json({ error: e.message });
+      }
+    }
+  );
+
+  // Kirim email notifikasi: silahkan cek status di web app
+  app.post(
+    "/api/admin/permits/:id/send-email-check-status",
+    authMiddleware,
+    requireRole("super_admin", "admin_bpp", "admin_rida"),
+    async (req: any, res) => {
+      try {
+        const permit = await db.getPermit(req.params.id);
+        if (!permit) return res.status(404).json({ error: "Permit tidak ditemukan" });
+        if (!permit.email) return res.status(400).json({ error: "Email pemohon kosong" });
+
+        const webUrl = process.env.WEB_APP_URL || `https://${req.get("host")}`;
+        await sendPermitCheckStatusEmail({
+          to: permit.email,
+          fullName: permit.fullName,
+          requestNumber: permit.requestNumber,
+          webUrl,
+        });
+
+        await db.updatePermit(permit.id, { isSendData: true } as any);
+        return res.json({ ok: true, message: "Email notifikasi cek status berhasil dikirim" });
+      } catch (e: any) {
+        console.error("Send check-status email error:", e);
         return res.status(500).json({ error: e.message });
       }
     }
