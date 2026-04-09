@@ -1,11 +1,12 @@
 import "dotenv/config";
 import mysql from "mysql2/promise";
 
-if (!process.env.DATABASE_URL) {
-  throw new Error("DATABASE_URL is missing");
+const mysqlUrl = process.env.MYSQL_URL || process.env.DATABASE_URL;
+if (!mysqlUrl) {
+  throw new Error("MYSQL_URL (or DATABASE_URL) is missing");
 }
 
-const pool = mysql.createPool(process.env.DATABASE_URL);
+const pool = mysql.createPool(mysqlUrl);
 
 async function columnExists(conn: mysql.PoolConnection, table: string, column: string): Promise<boolean> {
   const [rows] = await conn.query(

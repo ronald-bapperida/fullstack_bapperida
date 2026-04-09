@@ -50,6 +50,7 @@ HOST = "0.0.0.0"
 RUN_SEED = "true"
 SEED_ADMIN_PASSWORD = "Admin@123"
 VITE_TINYMCE_API_KEY = "n6orr52fyuwpmh2yqlhh3ng0nqd9lwauyg0jowt7vr4twq5g"
+MYSQL_URL = "mysql://root:simple159@127.0.0.1:3306/bapperida_db"
 
 [agent]
 expertMode = true

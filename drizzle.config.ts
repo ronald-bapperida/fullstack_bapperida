@@ -1,7 +1,8 @@
 import { defineConfig } from "drizzle-kit";
 
-if (!process.env.DATABASE_URL) {
-  throw new Error("DATABASE_URL is missing, ensure the database is provisioned");
+const mysqlUrl = process.env.MYSQL_URL || process.env.DATABASE_URL;
+if (!mysqlUrl) {
+  throw new Error("MYSQL_URL (or DATABASE_URL) is missing, ensure the database is provisioned");
 }
 
 export default defineConfig({
@@ -9,6 +10,6 @@ export default defineConfig({
   schema: "./shared/schema.ts",
   dialect: "mysql",
   dbCredentials: {
-    url: process.env.DATABASE_URL,
+    url: mysqlUrl,
   },
 });
