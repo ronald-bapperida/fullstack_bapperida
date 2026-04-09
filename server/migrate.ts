@@ -115,7 +115,7 @@ export async function runMigrations() {
         mime_type TEXT NOT NULL,
         caption TEXT,
         is_main TINYINT(1) NOT NULL DEFAULT 0,
-        type TEXT NOT NULL DEFAULT 'image',
+        type VARCHAR(20) NOT NULL DEFAULT 'image',
         insert_after_paragraph INT DEFAULT 0,
         sort_order INT DEFAULT 0,
         deleted_at TIMESTAMP NULL,

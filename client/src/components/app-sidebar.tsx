@@ -29,8 +29,8 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import logoBapperida from "@assets/logo_bapperida_1771921692764.png";
-import logoKalteng from "@assets/logo_1771921695925.png";
+import logoBapperida from "@assets/logo_bapperida.png";
+import logoKalteng from "@assets/logo_kalteng.png";
 
 const ROLE_LABELS: Record<string, string> = {
   super_admin: "Super Admin",
@@ -211,20 +211,21 @@ export function AppSidebar() {
       <Sidebar>
         <SidebarHeader className="px-3 py-3">
           <div className="flex items-center gap-2">
-            <img
+            {/* <img
               src={logoKalteng}
               alt="Logo Kalimantan Tengah"
               className="w-10 h-10 object-contain shrink-0"
+            /> */}
+            <img
+              src={logoBapperida}
+              alt="Logo BAPPERIDA"
+              className="w-24 h-12 object-contain shrink-0"
             />
             <div className="flex flex-col min-w-0 flex-1">
               <span className="text-xs font-bold leading-tight">BAPPERIDA</span>
               <span className="text-[10px] text-muted-foreground leading-tight">Kalimantan Tengah</span>
             </div>
-            <img
-              src={logoBapperida}
-              alt="Logo BAPPERIDA"
-              className="w-14 h-10 object-contain shrink-0"
-            />
+            
           </div>
         </SidebarHeader>
 

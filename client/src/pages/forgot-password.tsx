@@ -7,7 +7,7 @@ import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { ArrowLeft, KeyRound, MailCheck, RefreshCcw } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
-import logoBapperida from "@assets/logo_bapperida_1771921692764.png";
+import logoBapperida from "@assets/logo_bapperida.png";
 import { useToast } from "@/hooks/use-toast";
 
 type Step = "email" | "otp" | "reset" | "done";

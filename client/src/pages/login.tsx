@@ -9,8 +9,9 @@ import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
 import { LogIn, Eye, EyeOff } from "lucide-react";
 import { Link } from "wouter";
-import logoBapperida from "@assets/logo_bapperida_1771921692764.png";
-import logoPpid from "@assets/LOGO_PPID_MERAH_1775711463015.png";
+import logoBapperida from "@assets/logo_bapperida.png";
+import logoPpid from "@assets/logo_ppid.png";
+import logoKalteng from "@assets/logo_kalteng.png";
 
 export default function LoginPage() {
   const [, setLoc] = useLocation();
@@ -42,16 +43,16 @@ export default function LoginPage() {
         <div className="flex flex-col items-center gap-4 mb-8">
           <div className="flex items-center justify-center gap-4 rounded-xl text-primary-foreground">
             <img
+              src={logoKalteng}
+              alt="Logo Kalteng"
+              className="h-[120px] object-contain shrink-0"
+            />
+            <img
               src={logoBapperida}
               alt="Logo BAPPERIDA"
-              className="h-16 object-contain shrink-0"
+              className="h-[120px] object-contain shrink-0"
             />
             <div className="w-px h-12 bg-border" />
-            <img
-              src={logoPpid}
-              alt="Logo PPID"
-              className="h-14 object-contain shrink-0"
-            />
           </div>
           <div className="text-center">
             <h1 className="text-2xl font-bold tracking-tight">Portal Admin</h1>
