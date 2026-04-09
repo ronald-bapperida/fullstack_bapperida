@@ -253,35 +253,34 @@ export async function sendPermitLetterEmail(opts: {
       <tr><td>Nama Pemohon</td><td>${opts.fullName}</td></tr>
       <tr><td>Status</td><td><span class="status-pill" style="background:#d1fae5;color:#065f46;">✅ Surat Terkirim</span></td></tr>
     </table>
-    <p>📎 Terlampir file Surat Izin Penelitian resmi. Harap simpan surat ini dengan baik sebagai bukti persetujuan penelitian di wilayah Kalimantan Tengah.</p>
+    <p>Silahkan buka Website Surat Izin Penelitian BAPPERIDA resmi lalu cek status permohonan untuk download surat.</p>
     ${privacyNotice()}
     ${addressBlock()}
   `;
 
-  const attachments: MailAttachment[] = [];
+  // const attachments: MailAttachment[] = [];
 
   // Prioritas: PDF terlebih dahulu, fallback ke DOCX
-  if (opts.pdfBuffer && opts.pdfName) {
-    attachments.push({
-      filename: opts.pdfName,
-      content: opts.pdfBuffer,
-      contentType: "application/pdf",
-    });
-  } else if (fs.existsSync(opts.filePath)) {
-    attachments.push({
-      filename: opts.fileName,
-      content: fs.readFileSync(opts.filePath),
-      contentType: opts.fileName.endsWith(".pdf")
-        ? "application/pdf"
-        : "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
-    });
-  }
+  // if (opts.pdfBuffer && opts.pdfName) {
+  //   attachments.push({
+  //     filename: opts.pdfName,
+  //     content: opts.pdfBuffer,
+  //     contentType: "application/pdf",
+  //   });
+  // } else if (fs.existsSync(opts.filePath)) {
+  //   attachments.push({
+  //     filename: opts.fileName,
+  //     content: fs.readFileSync(opts.filePath),
+  //     contentType: opts.fileName.endsWith(".pdf")
+  //       ? "application/pdf"
+  //       : "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  //   });
+  // }
 
   return sendMail({
     to: opts.to,
     subject: `[BAPPERIDA] Surat Izin Penelitian Resmi — ${opts.requestNumber}`,
-    html: wrapHtml("Surat Izin Penelitian Resmi", body, "#065f46"),
-    attachments,
+    html: wrapHtml("Surat Izin Penelitian Resmi", body, "#065f46")
   });
 }
 

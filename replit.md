@@ -6,7 +6,7 @@ Admin panel untuk BAPPERIDA (Badan Perencanaan, Penelitian dan Pengembangan Daer
 ## Tech Stack
 - **Frontend**: React + TypeScript, Wouter (routing), TanStack Query, Shadcn UI, Tailwind CSS, **react-quill-new** (rich text editor)
 - **Node.js Backend**: Express.js + TypeScript, JWT Auth (port 5000 - serves React admin panel)
-- **Database**: **MySQL** + Drizzle ORM (`drizzle-orm/pg-core` + `pg`)
+- **Database**: **MySQL** + Drizzle ORM (`drizzle-orm/mysql-core` + `mysql2`)
 - **File Storage**: Local filesystem (`/uploads`)
 
 ## Architecture
@@ -25,11 +25,11 @@ Admin panel untuk BAPPERIDA (Badan Perencanaan, Penelitian dan Pengembangan Daer
 - **admin_rida**: RIDA modules (Research Permits, Surveys, Final Reports, Letter Templates, Suggestions)
 
 ## CRITICAL: Database Setup (MySQL)
-Aplikasi ini menggunakan **MySQL** via `drizzle-orm/pg-core` + `pg`.
-- **server/db.ts**: Menggunakan `pg.Pool` dan `drizzle` dari `drizzle-orm/node-postgres`
-- **shared/schema.ts**: Menggunakan `pgTable`, `pgEnum`, `integer` dari `drizzle-orm/pg-core`
-- **server/migrate.ts**: Manual migrations via `pg.Pool`, run on startup from `server/index.ts`
-- **drizzle.config.ts**: Menggunakan `dialect: "MySQL"`
+Aplikasi ini menggunakan **MySQL** via `drizzle-orm/mysql-core` + `mysql2`.
+- **server/db.ts**: Menggunakan `mysql2.createPool` dan `drizzle` dari `drizzle-orm/mysql2`
+- **shared/schema.ts**: Menggunakan `mysqlTable`, `mysqlEnum`, `int` dari `drizzle-orm/mysql-core`
+- **server/migrate.ts**: Manual migrations via `mysql2`, run on startup from `server/index.ts`
+- **drizzle.config.ts**: Menggunakan `dialect: "mysql"`
 - Set `DATABASE_URL` ke MySQL connection string (disediakan otomatis oleh Replit)
 - Untuk schema changes: tambahkan SQL migration ke array `MIGRATIONS` di `server/migrate.ts`
 - Migration otomatis berjalan saat startup via `runMigrations()` di `server/index.ts`
@@ -42,7 +42,7 @@ Aplikasi ini menggunakan **MySQL** via `drizzle-orm/pg-core` + `pg`.
 - **T002 (Notifications)**: Notifikasi dihasilkan saat submit survei IKM + laporan akhir; superadmin melihat semua notifikasi.
 - **T003 (Dashboard Chart - Year Only)**: Filter grafik dashboard kini hanya tahun (bulan dihapus); deskripsi chart updated ke "Tahun XXXX"; top news/dokumen diambil dari bulan terbaik sepanjang tahun.
 - **T004 (Export Date Range)**: Filter tanggal dari-sampai tersedia di card Export Data di dashboard; semua 6 endpoint export mendukung `?from=&to=` param; IKM surveys export juga ditambahkan.
-- **DB Migration to MySQL (Final)**: Fully migrated from `mysql2` to `pg` + `drizzle-orm/node-postgres`. `shared/schema.ts` now uses `pgTable`, `pgEnum`; `server/db.ts` uses `pg.Pool`; `server/migrate.ts` uses `pg`; MySQL-specific SQL functions (`YEAR()`, `MONTH()`) replaced with MySQL equivalents (`EXTRACT(YEAR FROM ...)`, `EXTRACT(MONTH FROM ...)`). MySQL server at `helium:3306` was permanently unavailable; MySQL at `helium:5432` is the active DB.
+- **DB Migration to MySQL (Final)**: Fully migrated to **MySQL**. `shared/schema.ts` now uses `mysqlTable`, `mysqlEnum`; `server/db.ts` uses `mysql2.createPool`; `server/migrate.ts` uses `mysql2`; MySQL-specific SQL functions (`YEAR()`, `MONTH()`) are used natively.
 - **Template Categories (T005)**: Added `category` field (surat_izin/rekomendasi) to template create/edit form and upload modal; category badge shown in template list (blue=Surat Izin, purple=Rekomendasi).
 - **Notifications**: Bell component in header with polling for unread count; CRUD at `/api/admin/notifications`.
 - **Permit Admin Fields (T004)**: `AdminLetterFieldsCard` in permit detail — issued letter number/date, recipient name/city, research start/end dates; PATCH endpoint `/api/admin/permits/:id/detail`.

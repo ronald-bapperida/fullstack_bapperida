@@ -1586,7 +1586,7 @@ export function registerFlutterApiRoutes(app: express.Express) {
         .select()
         .from(schema.notifications)
         .where(
-          sql`${schema.notifications.targetUserId} IS NULL OR ${schema.notifications.targetUserId} = ${userId}`
+          sql`${schema.notifications.targetUserId} = ${userId}`
         )
         .orderBy(desc(schema.notifications.createdAt))
         .limit(limit)
@@ -1608,6 +1608,7 @@ export function registerFlutterApiRoutes(app: express.Express) {
           resourceId:   n.resourceId,
           resourceType: n.resourceType,
           targetRole:   n.targetRole,
+          targetUserId: n.targetUserId,
           isRead:       readBy.includes(userId),
           createdAt:    n.createdAt,
         };

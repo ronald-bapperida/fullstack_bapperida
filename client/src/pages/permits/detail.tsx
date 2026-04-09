@@ -558,7 +558,7 @@ function LetterActionButtons({ permit, permitId }: { permit: any; permitId: stri
         </Tooltip>
 
         {/* Download PDF Button */}
-        {/* <Tooltip>
+        <Tooltip>
           <TooltipTrigger asChild>
             <Button 
               variant="outline" 
@@ -576,7 +576,7 @@ function LetterActionButtons({ permit, permitId }: { permit: any; permitId: stri
             </Button>
           </TooltipTrigger>
           <TooltipContent>Download file PDF</TooltipContent>
-        </Tooltip> */}
+        </Tooltip>
 
         {/* Download DOCX Button */}
         <Tooltip>
