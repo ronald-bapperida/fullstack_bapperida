@@ -13,7 +13,6 @@ import {
 import { FileQuestion, Search, ChevronLeft, ChevronRight, Eye, Trash2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { useLang } from "@/contexts/language";
-import { apiRequest } from "@/lib/queryClient";
 
 interface Requester {
   userId: string;
@@ -66,11 +65,11 @@ export default function DocumentRequestsPage() {
       return res.json();
     },
     onSuccess: () => {
-      toast({ title: "Berhasil", description: "Semua permohonan dokumen pemohon dihapus" });
+      toast({ title: t("success") || "Berhasil", description: t("docReqDeleteAllSuccess") });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/document-requests/grouped"] });
     },
     onError: (e: any) => {
-      toast({ title: "Gagal", description: e.message, variant: "destructive" });
+      toast({ title: t("error") || "Gagal", description: e.message, variant: "destructive" });
     },
   });
 
@@ -85,8 +84,8 @@ export default function DocumentRequestsPage() {
           <FileQuestion className="w-5 h-5 text-violet-600 dark:text-violet-400" />
         </div>
         <div>
-          <h1 className="text-xl font-bold">Permohonan Dokumen</h1>
-          <p className="text-sm text-muted-foreground">Daftar pemohon yang mengunduh dokumen</p>
+          <h1 className="text-xl font-bold">{t("docReqTitle")}</h1>
+          <p className="text-sm text-muted-foreground">{t("docReqSubtitle")}</p>
         </div>
       </div>
 
@@ -97,7 +96,7 @@ export default function DocumentRequestsPage() {
               <Search className="absolute left-2.5 top-2.5 w-4 h-4 text-muted-foreground" />
               <Input
                 className="pl-8 h-9 text-sm"
-                placeholder="Cari nama, email, atau no HP..."
+                placeholder={t("docReqSearchPlaceholder")}
                 value={search}
                 onChange={e => { setSearch(e.target.value); setPage(1); }}
                 data-testid="input-search-doc-requests"
@@ -105,7 +104,7 @@ export default function DocumentRequestsPage() {
             </div>
             {data && (
               <span className="text-xs text-muted-foreground ml-auto">
-                Total: <b>{total}</b> pemohon
+                {t("totalData") || "Total"}: <b>{total}</b> {t("docReqTotalRequesters")}
               </span>
             )}
           </div>
@@ -117,19 +116,19 @@ export default function DocumentRequestsPage() {
               {[...Array(5)].map((_, i) => <Skeleton key={i} className="h-14 w-full" />)}
             </div>
           ) : items.length === 0 ? (
-            <div className="text-center py-12 text-muted-foreground text-sm">Tidak ada data permohonan</div>
+            <div className="text-center py-12 text-muted-foreground text-sm">{t("docReqNoData")}</div>
           ) : (
             <div className="overflow-x-auto">
               <table className="w-full text-sm">
                 <thead className="bg-muted/40 border-b">
                   <tr>
                     <th className="px-4 py-3 text-left font-medium text-muted-foreground w-8">#</th>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Nama</th>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Email</th>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">No HP</th>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Dokumen</th>
-                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">Tanggal Pengajuan</th>
-                    <th className="px-4 py-3 text-right font-medium text-muted-foreground">Aksi</th>
+                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">{t("name") || "Nama"}</th>
+                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">{t("email") || "Email"}</th>
+                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">{t("phone") || "No HP"}</th>
+                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">{t("document") || "Dokumen"}</th>
+                    <th className="px-4 py-3 text-left font-medium text-muted-foreground">{t("requestDate") || "Tanggal Pengajuan"}</th>
+                    <th className="px-4 py-3 text-right font-medium text-muted-foreground">{t("action") || "Aksi"}</th>
                   </tr>
                 </thead>
                 <tbody>
@@ -147,7 +146,7 @@ export default function DocumentRequestsPage() {
                       <td className="px-4 py-3 text-muted-foreground">{item.phone || "–"}</td>
                       <td className="px-4 py-3">
                         <Badge variant="secondary" className="text-xs">
-                          {item.requestCount} dokumen
+                          {item.requestCount} {t("docReqDocumentCount")}
                         </Badge>
                       </td>
                       <td className="px-4 py-3 text-muted-foreground text-xs">
@@ -178,19 +177,20 @@ export default function DocumentRequestsPage() {
                             </AlertDialogTrigger>
                             <AlertDialogContent>
                               <AlertDialogHeader>
-                                <AlertDialogTitle>Hapus Semua Permohonan</AlertDialogTitle>
+                                <AlertDialogTitle>{t("docReqDeleteAll")}</AlertDialogTitle>
                                 <AlertDialogDescription>
-                                  Apakah Anda yakin ingin menghapus semua <b>{item.requestCount} permohonan dokumen</b> dari <b>{item.name}</b>?
-                                  Tindakan ini tidak dapat dibatalkan.
+                                  {t("docReqDeleteAllDesc")} <b>{item.name}</b>?{" "}
+                                  ({item.requestCount} {t("docReqDocumentCount")}).{" "}
+                                  {t("actionCannotBeUndone") || "Tindakan ini tidak dapat dibatalkan."}
                                 </AlertDialogDescription>
                               </AlertDialogHeader>
                               <AlertDialogFooter>
-                                <AlertDialogCancel>Batal</AlertDialogCancel>
+                                <AlertDialogCancel>{t("cancel") || "Batal"}</AlertDialogCancel>
                                 <AlertDialogAction
                                   onClick={() => deleteMutation.mutate(item.userId)}
                                   className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                                 >
-                                  Hapus Semua
+                                  {t("deleteAll") || "Hapus Semua"}
                                 </AlertDialogAction>
                               </AlertDialogFooter>
                             </AlertDialogContent>
@@ -207,7 +207,7 @@ export default function DocumentRequestsPage() {
           {totalPages > 1 && (
             <div className="flex items-center justify-between px-4 py-3 border-t text-sm">
               <span className="text-muted-foreground text-xs">
-                Halaman {page} dari {totalPages}
+                {t("page") || "Halaman"} {page} {t("of") || "dari"} {totalPages}
               </span>
               <div className="flex gap-1">
                 <Button size="sm" variant="outline" className="h-7 px-2" disabled={page <= 1} onClick={() => setPage(p => p - 1)} data-testid="button-prev-page">

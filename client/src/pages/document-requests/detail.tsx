@@ -10,6 +10,7 @@ import {
 } from "@/components/ui/alert-dialog";
 import { ArrowLeft, FileQuestion, ExternalLink, Trash2, User, Phone, Mail } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { useLang } from "@/contexts/language";
 
 interface DocEntry {
   requestId: string;
@@ -41,6 +42,7 @@ export default function DocumentRequestDetailPage() {
   const { userId } = useParams<{ userId: string }>();
   const [, navigate] = useLocation();
   const { toast } = useToast();
+  const { t } = useLang();
   const queryClient = useQueryClient();
 
   const { data, isLoading } = useQuery<DetailResult>({
@@ -67,12 +69,12 @@ export default function DocumentRequestDetailPage() {
       return res.json();
     },
     onSuccess: () => {
-      toast({ title: "Berhasil", description: "Permohonan dokumen dihapus" });
+      toast({ title: t("success") || "Berhasil", description: t("docReqDeleteSuccess") });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/document-requests/user", userId] });
       queryClient.invalidateQueries({ queryKey: ["/api/admin/document-requests/grouped"] });
     },
     onError: (e: any) => {
-      toast({ title: "Gagal", description: e.message, variant: "destructive" });
+      toast({ title: t("error") || "Gagal", description: e.message, variant: "destructive" });
     },
   });
 
@@ -89,7 +91,7 @@ export default function DocumentRequestDetailPage() {
           onClick={() => navigate("/document-requests")}
           data-testid="button-back"
         >
-          <ArrowLeft className="w-4 h-4" /> Kembali
+          <ArrowLeft className="w-4 h-4" /> {t("back") || "Kembali"}
         </Button>
       </div>
 
@@ -98,8 +100,8 @@ export default function DocumentRequestDetailPage() {
           <FileQuestion className="w-5 h-5 text-violet-600 dark:text-violet-400" />
         </div>
         <div>
-          <h1 className="text-xl font-bold">Detail Permohonan Dokumen</h1>
-          <p className="text-sm text-muted-foreground">Dokumen yang diunduh oleh pemohon</p>
+          <h1 className="text-xl font-bold">{t("docReqDetailTitle")}</h1>
+          <p className="text-sm text-muted-foreground">{t("docReqDetailSubtitle")}</p>
         </div>
       </div>
 
@@ -113,24 +115,24 @@ export default function DocumentRequestDetailPage() {
           <Card className="border-0 shadow-sm">
             <CardHeader className="pb-3">
               <CardTitle className="text-base flex items-center gap-2">
-                <User className="w-4 h-4 text-muted-foreground" /> Data Pemohon
+                <User className="w-4 h-4 text-muted-foreground" /> {t("docReqApplicantData")}
               </CardTitle>
             </CardHeader>
             <CardContent>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
-                  <p className="text-xs text-muted-foreground mb-1">Nama Lengkap</p>
+                  <p className="text-xs text-muted-foreground mb-1">{t("docReqFullName")}</p>
                   <p className="font-medium">{user?.name || "-"}</p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
-                    <Mail className="w-3 h-3" /> Email
+                    <Mail className="w-3 h-3" /> {t("email") || "Email"}
                   </p>
                   <p className="text-sm">{user?.email || "-"}</p>
                 </div>
                 <div>
                   <p className="text-xs text-muted-foreground mb-1 flex items-center gap-1">
-                    <Phone className="w-3 h-3" /> No HP
+                    <Phone className="w-3 h-3" /> {t("phone") || "No HP"}
                   </p>
                   <p className="text-sm">{user?.phone || "-"}</p>
                 </div>
@@ -142,27 +144,27 @@ export default function DocumentRequestDetailPage() {
             <CardHeader className="pb-3">
               <div className="flex items-center justify-between">
                 <CardTitle className="text-base">
-                  Dokumen yang Diunduh
-                  <Badge variant="secondary" className="ml-2 text-xs">{documents.length}</Badge>
+                  {t("docReqDocumentsList")}
+                  <Badge variant="secondary" className="ml-2 text-xs">{documents.length} {t("docReqDocumentCount")}</Badge>
                 </CardTitle>
               </div>
             </CardHeader>
             <CardContent className="p-0">
               {documents.length === 0 ? (
-                <div className="text-center py-10 text-muted-foreground text-sm">Tidak ada data dokumen</div>
+                <div className="text-center py-10 text-muted-foreground text-sm">{t("docReqNoDocuments")}</div>
               ) : (
                 <div className="overflow-x-auto">
                   <table className="w-full text-sm">
                     <thead className="bg-muted/40 border-b">
                       <tr>
                         <th className="px-4 py-3 text-left font-medium text-muted-foreground w-8">#</th>
-                        <th className="px-4 py-3 text-left font-medium text-muted-foreground">Nama Dokumen</th>
-                        <th className="px-4 py-3 text-left font-medium text-muted-foreground">Jenis</th>
-                        <th className="px-4 py-3 text-left font-medium text-muted-foreground">Kategori</th>
-                        <th className="px-4 py-3 text-left font-medium text-muted-foreground">Tipe</th>
-                        <th className="px-4 py-3 text-left font-medium text-muted-foreground">File</th>
-                        <th className="px-4 py-3 text-left font-medium text-muted-foreground">Tanggal</th>
-                        <th className="px-4 py-3 text-right font-medium text-muted-foreground">Aksi</th>
+                        <th className="px-4 py-3 text-left font-medium text-muted-foreground">{t("docReqDocumentName")}</th>
+                        <th className="px-4 py-3 text-left font-medium text-muted-foreground">{t("docReqKind")}</th>
+                        <th className="px-4 py-3 text-left font-medium text-muted-foreground">{t("docReqCategory")}</th>
+                        <th className="px-4 py-3 text-left font-medium text-muted-foreground">{t("docReqType")}</th>
+                        <th className="px-4 py-3 text-left font-medium text-muted-foreground">{t("docReqFile")}</th>
+                        <th className="px-4 py-3 text-left font-medium text-muted-foreground">{t("date") || "Tanggal"}</th>
+                        <th className="px-4 py-3 text-right font-medium text-muted-foreground">{t("action") || "Aksi"}</th>
                       </tr>
                     </thead>
                     <tbody>
@@ -176,23 +178,23 @@ export default function DocumentRequestDetailPage() {
                           <td className="px-4 py-3">
                             <p className="font-medium leading-tight line-clamp-2">{doc.documentTitle}</p>
                             {doc.purpose && (
-                              <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">Tujuan: {doc.purpose}</p>
+                              <p className="text-xs text-muted-foreground mt-0.5 line-clamp-1">{t("purpose") || "Tujuan"}: {doc.purpose}</p>
                             )}
                           </td>
                           <td className="px-4 py-3">
-                            {doc.kindName ? (
-                              <Badge variant="outline" className="text-xs">{doc.kindName}</Badge>
-                            ) : <span className="text-muted-foreground">–</span>}
+                            {doc.kindName
+                              ? <Badge variant="outline" className="text-xs">{doc.kindName}</Badge>
+                              : <span className="text-muted-foreground">–</span>}
                           </td>
                           <td className="px-4 py-3">
-                            {doc.categoryName ? (
-                              <Badge variant="secondary" className="text-xs">{doc.categoryName}</Badge>
-                            ) : <span className="text-muted-foreground">–</span>}
+                            {doc.categoryName
+                              ? <Badge variant="secondary" className="text-xs">{doc.categoryName}</Badge>
+                              : <span className="text-muted-foreground">–</span>}
                           </td>
                           <td className="px-4 py-3">
-                            {doc.typeName ? (
-                              <span className="text-xs text-muted-foreground">{doc.typeName}</span>
-                            ) : <span className="text-muted-foreground">–</span>}
+                            {doc.typeName
+                              ? <span className="text-xs text-muted-foreground">{doc.typeName}</span>
+                              : <span className="text-muted-foreground">–</span>}
                           </td>
                           <td className="px-4 py-3">
                             {doc.fileUrl ? (
@@ -203,7 +205,7 @@ export default function DocumentRequestDetailPage() {
                                 className="inline-flex items-center gap-1 text-xs text-blue-600 hover:underline"
                                 data-testid={`link-file-${doc.requestId}`}
                               >
-                                <ExternalLink className="w-3 h-3" /> Lihat File
+                                <ExternalLink className="w-3 h-3" /> {t("docReqViewFile")}
                               </a>
                             ) : <span className="text-muted-foreground text-xs">–</span>}
                           </td>
@@ -222,19 +224,19 @@ export default function DocumentRequestDetailPage() {
                               </AlertDialogTrigger>
                               <AlertDialogContent>
                                 <AlertDialogHeader>
-                                  <AlertDialogTitle>Hapus Permohonan</AlertDialogTitle>
+                                  <AlertDialogTitle>{t("docReqDeleteDoc")}</AlertDialogTitle>
                                   <AlertDialogDescription>
-                                    Apakah Anda yakin ingin menghapus permohonan dokumen <b>&quot;{doc.documentTitle}&quot;</b>?
-                                    Tindakan ini tidak dapat dibatalkan.
+                                    {t("docReqDeleteDocDesc")} <b>&quot;{doc.documentTitle}&quot;</b>?{" "}
+                                    {t("actionCannotBeUndone") || "Tindakan ini tidak dapat dibatalkan."}
                                   </AlertDialogDescription>
                                 </AlertDialogHeader>
                                 <AlertDialogFooter>
-                                  <AlertDialogCancel>Batal</AlertDialogCancel>
+                                  <AlertDialogCancel>{t("cancel") || "Batal"}</AlertDialogCancel>
                                   <AlertDialogAction
                                     onClick={() => deleteSingleMutation.mutate(doc.requestId)}
                                     className="bg-destructive text-destructive-foreground hover:bg-destructive/90"
                                   >
-                                    Hapus
+                                    {t("delete") || "Hapus"}
                                   </AlertDialogAction>
                                 </AlertDialogFooter>
                               </AlertDialogContent>

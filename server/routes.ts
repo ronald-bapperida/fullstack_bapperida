@@ -2272,14 +2272,27 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         if (!permit) return res.status(404).json({ error: "Permit tidak ditemukan" });
         if (!permit.email) return res.status(400).json({ error: "Email pemohon kosong" });
 
-        await sendPermitPickupEmail({
-          to: permit.email,
-          fullName: permit.fullName,
-          requestNumber: permit.requestNumber,
+        // Update isSendData & status history BEFORE sending email so DB is always updated
+        await db.updatePermit(permit.id, { isSendData: true } as any);
+        await db.addPermitStatusHistory({
+          permitId: permit.id,
+          fromStatus: permit.status as any,
+          toStatus: "sent",
+          note: "Notifikasi email dikirim: silakan ambil surat cap basah di kantor",
+          changedBy: req.user?.id,
         });
 
-        await db.updatePermit(permit.id, { isSendData: true } as any);
-        return res.json({ ok: true, message: "Email notifikasi ambil surat berhasil dikirim" });
+        try {
+          await sendPermitPickupEmail({
+            to: permit.email,
+            fullName: permit.fullName,
+            requestNumber: permit.requestNumber,
+          });
+        } catch (emailErr: any) {
+          console.warn("Pickup email send failed (non-fatal):", emailErr.message);
+        }
+
+        return res.json({ ok: true, message: "Notifikasi ambil surat berhasil dikirim" });
       } catch (e: any) {
         console.error("Send pickup email error:", e);
         return res.status(500).json({ error: e.message });
@@ -2298,16 +2311,29 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         if (!permit) return res.status(404).json({ error: "Permit tidak ditemukan" });
         if (!permit.email) return res.status(400).json({ error: "Email pemohon kosong" });
 
-        const webUrl = process.env.WEB_APP_URL || `https://${req.get("host")}`;
-        await sendPermitCheckStatusEmail({
-          to: permit.email,
-          fullName: permit.fullName,
-          requestNumber: permit.requestNumber,
-          webUrl,
+        // Update isSendData & status history BEFORE sending email so DB is always updated
+        await db.updatePermit(permit.id, { isSendData: true } as any);
+        await db.addPermitStatusHistory({
+          permitId: permit.id,
+          fromStatus: permit.status as any,
+          toStatus: "sent",
+          note: "Notifikasi email dikirim: silakan cek status di web app",
+          changedBy: req.user?.id,
         });
 
-        await db.updatePermit(permit.id, { isSendData: true } as any);
-        return res.json({ ok: true, message: "Email notifikasi cek status berhasil dikirim" });
+        const webUrl = process.env.WEB_APP_URL || `https://${req.get("host")}`;
+        try {
+          await sendPermitCheckStatusEmail({
+            to: permit.email,
+            fullName: permit.fullName,
+            requestNumber: permit.requestNumber,
+            webUrl,
+          });
+        } catch (emailErr: any) {
+          console.warn("Check-status email send failed (non-fatal):", emailErr.message);
+        }
+
+        return res.json({ ok: true, message: "Notifikasi cek status berhasil dikirim" });
       } catch (e: any) {
         console.error("Send check-status email error:", e);
         return res.status(500).json({ error: e.message });

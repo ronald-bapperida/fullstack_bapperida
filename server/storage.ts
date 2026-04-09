@@ -1592,7 +1592,7 @@ export class DatabaseStorage implements IStorage {
           downloadedCount: schema.documents.downloadedCount,
         })
         .from(schema.documents)
-        .where(sql`${schema.documents.id} IN (${documentIds.join(',')})`);
+        .where(sql`${schema.documents.id} IN (${sql.raw(documentIds.map(id => `'${id}'`).join(','))})`);
     }
     const documentMap = new Map(documents.map(d => [d.id, d]));
     
@@ -1706,7 +1706,7 @@ export class DatabaseStorage implements IStorage {
           typeId: schema.documents.typeId,
         })
         .from(schema.documents)
-        .where(sql`${schema.documents.id} IN (${docIds.join(',')})`);
+        .where(sql`${schema.documents.id} IN (${sql.raw(docIds.map(id => `'${id}'`).join(','))})`);
     }
 
     const kinds = await db.select({ id: schema.documentKinds.id, name: schema.documentKinds.name }).from(schema.documentKinds);
