@@ -2273,7 +2273,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         if (!permit.email) return res.status(400).json({ error: "Email pemohon kosong" });
 
         // Update isSendData & status history BEFORE sending email so DB is always updated
-        await db.updatePermit(permit.id, { isSendData: false } as any);
+        await db.updatePermit(permit.id, { status: "sent", reviewNote: "Surat izin berhasil dikirim ke email pemohon. Pemohon wajib mengambil dikantor.", isSendData: false } as any);
         await db.addPermitStatusHistory({
           permitId: permit.id,
           fromStatus: permit.status as any,
@@ -2312,7 +2312,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         if (!permit.email) return res.status(400).json({ error: "Email pemohon kosong" });
 
         // Update isSendData & status history BEFORE sending email so DB is always updated
-        await db.updatePermit(permit.id, { isSendData: true } as any);
+        await db.updatePermit(permit.id, { status: "sent", reviewNote: "Surat izin berhasil dikirim ke email pemohon. Pemohon dapat download dari WebApp Izin Penelitan.", isSendData: true } as any);
         await db.addPermitStatusHistory({
           permitId: permit.id,
           fromStatus: permit.status as any,
