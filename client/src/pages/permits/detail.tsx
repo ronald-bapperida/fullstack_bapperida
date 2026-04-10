@@ -580,13 +580,9 @@ function LetterActionButtons({ permit, permitId }: { permit: any; permitId: stri
         {/* Download PDF Button */}
         <Tooltip>
           <TooltipTrigger asChild>
-            <Button 
-              variant="outline" 
-              size="sm" 
-              className="gap-2"
-            >
+            <Button variant="outline" size="sm" asChild className="gap-2">
               <a href={permit.generatedLetter.pdfFileUrl} download>
-                <Download className="w-3.5 h-3.5" /> Download PDF
+                <Download className="w-3.5 h-3.5" /> Download DOCX
               </a>
             </Button>
           </TooltipTrigger>
