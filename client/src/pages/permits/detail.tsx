@@ -443,7 +443,7 @@ function UploadSuratCard({ permit, permitId }: { permit: any; permitId: string }
         <p className="text-xs text-muted-foreground">
           Upload file surat untuk mengganti atau menambahkan berkas. Digunakan jika berkas bermasalah dan perlu penggantian manual.
           Riwayat akan mencatat berkas ini sebagai <strong>upload manual (bukan dari generate template)</strong>.
-          Format: <strong>PDF atau DOCX</strong>, Maks. 10 MB. Nama file otomatis disesuaikan dengan konvensi penamaan surat.
+          Format: <strong>PDF atau DOCX</strong>, Maks. 10 MB. Jika DOCX diupload, PDF otomatis digenerate agar preview tersedia. Nama file disesuaikan dengan konvensi surat.
         </p>
         <div className="flex items-center gap-2">
           <Input type="file" accept=".pdf,.docx"

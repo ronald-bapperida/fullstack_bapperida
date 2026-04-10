@@ -1717,6 +1717,25 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         resourceType: "permit",
         targetRole: "admin_rida",
       }).catch(() => {});
+      // FCM push ke admin RIDA (non-blocking)
+      (async () => {
+        try {
+          const { sendPushToTokens, isFirebaseAdminAvailable } = await import("./services/firebase-admin");
+          if (isFirebaseAdminAvailable()) {
+            const tokens = await db.getFcmTokensByRole("admin_rida");
+            const adminTokens = await db.getAllAdminFcmTokens();
+            const allTokens = [...new Set([...tokens, ...adminTokens])];
+            if (allTokens.length > 0) {
+              const invalid = await sendPushToTokens(allTokens, {
+                title: "Permohonan Izin Penelitian Baru",
+                body: `${permit.fullName} dari ${permit.institution} mengajukan izin penelitian baru.`,
+                data: { type: "new_permit", permitId: permit.id },
+              });
+              if (invalid.length > 0) await db.removeInvalidFcmTokens(invalid);
+            }
+          }
+        } catch (err: any) { console.error("[FCM] Push permit submit error:", err.message); }
+      })();
       // Kirim email konfirmasi ke pemohon
       if (permit.email) {
         sendPermitSubmittedEmail({
@@ -2175,18 +2194,47 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         const newPath = path.join(letterFilesDir, finalFileName);
         fs.renameSync(oldPath, newPath);
 
-        const newUrl = `/uploads/letters/${finalFileName}`;
-        // Upload manual → simpan ke pdfFileUrl (digunakan sebagai file utama surat)
-        await db.updateGeneratedLetterPdf(permit.id, newUrl);
+        const uploadedUrl = `/uploads/letters/${finalFileName}`;
+        let finalPdfUrl = uploadedUrl;
+
+        // Jika DOCX diupload, otomatis konversi ke PDF
+        if (ext === ".docx") {
+          try {
+            console.log("🔄 Mengkonversi DOCX upload ke PDF...");
+            const docxBuffer = fs.readFileSync(newPath);
+            const pdfBuffer = await convertDocxToPdf(docxBuffer, `Surat ${permit.requestNumber}`);
+            const pdfFileName = finalFileName.replace(".docx", ".pdf");
+            const pdfPath = path.join(letterFilesDir, pdfFileName);
+            fs.writeFileSync(pdfPath, pdfBuffer);
+            finalPdfUrl = `/uploads/letters/${pdfFileName}`;
+            console.log(`✅ PDF berhasil dibuat dari DOCX: ${pdfFileName}`);
+          } catch (pdfErr: any) {
+            console.warn("⚠️ Gagal konversi DOCX ke PDF, PDF preview tidak tersedia:", pdfErr.message);
+            // Tetap lanjut, finalPdfUrl tetap undefined sehingga preview PDF tidak tersedia
+            finalPdfUrl = "";
+          }
+          // Simpan DOCX sebagai fileUrl, PDF sebagai pdfFileUrl
+          const existing = await db.getGeneratedLetter(permit.id);
+          if (existing) {
+            await (db as any).updateGeneratedLetterBoth(permit.id, uploadedUrl, finalPdfUrl || null);
+          } else {
+            await db.createGeneratedLetter({ permitId: permit.id, fileUrl: uploadedUrl, pdfFileUrl: finalPdfUrl || undefined });
+          }
+        } else {
+          // PDF langsung → simpan sebagai pdfFileUrl
+          await db.updateGeneratedLetterPdf(permit.id, uploadedUrl);
+          finalPdfUrl = uploadedUrl;
+        }
+
         // Tambah history upload tanpa mengubah status
         await (db as any).addPermitStatusHistory({
           permitId: permit.id,
           fromStatus: permit.status,
           toStatus: permit.status,
-          note: `File surat (${ext.replace(".", "").toUpperCase()}) diupload manual oleh admin`,
+          note: `File surat (${ext.replace(".", "").toUpperCase()}) diupload manual oleh admin${ext === ".docx" && finalPdfUrl ? " — PDF otomatis digenerate" : ""}`,
           changedBy: req.user.id,
         });
-        return res.json({ fileUrl: newUrl, pdfFileUrl: newUrl });
+        return res.json({ fileUrl: uploadedUrl, pdfFileUrl: finalPdfUrl || null });
       } catch (e: any) {
         return res.status(500).json({ error: e.message });
       }
@@ -3651,6 +3699,80 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       });
       return res.json({ ok: true, message: "Notifikasi berhasil dikirim ke semua pengguna" });
     } catch (e: any) { return routeError(res, e, "mengirim notifikasi"); }
+  });
+
+  // ─── FCM Push Notification Routes ──────────────────────────────────────────
+
+  // Save FCM token (admin portal web)
+  app.post("/api/fcm/token", authMiddleware, async (req: any, res) => {
+    try {
+      const { token, deviceType = "web", platform = "admin" } = req.body;
+      if (!token) return res.status(400).json({ error: "Token wajib diisi" });
+      await db.upsertFcmToken(req.user.id, token, deviceType, platform);
+      return res.json({ ok: true });
+    } catch (e: any) { return routeError(res, e, "menyimpan FCM token"); }
+  });
+
+  // Delete FCM token on logout
+  app.delete("/api/fcm/token", authMiddleware, async (req: any, res) => {
+    try {
+      const { platform = "admin" } = req.body;
+      await db.removeFcmToken(req.user.id, platform);
+      return res.json({ ok: true });
+    } catch (e: any) { return routeError(res, e, "menghapus FCM token"); }
+  });
+
+  // Flutter: register FCM token for mobile user
+  app.post("/api/v1/fcm/token", authMiddleware, async (req: any, res) => {
+    try {
+      const { token, deviceType = "mobile" } = req.body;
+      if (!token) return res.status(400).json({ error: "Token wajib diisi" });
+      await db.upsertFcmToken(req.user.id, token, deviceType, "mobile");
+      return res.json({ success: true });
+    } catch (e: any) { return routeError(res, e, "menyimpan FCM token mobile"); }
+  });
+
+  // Send push notification to role (super_admin only)
+  app.post("/api/admin/push-notification", authMiddleware, requireRole("super_admin"), async (req: any, res) => {
+    try {
+      const { title, body, targetRole = "all", data = {} } = req.body;
+      if (!title || !body) return res.status(400).json({ error: "Judul dan isi pesan wajib diisi" });
+
+      const { sendPushToTokens, isFirebaseAdminAvailable } = await import("./services/firebase-admin");
+      if (!isFirebaseAdminAvailable()) {
+        return res.status(503).json({ error: "Firebase belum dikonfigurasi di server. Tambahkan FIREBASE_SERVICE_ACCOUNT di Secrets." });
+      }
+
+      let tokens: string[] = [];
+      if (targetRole === "all") {
+        tokens = await db.getAllAdminFcmTokens();
+      } else {
+        tokens = await db.getFcmTokensByRole(targetRole);
+      }
+
+      if (tokens.length === 0) {
+        return res.json({ ok: true, sent: 0, message: "Tidak ada perangkat yang terdaftar untuk menerima push notification." });
+      }
+
+      const invalidTokens = await sendPushToTokens(tokens, { title, body, data });
+      if (invalidTokens.length > 0) {
+        await db.removeInvalidFcmTokens(invalidTokens);
+      }
+
+      const sent = tokens.length - invalidTokens.length;
+      return res.json({ ok: true, sent, invalid: invalidTokens.length, message: `Push notification berhasil dikirim ke ${sent} perangkat.` });
+    } catch (e: any) { return routeError(res, e, "mengirim push notification"); }
+  });
+
+  // Check Firebase availability
+  app.get("/api/admin/push-notification/status", authMiddleware, requireRole("super_admin"), async (req: any, res) => {
+    try {
+      const { isFirebaseAdminAvailable } = await import("./services/firebase-admin");
+      const available = isFirebaseAdminAvailable();
+      return res.json({ available, configured: !!process.env.FIREBASE_SERVICE_ACCOUNT });
+    } catch (e) {
+      return res.json({ available: false, configured: false });
+    }
   });
 
   return httpServer;

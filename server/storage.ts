@@ -974,6 +974,19 @@ export class DatabaseStorage implements IStorage {
     return this.createGeneratedLetter({ permitId, pdfFileUrl });
   }
 
+  async updateGeneratedLetterBoth(permitId: string, fileUrl: string, pdfFileUrl: string | null) {
+    const existing = await this.getGeneratedLetter(permitId);
+    const updates: any = { fileUrl };
+    if (pdfFileUrl) updates.pdfFileUrl = pdfFileUrl;
+    if (existing) {
+      await db.update(schema.generatedLetters)
+        .set(updates)
+        .where(eq(schema.generatedLetters.id, existing.id));
+      return { ...existing, ...updates };
+    }
+    return this.createGeneratedLetter({ permitId, fileUrl, pdfFileUrl: pdfFileUrl || undefined });
+  }
+
   // ── Surveys ─────────────────────────────────────────────────────────────────
   async createSurvey(data: InsertSurvey) {
     return insertAndGet<Survey>(schema.surveys, schema.surveys.id, data);
@@ -1873,6 +1886,72 @@ export class DatabaseStorage implements IStorage {
       const readers: string[] = JSON.parse(n.readBy);
       return !readers.includes(userId);
     }).length;
+  }
+
+  // ─── FCM Token Management ───────────────────────────────────────────────────
+
+  async upsertFcmToken(userId: string, token: string, deviceType: string = "web", platform: string = "admin"): Promise<void> {
+    const existing = await db.select().from(schema.fcmTokens)
+      .where(and(eq(schema.fcmTokens.userId, userId), eq(schema.fcmTokens.platform, platform)))
+      .limit(1);
+    if (existing.length > 0) {
+      await db.update(schema.fcmTokens)
+        .set({ token, deviceType, updatedAt: new Date() })
+        .where(eq(schema.fcmTokens.id, existing[0].id));
+    } else {
+      await db.insert(schema.fcmTokens).values({
+        id: randomUUID(),
+        userId,
+        token,
+        deviceType,
+        platform,
+      });
+    }
+  }
+
+  async removeFcmToken(userId: string, platform: string = "admin"): Promise<void> {
+    await db.delete(schema.fcmTokens)
+      .where(and(eq(schema.fcmTokens.userId, userId), eq(schema.fcmTokens.platform, platform)));
+  }
+
+  async removeInvalidFcmTokens(invalidTokens: string[]): Promise<void> {
+    if (invalidTokens.length === 0) return;
+    for (const token of invalidTokens) {
+      await db.delete(schema.fcmTokens).where(eq(schema.fcmTokens.token, token));
+    }
+  }
+
+  async getFcmTokensByRole(role: string): Promise<string[]> {
+    let userIds: string[] = [];
+    if (role === "all") {
+      const rows = await db.select({ id: schema.users.id }).from(schema.users);
+      userIds = rows.map(r => r.id);
+    } else {
+      const rows = await db.select({ id: schema.users.id }).from(schema.users)
+        .where(eq(schema.users.role, role as any));
+      userIds = rows.map(r => r.id);
+    }
+    if (userIds.length === 0) return [];
+    const tokenRows = await db.select({ token: schema.fcmTokens.token }).from(schema.fcmTokens)
+      .where(sql`${schema.fcmTokens.userId} IN (${sql.join(userIds.map(id => sql`${id}`), sql`, `)})`);
+    return tokenRows.map(r => r.token);
+  }
+
+  async getFcmTokensByUserId(userId: string): Promise<string[]> {
+    const rows = await db.select({ token: schema.fcmTokens.token }).from(schema.fcmTokens)
+      .where(eq(schema.fcmTokens.userId, userId));
+    return rows.map(r => r.token);
+  }
+
+  async getAllAdminFcmTokens(): Promise<string[]> {
+    const adminRoles = ["super_admin", "admin_bpp", "admin_rida"];
+    const adminUsers = await db.select({ id: schema.users.id }).from(schema.users)
+      .where(sql`${schema.users.role} IN ('super_admin', 'admin_bpp', 'admin_rida')`);
+    if (adminUsers.length === 0) return [];
+    const userIds = adminUsers.map(u => u.id);
+    const tokenRows = await db.select({ token: schema.fcmTokens.token }).from(schema.fcmTokens)
+      .where(sql`${schema.fcmTokens.userId} IN (${sql.join(userIds.map(id => sql`${id}`), sql`, `)})`);
+    return tokenRows.map(r => r.token);
   }
 }
 

@@ -10,6 +10,7 @@ import { LanguageProvider, useLang } from "@/contexts/language";
 import { ThemeProvider, useTheme } from "@/contexts/theme";
 import { Button } from "@/components/ui/button";
 import { NotificationBell } from "@/components/notification-bell";
+import { useFcm } from "@/hooks/use-fcm";
 import { Sun, Moon } from "lucide-react";
 
 import LoginPage from "@/pages/login";
@@ -92,10 +93,17 @@ function LangSwitcher() {
   );
 }
 
+function FcmSetup() {
+  const { user } = useAuth();
+  useFcm(user?.id);
+  return null;
+}
+
 function AdminLayout({ children }: { children: React.ReactNode }) {
   const { t } = useLang();
   return (
     <SidebarProvider style={sidebarStyle}>
+      <FcmSetup />
       <div className="flex h-screen w-full overflow-hidden">
         <AppSidebar />
         <div className="flex flex-col flex-1 min-w-0">

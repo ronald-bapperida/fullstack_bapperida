@@ -508,6 +508,20 @@ export const notifications = mysqlTable("notifications", {
 });
 export type Notification = typeof notifications.$inferSelect;
 
+// ─── FCM Push Notification Tokens ────────────────────────────────────────────
+export const fcmTokens = mysqlTable("fcm_tokens", {
+  id:          varchar("id", { length: 36 }).primaryKey().default(uuidDefault),
+  userId:      varchar("user_id", { length: 36 }).notNull(),
+  token:       text("token").notNull(),
+  deviceType:  varchar("device_type", { length: 20 }).default("web"),
+  platform:    varchar("platform", { length: 20 }).default("admin"),
+  createdAt:   timestamp("created_at").default(sql`CURRENT_TIMESTAMP`),
+  updatedAt:   timestamp("updated_at").default(sql`CURRENT_TIMESTAMP`),
+});
+
+export type FcmToken = typeof fcmTokens.$inferSelect;
+export type InsertFcmToken = typeof fcmTokens.$inferInsert;
+
 export const refreshTokens = mysqlTable("refresh_tokens", {
   id:        varchar("id", { length: 36 }).primaryKey().default(uuidDefault),
   userId:    varchar("user_id", { length: 36 }).notNull().references(() => users.id, { onDelete: "cascade" }),

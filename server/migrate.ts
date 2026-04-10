@@ -540,6 +540,25 @@ export async function runMigrations() {
       }
     }
 
+    // ─── FCM Tokens table ─────────────────────────────────────────────────
+    const hasFcmTokensTable = await tableExists(conn, "fcm_tokens");
+    if (!hasFcmTokensTable) {
+      await conn.query(`
+        CREATE TABLE IF NOT EXISTS fcm_tokens (
+          id VARCHAR(36) NOT NULL DEFAULT (UUID()) PRIMARY KEY,
+          user_id VARCHAR(36) NOT NULL,
+          token TEXT NOT NULL,
+          device_type VARCHAR(20) DEFAULT 'web',
+          platform VARCHAR(20) DEFAULT 'admin',
+          created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+          updated_at DATETIME DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+          INDEX idx_fcm_tokens_user_id (user_id),
+          UNIQUE KEY uq_fcm_user_platform (user_id, platform(191))
+        )
+      `);
+      console.log("[migrate] Created table: fcm_tokens");
+    }
+
     // Create indexes
     const indexes = [
       { table: "refresh_tokens", name: "idx_refresh_tokens_token", sql: "CREATE INDEX idx_refresh_tokens_token ON refresh_tokens(token)" },
