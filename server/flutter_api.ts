@@ -1304,24 +1304,16 @@ export function registerFlutterApiRoutes(app: express.Express) {
         };
 
         const result = await db.createPpidObjection(data);
-        // Buat notifikasi untuk admin BPP
-        db.createNotification({
-          type: "new_objection",
-          title: "Keberatan PPID Baru",
-          message: `${fullName} mengajukan keberatan PPID baru.`,
-          resourceId: result.id,
-          resourceType: "ppid_objection",
-          targetRole: "admin_bpp",
-        }).catch(() => {});
-
-        db.createNotification({
-          type: "new_objection",
-          title: "Keberatan",
-          message: `${data.requestCode} ini adalah token untuk cek informasi keberatan anda.`,
-          resourceId: result.id,
-          resourceType: "ppid_objection",
-          targetRole: "user",
-          targetUserId: req.user.id
+        // FCM push ke admin BPP (non-blocking)
+        import("./services/firebase-admin").then(({ sendEventPush }) => {
+          sendEventPush({
+            title: "Keberatan PPID Baru",
+            body: `${fullName} mengajukan keberatan PPID baru.`,
+            data: { type: "new_objection", objectionId: result.id },
+            targetRoles: ["admin_bpp", "super_admin"],
+            tokenGetter: (role) => role ? db.getFcmTokensByRole(role) : Promise.resolve([]),
+            tokenRemover: (t) => db.removeInvalidFcmTokens(t),
+          });
         }).catch(() => {});
         // Kirim email konfirmasi ke pemohon (jika ada email)
         if (email) {
@@ -1393,23 +1385,16 @@ export function registerFlutterApiRoutes(app: express.Express) {
         };
 
         const result = await db.createPpidInfoRequest(data);
-        // Buat notifikasi untuk admin BPP
-        db.createNotification({
-          type: "new_info_request",
-          title: "Permohonan Informasi PPID Baru",
-          message: `${fullName} mengajukan permohonan informasi publik baru.`,
-          resourceId: result.id,
-          resourceType: "ppid_info_request",
-          targetRole: "admin_bpp",
-        }).catch(() => {});
-        db.createNotification({
-          type: "new_info_request",
-          title: "Permohonan Informasi",
-          message: `${data.token} ini adalah token permohonan informasi publik anda.`,
-          resourceId: result.id,
-          resourceType: "ppid_objection",
-          targetRole: "user",
-          targetUserId: req.user.id
+        // FCM push ke admin BPP (non-blocking)
+        import("./services/firebase-admin").then(({ sendEventPush }) => {
+          sendEventPush({
+            title: "Permohonan Informasi PPID Baru",
+            body: `${fullName} mengajukan permohonan informasi publik baru.`,
+            data: { type: "new_info_request", requestId: result.id },
+            targetRoles: ["admin_bpp", "super_admin"],
+            tokenGetter: (role) => role ? db.getFcmTokensByRole(role) : Promise.resolve([]),
+            tokenRemover: (t) => db.removeInvalidFcmTokens(t),
+          });
         }).catch(() => {});
         // Kirim email konfirmasi dengan token jika email tersedia
         if (email) {
@@ -1565,174 +1550,69 @@ export function registerFlutterApiRoutes(app: express.Express) {
     }
   });
 
-    /**
-   * @route   GET /api/v1/notifications
-   * @desc    Get notifications for the logged-in user
-   *          (targetRole = "user" OR targetRole = "all")
-   * @access  Private (requires Bearer token)
-   * @query   page    number  default 1
-   * @query   limit   number  default 20
+  /**
+   * @route   POST /api/v1/fcm/token
+   * @desc    Register or update FCM token for mobile push notifications
+   * @access  Private
    */
-  flutterRouter.get("/v1/notifications", authMiddleware, async (req: any, res: Response) => {
+  flutterRouter.post("/v1/fcm/token", authMiddleware, async (req: any, res: Response) => {
     try {
-      const page  = Math.max(1, parseInt(req.query.page  as string) || 1);
-      const limit = Math.min(50, parseInt(req.query.limit as string) || 20);
-      const offset = (page - 1) * limit;
-      const userId = req.user.id as string;
-
-      // Query notifications where targetUserId matches user OR is broadcast to 'all'
-      // Sort newest first; only return undeleted records
-      const items = await drizzleDb
-        .select()
-        .from(schema.notifications)
-        .where(
-          sql`(${schema.notifications.targetUserId} = ${userId} OR ${schema.notifications.targetUserId} = 'all')`
-        )
-        .orderBy(desc(schema.notifications.createdAt))
-        .limit(limit)
-        .offset(offset);
-
-      // Determine per-item read status for this user.
-      // The `readBy` column is a JSON array of userIds who have read it.
-      // We check if req.user.id is in that array.
-      const formatted = items.map((n) => {
-        let readBy: string[] = [];
-        if (n.readBy) {
-          try { readBy = JSON.parse(n.readBy); } catch { readBy = []; }
-        }
-        return {
-          id:           n.id,
-          type:         n.type,
-          title:        n.title,
-          message:      n.message,
-          resourceId:   n.resourceId,
-          resourceType: n.resourceType,
-          targetRole:   n.targetRole,
-          targetUserId: n.targetUserId,
-          isRead:       readBy.includes(userId),
-          createdAt:    n.createdAt,
-        };
-      });
-
-      const unreadCount = formatted.filter((n) => !n.isRead).length;
-
-      return res.json({
-        success: true,
-        data: {
-          items: formatted,
-          unread_count: unreadCount,
-          page,
-          limit,
-        },
-        message: "Notifications retrieved successfully",
-      });
+      const { token, device_type = "android" } = req.body;
+      if (!token) return res.status(400).json({ success: false, message: "Token wajib diisi" });
+      await db.upsertFcmToken(req.user.id, token, device_type, "mobile");
+      return res.json({ success: true, message: "FCM token berhasil disimpan" });
     } catch (error: any) {
-      return res.status(500).json({
-        success: false,
-        message: "Failed to retrieve notifications",
-        error: error.message,
-      });
+      return res.status(500).json({ success: false, message: "Gagal menyimpan FCM token", error: error.message });
     }
   });
 
   /**
-   * @route   POST /api/v1/notifications/:id/read
-   * @desc    Mark a single notification as read for the current user
+   * @route   DELETE /api/v1/fcm/token
+   * @desc    Remove FCM token on logout
    * @access  Private
    */
-  flutterRouter.patch("/v1/notifications/:id/read", authMiddleware, async (req: any, res: Response) => {
+  flutterRouter.delete("/v1/fcm/token", authMiddleware, async (req: any, res: Response) => {
     try {
-      const { id } = req.params;
-      const userId = req.user.id as string;
-  
-      // Get current notification
-      const [notification] = await drizzleDb
-        .select()
-        .from(schema.notifications)
-        .where(eq(schema.notifications.id, id));
-  
-      if (!notification) {
-        return res.status(404).json({
-          success: false,
-          message: "Notification not found",
-        });
-      }
-  
-      // Check if user is allowed to read this notification
-      if (notification.targetUserId && notification.targetUserId !== userId) {
-        return res.status(403).json({
-          success: false,
-          message: "You don't have permission to read this notification",
-        });
-      }
-  
-      // Update readBy array
-      let readBy: string[] = [];
-      if (notification.readBy) {
-        try { readBy = JSON.parse(notification.readBy); } catch { readBy = []; }
-      }
-      
-      if (!readBy.includes(userId)) {
-        readBy.push(userId);
-        await drizzleDb
-          .update(schema.notifications)
-          .set({ readBy: JSON.stringify(readBy) })
-          .where(eq(schema.notifications.id, id));
-      }
-  
-      return res.json({
-        success: true,
-        message: "Notification marked as read",
-      });
+      await db.removeFcmToken(req.user.id, "mobile");
+      return res.json({ success: true, message: "FCM token berhasil dihapus" });
     } catch (error: any) {
-      return res.status(500).json({
-        success: false,
-        message: "Failed to mark notification as read",
-        error: error.message,
-      });
+      return res.status(500).json({ success: false, message: "Gagal menghapus FCM token", error: error.message });
     }
+  });
+
+  /**
+   * @route   GET /api/v1/notifications
+   * @desc    Stub endpoint — app now uses FCM push for all notifications.
+   *          Returns empty list for backward compatibility.
+   * @access  Private
+   */
+  flutterRouter.get("/v1/notifications", authMiddleware, async (req: any, res: Response) => {
+    return res.json({
+      success: true,
+      data: {
+        items: [],
+        unread_count: 0,
+        page: 1,
+        limit: 20,
+      },
+      message: "Notifications are now delivered via FCM push. Register your FCM token at POST /api/v1/fcm/token.",
+    });
+  });
+
+  /**
+   * @route   PATCH /api/v1/notifications/:id/read
+   * @desc    Stub — kept for backward compatibility
+   */
+  flutterRouter.patch("/v1/notifications/:id/read", authMiddleware, async (_req: any, res: Response) => {
+    return res.json({ success: true, message: "Notification acknowledged" });
   });
 
   /**
    * @route   POST /api/v1/notifications/mark-all-read
-   * @desc    Mark ALL user-targeted notifications as read for the current user
-   * @access  Private
+   * @desc    Stub — kept for backward compatibility
    */
-  flutterRouter.post("/v1/notifications/mark-all-read", authMiddleware, async (req: any, res: Response) => {
-    try {
-      const userId = req.user.id as string;
-
-      // Fetch all user-targeted notifications
-      const items = await drizzleDb
-        .select()
-        .from(schema.notifications)
-        .where(sql`${schema.notifications.targetRole} IN ('user', 'all')`);
-
-      // Update each one that doesn't yet include this user in readBy
-      await Promise.all(
-        items.map(async (n) => {
-          let readBy: string[] = [];
-          if (n.readBy) {
-            try { readBy = JSON.parse(n.readBy); } catch { readBy = []; }
-          }
-          if (!readBy.includes(userId)) {
-            readBy.push(userId);
-            await drizzleDb
-              .update(schema.notifications)
-              .set({ readBy: JSON.stringify(readBy) })
-              .where(eq(schema.notifications.id, n.id));
-          }
-        })
-      );
-
-      return res.json({ success: true, message: "All notifications marked as read" });
-    } catch (error: any) {
-      return res.status(500).json({
-        success: false,
-        message: "Failed to mark all as read",
-        error: error.message,
-      });
-    }
+  flutterRouter.post("/v1/notifications/mark-all-read", authMiddleware, async (_req: any, res: Response) => {
+    return res.json({ success: true, message: "All notifications acknowledged" });
   });
 
   // Mount the router

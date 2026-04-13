@@ -1708,34 +1708,17 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (data.introLetterDate) data.introLetterDate = new Date(data.introLetterDate);
       data.agreementFinalReport = data.agreementFinalReport === "true";
       const permit = await db.createPermit(data);
-      // Buat notifikasi untuk admin RIDA
-      db.createNotification({
-        type: "new_permit",
-        title: "Permohonan Izin Penelitian Baru",
-        message: `${permit.fullName} dari ${permit.institution} mengajukan izin penelitian baru.`,
-        resourceId: permit.id,
-        resourceType: "permit",
-        targetRole: "admin_rida",
+      // FCM push ke admin RIDA (non-blocking, replaces manual notification)
+      import("./services/firebase-admin").then(({ sendEventPush }) => {
+        sendEventPush({
+          title: "Permohonan Izin Penelitian Baru",
+          body: `${permit.fullName} dari ${permit.institution} mengajukan izin penelitian baru.`,
+          data: { type: "new_permit", permitId: permit.id },
+          targetRoles: ["admin_rida", "super_admin"],
+          tokenGetter: (role) => role ? db.getFcmTokensByRole(role) : Promise.resolve([]),
+          tokenRemover: (t) => db.removeInvalidFcmTokens(t),
+        });
       }).catch(() => {});
-      // FCM push ke admin RIDA (non-blocking)
-      (async () => {
-        try {
-          const { sendPushToTokens, isFirebaseAdminAvailable } = await import("./services/firebase-admin");
-          if (isFirebaseAdminAvailable()) {
-            const tokens = await db.getFcmTokensByRole("admin_rida");
-            const adminTokens = await db.getAllAdminFcmTokens();
-            const allTokens = [...new Set([...tokens, ...adminTokens])];
-            if (allTokens.length > 0) {
-              const invalid = await sendPushToTokens(allTokens, {
-                title: "Permohonan Izin Penelitian Baru",
-                body: `${permit.fullName} dari ${permit.institution} mengajukan izin penelitian baru.`,
-                data: { type: "new_permit", permitId: permit.id },
-              });
-              if (invalid.length > 0) await db.removeInvalidFcmTokens(invalid);
-            }
-          }
-        } catch (err: any) { console.error("[FCM] Push permit submit error:", err.message); }
-      })();
       // Kirim email konfirmasi ke pemohon
       if (permit.email) {
         sendPermitSubmittedEmail({
@@ -2920,14 +2903,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         }
       }
 
-      // Notifikasi ke admin RIDA
-      db.createNotification({
-        type: "new_survey",
-        title: "Survei IKM Baru",
-        message: `${finalData.respondentName} mengisi formulir survei kepuasan layanan.`,
-        resourceId: (result as any).id,
-        resourceType: "survey",
-        targetRole: "admin_rida",
+      // FCM push ke admin RIDA
+      import("./services/firebase-admin").then(({ sendEventPush }) => {
+        sendEventPush({
+          title: "Survei IKM Baru",
+          body: `${finalData.respondentName} mengisi formulir survei kepuasan layanan.`,
+          data: { type: "new_survey", surveyId: String((result as any).id || "") },
+          targetRoles: ["admin_rida", "super_admin"],
+          tokenGetter: (role) => role ? db.getFcmTokensByRole(role) : Promise.resolve([]),
+          tokenRemover: (t) => db.removeInvalidFcmTokens(t),
+        });
       }).catch(() => {});
   
       return res.json({
@@ -2957,14 +2942,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const data = { ...req.body };
       if (req.file) data.fileUrl = fileUrl("reports", req.file.filename);
       const report = await db.createFinalReport(data);
-      // Notifikasi ke admin RIDA
-      db.createNotification({
-        type: "new_final_report",
-        title: "Laporan Akhir Baru",
-        message: `${data.fullName || "Pemohon"} mengunggah laporan akhir penelitian.`,
-        resourceId: (report as any).id,
-        resourceType: "final_report",
-        targetRole: "admin_rida",
+      // FCM push ke admin RIDA
+      import("./services/firebase-admin").then(({ sendEventPush }) => {
+        sendEventPush({
+          title: "Laporan Akhir Baru",
+          body: `${data.fullName || "Pemohon"} mengunggah laporan akhir penelitian.`,
+          data: { type: "new_final_report", reportId: String((report as any).id || "") },
+          targetRoles: ["admin_rida", "super_admin"],
+          tokenGetter: (role) => role ? db.getFcmTokensByRole(role) : Promise.resolve([]),
+          tokenRemover: (t) => db.removeInvalidFcmTokens(t),
+        });
       }).catch(() => {});
       return res.json(report);
     } catch (e: any) { return routeError(res, e); }
@@ -3650,55 +3637,21 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     }
   });
 
-  // ─── Notifications API ────────────────────────────────────────────────────────
-  app.get("/api/admin/notifications", authMiddleware, async (req: any, res) => {
-    try {
-      const role = req.user.role;
-      const notifications = await db.listNotifications({ targetRole: role, limit: 50 });
-      const userId = req.user.id;
-      const formatted = notifications.map(n => ({
-        ...n,
-        isReadByMe: n.readBy ? JSON.parse(n.readBy).includes(userId) : false,
-      }));
-      return res.json(formatted);
-    } catch (e: any) { return routeError(res, e); }
-  });
-
-  app.get("/api/admin/notifications/unread-count", authMiddleware, async (req: any, res) => {
-    try {
-      const count = await db.countUnreadNotifications(req.user.role, req.user.id);
-      return res.json({ count });
-    } catch (e: any) { return routeError(res, e); }
-  });
-
-  app.patch("/api/admin/notifications/:id/read", authMiddleware, async (req: any, res) => {
-    try {
-      await db.markNotificationRead(req.params.id, req.user.id);
-      return res.json({ ok: true });
-    } catch (e: any) { return routeError(res, e); }
-  });
-
-  app.patch("/api/admin/notifications/read-all", authMiddleware, async (req: any, res) => {
-    try {
-      await db.markAllNotificationsRead(req.user.role, req.user.id);
-      return res.json({ ok: true });
-    } catch (e: any) { return routeError(res, e, "memperbarui notifikasi"); }
-  });
-
-  // ─── Broadcast Notification to All Users ─────────────────────────────────────
+  // ─── FCM Broadcast to All (replaces old manual notification broadcast) ────────
   app.post("/api/admin/notifications/broadcast", authMiddleware, requireRole("super_admin"), async (req: any, res) => {
     try {
       const { title, message } = req.body;
       if (!title || !message) return res.status(400).json({ error: "Judul dan pesan wajib diisi" });
-      await db.createNotification({
-        type: "announcement",
-        title,
-        message,
-        targetRole: "all",
-        targetUserId: "all",
-      });
-      return res.json({ ok: true, message: "Notifikasi berhasil dikirim ke semua pengguna" });
-    } catch (e: any) { return routeError(res, e, "mengirim notifikasi"); }
+      const { sendPushToTokens, isFirebaseAdminAvailable } = await import("./services/firebase-admin");
+      if (!isFirebaseAdminAvailable()) {
+        return res.status(503).json({ error: "Firebase belum dikonfigurasi. Tambahkan FIREBASE_SERVICE_ACCOUNT di Secrets." });
+      }
+      const tokens = await db.getAllAdminFcmTokens();
+      if (tokens.length === 0) return res.json({ ok: true, sent: 0, message: "Tidak ada perangkat terdaftar." });
+      const invalid = await sendPushToTokens(tokens, { title, body: message, data: { type: "announcement" } });
+      if (invalid.length > 0) await db.removeInvalidFcmTokens(invalid);
+      return res.json({ ok: true, sent: tokens.length - invalid.length, message: "Push notification terkirim." });
+    } catch (e: any) { return routeError(res, e, "mengirim push notification"); }
   });
 
   // ─── FCM Push Notification Routes ──────────────────────────────────────────

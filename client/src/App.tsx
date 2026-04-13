@@ -9,7 +9,6 @@ import { AuthProvider, useAuth } from "@/contexts/auth";
 import { LanguageProvider, useLang } from "@/contexts/language";
 import { ThemeProvider, useTheme } from "@/contexts/theme";
 import { Button } from "@/components/ui/button";
-import { NotificationBell } from "@/components/notification-bell";
 import { useFcm } from "@/hooks/use-fcm";
 import { Sun, Moon } from "lucide-react";
 
@@ -111,7 +110,6 @@ function AdminLayout({ children }: { children: React.ReactNode }) {
             <SidebarTrigger data-testid="button-sidebar-toggle" />
             <div className="flex-1" />
             <span className="text-xs text-muted-foreground hidden sm:block">{t("portal")}</span>
-            <NotificationBell />
             <ThemeToggle />
             <LangSwitcher />
           </header>

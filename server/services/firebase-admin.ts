@@ -159,3 +159,43 @@ export function isFirebaseAdminAvailable(): boolean {
   initFirebaseAdmin();
   return messaging !== null;
 }
+
+/**
+ * Central event push helper — look up tokens by role(s) then send push.
+ * Always non-blocking (fire-and-forget). Safe to call even if Firebase not configured.
+ */
+export async function sendEventPush(payload: {
+  title: string;
+  body: string;
+  data?: Record<string, string>;
+  targetRoles?: string[];      // e.g. ["admin_rida"] or ["admin_bpp", "super_admin"]
+  targetUserIds?: string[];    // specific user FCM tokens (mobile)
+  tokenGetter: (role: string | null, userIds?: string[]) => Promise<string[]>;
+  tokenRemover: (tokens: string[]) => Promise<void>;
+}): Promise<void> {
+  initFirebaseAdmin();
+  if (!messaging) return;
+
+  try {
+    const tokenSets: string[][] = [];
+    if (payload.targetRoles && payload.targetRoles.length > 0) {
+      for (const role of payload.targetRoles) {
+        tokenSets.push(await payload.tokenGetter(role));
+      }
+    }
+    if (payload.targetUserIds && payload.targetUserIds.length > 0) {
+      tokenSets.push(await payload.tokenGetter(null, payload.targetUserIds));
+    }
+    const allTokens = [...new Set(tokenSets.flat())];
+    if (allTokens.length === 0) return;
+
+    const invalid = await sendPushToTokens(allTokens, {
+      title: payload.title,
+      body: payload.body,
+      data: payload.data,
+    });
+    if (invalid.length > 0) await payload.tokenRemover(invalid);
+  } catch (err: any) {
+    console.error("[FCM] sendEventPush error:", err.message);
+  }
+}
