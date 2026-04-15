@@ -8,8 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Bell, Send, Smartphone, AlertCircle, CheckCircle2, Loader2, ExternalLink } from "lucide-react";
+import { Bell, Send, Smartphone, AlertCircle, CheckCircle2, Loader2 } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
 
 export default function PushNotificationPage() {
@@ -18,7 +17,6 @@ export default function PushNotificationPage() {
   const { toast } = useToast();
   const [title, setTitle] = useState("");
   const [body, setBody] = useState("");
-  const [targetRole, setTargetRole] = useState("all");
 
   if (user?.role !== "super_admin") {
     return (
@@ -34,7 +32,7 @@ export default function PushNotificationPage() {
   });
 
   const sendMutation = useMutation({
-    mutationFn: () => apiRequest("POST", "/api/admin/push-notification", { title, body, targetRole }),
+    mutationFn: () => apiRequest("POST", "/api/admin/push-notification", { title, body, targetRole: "user" }),
     onSuccess: (data: any) => {
       toast({ title: "Push notification terkirim", description: data?.message || `Terkirim ke ${data?.sent ?? 0} perangkat` });
       setTitle("");
@@ -53,7 +51,7 @@ export default function PushNotificationPage() {
         </div>
         <div>
           <h1 className="text-xl font-bold">{t("pushNotifTitle")}</h1>
-          <p className="text-sm text-muted-foreground">Kirim push notification via Firebase Cloud Messaging ke admin dan pengguna mobile</p>
+          <p className="text-sm text-muted-foreground">Kirim push notification via Firebase Cloud Messaging ke pengguna mobile</p>
         </div>
       </div>
 
@@ -72,8 +70,7 @@ export default function PushNotificationPage() {
                 <div className="space-y-1">
                   <p className="text-sm font-medium text-amber-700 dark:text-amber-300">Firebase belum dikonfigurasi</p>
                   <p className="text-xs text-amber-600 dark:text-amber-400">
-                    Tambahkan variabel environment Firebase ke Secrets Replit, lalu restart aplikasi.
-                    Lihat file <code className="bg-amber-100 dark:bg-amber-900 px-1 rounded">.env.example</code> di project untuk panduan lengkap.
+                    Tambahkan variabel environment Firebase ke Secrets, lalu restart aplikasi.
                   </p>
                 </div>
               )}
@@ -87,10 +84,10 @@ export default function PushNotificationPage() {
         <CardHeader className="pb-3">
           <CardTitle className="flex items-center gap-2 text-base">
             <Smartphone className="w-4 h-4 text-muted-foreground" />
-            Kirim Push Notification
+            Kirim Push Notification ke Pengguna
           </CardTitle>
           <CardDescription>
-            Push dikirim ke semua perangkat yang sudah mendaftarkan FCM token (browser admin + mobile app)
+            Notifikasi dikirim ke semua pengguna mobile (Flutter app) yang sudah login dan mendaftarkan perangkatnya
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -98,20 +95,6 @@ export default function PushNotificationPage() {
             onSubmit={(e) => { e.preventDefault(); sendMutation.mutate(); }}
             className="space-y-4"
           >
-            <div className="space-y-1.5">
-              <Label>Target Penerima</Label>
-              <Select value={targetRole} onValueChange={setTargetRole}>
-                <SelectTrigger data-testid="select-fcm-target">
-                  <SelectValue />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="all">Semua Admin</SelectItem>
-                  <SelectItem value="super_admin">Super Admin</SelectItem>
-                  <SelectItem value="admin_bpp">Admin BAPPEDA</SelectItem>
-                  <SelectItem value="admin_rida">Admin RIDA</SelectItem>
-                </SelectContent>
-              </Select>
-            </div>
             <div className="space-y-1.5">
               <Label htmlFor="fcm-title">Judul Notifikasi</Label>
               <Input
@@ -142,29 +125,9 @@ export default function PushNotificationPage() {
               data-testid="button-send-fcm"
             >
               {sendMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <Send className="w-4 h-4" />}
-              {sendMutation.isPending ? "Mengirim..." : "Kirim Push Notification"}
+              {sendMutation.isPending ? "Mengirim..." : "Kirim ke Semua Pengguna"}
             </Button>
           </form>
-        </CardContent>
-      </Card>
-
-      {/* Setup guide */}
-      <Card className="border-0 bg-muted/30">
-        <CardHeader className="pb-2">
-          <CardTitle className="text-sm font-medium">Panduan Setup Firebase</CardTitle>
-        </CardHeader>
-        <CardContent className="text-xs text-muted-foreground space-y-3">
-          <ol className="list-decimal list-inside space-y-1.5">
-            <li>Buka <a href="https://console.firebase.google.com" target="_blank" rel="noreferrer" className="text-primary underline inline-flex items-center gap-0.5">Firebase Console <ExternalLink className="w-3 h-3" /></a> → buat project baru</li>
-            <li>Klik <strong>Project Settings</strong> → <strong>General</strong> → scroll ke <strong>Your apps</strong> → klik <strong>Web</strong> → salin config</li>
-            <li>Klik tab <strong>Cloud Messaging</strong> → Generate <strong>VAPID key pair</strong> → salin Public key</li>
-            <li>Klik tab <strong>Service accounts</strong> → <strong>Generate new private key</strong> → download JSON</li>
-            <li>Buka <strong>Replit Secrets</strong> dan tambahkan semua variabel dari file <code className="bg-muted px-1 rounded">.env.example</code></li>
-            <li>Restart aplikasi — Firebase siap digunakan</li>
-          </ol>
-          <p className="text-xs mt-2">
-            Untuk Flutter: panggil <code className="bg-muted px-1 rounded">POST /api/v1/fcm/token</code> setelah login dengan body <code className="bg-muted px-1 rounded">{`{"token":"<fcm_token>","device_type":"android"}`}</code>
-          </p>
         </CardContent>
       </Card>
     </div>

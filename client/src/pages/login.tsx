@@ -7,11 +7,23 @@ import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
 import { Label } from "@/components/ui/label";
 import { Alert, AlertDescription } from "@/components/ui/alert";
-import { LogIn, Eye, EyeOff } from "lucide-react";
+import { LogIn, Eye, EyeOff, Bell } from "lucide-react";
 import { Link } from "wouter";
 import logoBapperida from "@assets/logo_bapperida.png";
-import logoPpid from "@assets/logo_ppid.png";
 import logoKalteng from "@assets/logo_kalteng.png";
+
+async function ensureNotificationPermission(): Promise<string | null> {
+  if (!("Notification" in window)) return null;
+  if (Notification.permission === "granted") return null;
+  if (Notification.permission === "denied") {
+    return "Notifikasi browser diblokir. Aktifkan notifikasi di pengaturan browser Anda untuk dapat login.";
+  }
+  const result = await Notification.requestPermission();
+  if (result !== "granted") {
+    return "Notifikasi harus diaktifkan untuk menggunakan aplikasi ini. Izinkan notifikasi lalu coba login kembali.";
+  }
+  return null;
+}
 
 export default function LoginPage() {
   const [, setLoc] = useLocation();
@@ -22,12 +34,22 @@ export default function LoginPage() {
   const [showPass, setShowPass] = useState(false);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
+  const [notifBlocked, setNotifBlocked] = useState(
+    typeof Notification !== "undefined" && Notification.permission === "denied"
+  );
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setError("");
     setLoading(true);
     try {
+      const notifError = await ensureNotificationPermission();
+      if (notifError) {
+        setError(notifError);
+        setNotifBlocked(true);
+        return;
+      }
+      setNotifBlocked(false);
       await login(username, password);
       setLoc("/");
     } catch (err: any) {
@@ -69,7 +91,10 @@ export default function LoginPage() {
             <form onSubmit={handleSubmit} className="flex flex-col gap-4">
               {error && (
                 <Alert variant="destructive">
-                  <AlertDescription>{error}</AlertDescription>
+                  <AlertDescription className="flex items-start gap-2">
+                    {notifBlocked && <Bell className="w-4 h-4 shrink-0 mt-0.5" />}
+                    {error}
+                  </AlertDescription>
                 </Alert>
               )}
               <div className="flex flex-col gap-2">
@@ -108,10 +133,20 @@ export default function LoginPage() {
                   </button>
                 </div>
               </div>
-              <Button type="submit" className="w-full gap-2 mt-1" disabled={loading} data-testid="button-login">
+              <Button
+                type="submit"
+                className="w-full gap-2 mt-1"
+                disabled={loading || notifBlocked}
+                data-testid="button-login"
+              >
                 <LogIn className="w-4 h-4" />
                 {loading ? t("loginProcessing") : t("loginSubmit")}
               </Button>
+              {notifBlocked && (
+                <p className="text-xs text-center text-muted-foreground">
+                  Buka pengaturan browser → izinkan notifikasi untuk situs ini → muat ulang halaman
+                </p>
+              )}
               <div className="text-center">
                 <Link href="/forgot-password" className="text-xs text-muted-foreground hover:text-foreground underline-offset-4 hover:underline" data-testid="link-forgot-password">
                   Lupa Password?

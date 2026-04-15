@@ -976,8 +976,7 @@ export class DatabaseStorage implements IStorage {
 
   async updateGeneratedLetterBoth(permitId: string, fileUrl: string, pdfFileUrl: string | null) {
     const existing = await this.getGeneratedLetter(permitId);
-    const updates: any = { fileUrl };
-    if (pdfFileUrl) updates.pdfFileUrl = pdfFileUrl;
+    const updates: any = { fileUrl, pdfFileUrl: pdfFileUrl ?? null };
     if (existing) {
       await db.update(schema.generatedLetters)
         .set(updates)

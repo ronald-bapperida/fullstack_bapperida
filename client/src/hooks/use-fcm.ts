@@ -1,5 +1,5 @@
 import { useEffect, useRef } from "react";
-import { useMutation, useQueryClient } from "@tanstack/react-query";
+import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import {
   isFirebaseConfigured,
@@ -15,7 +15,6 @@ import { useToast } from "@/hooks/use-toast";
  */
 export function useFcm(userId: string | undefined) {
   const { toast } = useToast();
-  const qc = useQueryClient();
   const registered = useRef(false);
 
   const saveTokenMutation = useMutation({
@@ -45,7 +44,6 @@ export function useFcm(userId: string | undefined) {
           const title = payload.notification?.title || "BAPPERIDA";
           const body = payload.notification?.body || "";
           toast({ title, description: body });
-          qc.invalidateQueries({ queryKey: ["/api/admin/notifications"] });
         });
       } catch (err) {
         console.warn("[FCM] Setup error:", err);

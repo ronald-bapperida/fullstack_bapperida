@@ -188,6 +188,13 @@ function generateDocxFromBuffer(
 /**
  * Buat mapping data dari permit ke placeholder template
  */
+function toTitleCase(str: string | null | undefined): string {
+  if (!str) return "-";
+  return str
+    .toLowerCase()
+    .replace(/(?:^|\s)\S/g, (c) => c.toUpperCase());
+}
+
 function buildLetterReplacements(permit: any, template?: any): Record<string, string> {
   const formatDate = (d: any): string => {
     if (!d) return "-";
@@ -239,11 +246,11 @@ function buildLetterReplacements(permit: any, template?: any): Record<string, st
     // "NOMOR": letterNumberOnly,
     
     // Pejabat & Institution
-    "PEJABAT SURAT PENGANTAR": permit.signerPosition || "-",
-    "TIM SURVEY/PENELITI": permit.institution ?? "-",
-    "INSTANSI": permit.institution ?? "-",
-    "NAMA INSTANSI": permit.institution ?? "-",
-    "BAPPEDA KABUPATEN": permit.recipientCity ?? "-",
+    "PEJABAT SURAT PENGANTAR": toTitleCase(permit.signerPosition),
+    "TIM SURVEY/PENELITI": toTitleCase(permit.institution),
+    "INSTANSI": toTitleCase(permit.institution),
+    "NAMA INSTANSI": toTitleCase(permit.institution),
+    "BAPPEDA KABUPATEN": toTitleCase(permit.recipientCity),
     
     // Research
     "JUDUL PENELITIAN": permit.researchTitle ?? "-",

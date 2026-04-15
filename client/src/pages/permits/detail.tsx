@@ -578,28 +578,32 @@ function LetterActionButtons({ permit, permitId }: { permit: any; permitId: stri
         </Tooltip>
 
         {/* Download PDF Button */}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button variant="outline" size="sm" asChild className="gap-2">
-              <a href={permit.generatedLetter.pdfFileUrl} download>
-                <Download className="w-3.5 h-3.5" /> Download DOCX
-              </a>
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>Download file PDF</TooltipContent>
-        </Tooltip>
+        {hasPdf && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="outline" size="sm" asChild className="gap-2">
+                <a href={permit.generatedLetter.pdfFileUrl} download>
+                  <Download className="w-3.5 h-3.5" /> Download PDF
+                </a>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Download file PDF</TooltipContent>
+          </Tooltip>
+        )}
 
         {/* Download DOCX Button */}
-        <Tooltip>
-          <TooltipTrigger asChild>
-            <Button variant="outline" size="sm" asChild className="gap-2">
-              <a href={permit.generatedLetter.fileUrl} download>
-                <Download className="w-3.5 h-3.5" /> Download DOCX
-              </a>
-            </Button>
-          </TooltipTrigger>
-          <TooltipContent>Download file DOCX (format Word)</TooltipContent>
-        </Tooltip>
+        {permit.generatedLetter.fileUrl && (
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button variant="outline" size="sm" asChild className="gap-2">
+                <a href={permit.generatedLetter.fileUrl} download>
+                  <Download className="w-3.5 h-3.5" /> Download DOCX
+                </a>
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Download file DOCX (format Word)</TooltipContent>
+          </Tooltip>
+        )}
 
         {/* Kirim ke Email Button */}
         {/* {permit.status === "generated_letter" && (
