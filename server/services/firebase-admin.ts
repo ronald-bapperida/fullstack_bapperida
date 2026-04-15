@@ -2,8 +2,12 @@
  * Firebase Admin SDK setup for server-side push notification sending.
  * Requires FIREBASE_SERVICE_ACCOUNT env var (JSON string of service account key).
  */
-let admin: any = null;
-let messaging: any = null;
+import admin from 'firebase-admin';
+import { getApps, initializeApp, cert } from 'firebase-admin/app';
+import { getMessaging } from 'firebase-admin/messaging';
+import type { Messaging } from 'firebase-admin/messaging';
+
+let messagingInstance: Messaging | null = null;
 let initialized = false;
 
 function initFirebaseAdmin() {
@@ -17,17 +21,15 @@ function initFirebaseAdmin() {
   }
 
   try {
-    const firebaseAdmin = require("firebase-admin");
     const serviceAccount = JSON.parse(serviceAccountJson);
 
-    if (!firebaseAdmin.apps.length) {
-      firebaseAdmin.initializeApp({
-        credential: firebaseAdmin.credential.cert(serviceAccount),
+    if (getApps().length === 0) {
+      initializeApp({
+        credential: cert(serviceAccount),
       });
     }
 
-    admin = firebaseAdmin;
-    messaging = firebaseAdmin.messaging();
+    messagingInstance = getMessaging();
     console.log("[FCM] Firebase Admin initialized successfully.");
   } catch (err: any) {
     console.error("[FCM] Failed to initialize Firebase Admin:", err.message);
@@ -44,10 +46,10 @@ export async function sendPushToToken(token: string, payload: {
   imageUrl?: string;
 }): Promise<boolean> {
   initFirebaseAdmin();
-  if (!messaging) return false;
+  if (!messagingInstance) return false;
 
   try {
-    await messaging.send({
+    await messagingInstance.send({
       token,
       notification: {
         title: payload.title,
@@ -106,7 +108,7 @@ export async function sendPushToTokens(tokens: string[], payload: {
   data?: Record<string, string>;
 }): Promise<string[]> {
   initFirebaseAdmin();
-  if (!messaging || tokens.length === 0) return [];
+  if (!messagingInstance || tokens.length === 0) return [];
 
   const failedTokens: string[] = [];
 
@@ -134,7 +136,7 @@ export async function sendPushToTokens(tokens: string[], payload: {
         android: { priority: "high" as const },
       }));
 
-      const result = await messaging.sendEach(messages);
+      const result = await messagingInstance.sendEach(messages);
       result.responses.forEach((resp: any, idx: number) => {
         if (!resp.success) {
           const code = resp.error?.code;
@@ -157,7 +159,7 @@ export async function sendPushToTokens(tokens: string[], payload: {
  */
 export function isFirebaseAdminAvailable(): boolean {
   initFirebaseAdmin();
-  return messaging !== null;
+  return messagingInstance !== null;
 }
 
 /**
@@ -174,7 +176,7 @@ export async function sendEventPush(payload: {
   tokenRemover: (tokens: string[]) => Promise<void>;
 }): Promise<void> {
   initFirebaseAdmin();
-  if (!messaging) return;
+  if (!messagingInstance) return;
 
   try {
     const tokenSets: string[][] = [];
