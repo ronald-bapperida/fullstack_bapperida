@@ -1140,6 +1140,21 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         if (data.eventAt) data.eventAt = new Date(data.eventAt);
         data.authorId = req.user.id;
         const item = await db.createNews(data);
+        // FCM push ke semua pengguna mobile (non-blocking)
+        import("./services/firebase-admin").then(({ sendEventPush }) => {
+          sendEventPush({
+            title: "Berita Baru",
+            body: item.title || "Ada berita baru dari BAPPERIDA Kalimantan Tengah.",
+            data: { type: "new_news", newsId: item.id },
+            targetRoles: ["user"],
+            tokenGetter: async (role, userIds) => {
+              if (userIds && userIds.length > 0) return (db as any).getFcmTokensByUserIds(userIds);
+              if (role) return db.getFcmTokensByRole(role);
+              return [];
+            },
+            tokenRemover: (t) => db.removeInvalidFcmTokens(t),
+          });
+        }).catch(() => {});
         return res.json(item);
       } catch (e: any) { return routeError(res, e); }
     });
@@ -1492,7 +1507,23 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         const data = { ...req.body };
         if (req.file) data.fileUrl = fileUrl("documents", req.file.filename);
         if (data.publishedAt) data.publishedAt = new Date(data.publishedAt);
-        return res.json(await db.createDocument(data));
+        const item = await db.createDocument(data);
+        // FCM push ke semua pengguna mobile (non-blocking)
+        import("./services/firebase-admin").then(({ sendEventPush }) => {
+          sendEventPush({
+            title: "Dokumen Baru Tersedia",
+            body: item.title || "Dokumen baru telah dipublikasikan oleh BAPPERIDA Kalimantan Tengah.",
+            data: { type: "new_document", documentId: item.id },
+            targetRoles: ["user"],
+            tokenGetter: async (role, userIds) => {
+              if (userIds && userIds.length > 0) return (db as any).getFcmTokensByUserIds(userIds);
+              if (role) return db.getFcmTokensByRole(role);
+              return [];
+            },
+            tokenRemover: (t) => db.removeInvalidFcmTokens(t),
+          });
+        }).catch(() => {});
+        return res.json(item);
       } catch (e: any) { return routeError(res, e); }
     });
 
@@ -3176,6 +3207,24 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const { status, reviewNote } = req.body;
       if (!status) return res.status(400).json({ error: "Status diperlukan" });
       const updated = await db.updatePpidObjectionStatus(req.params.id, { status, reviewNote, processedBy: req.user.id });
+      // FCM push ke pemohon (jika login saat submit)
+      if (updated?.userId) {
+        const submitterUserId = updated.userId;
+        import("./services/firebase-admin").then(({ sendEventPush }) => {
+          sendEventPush({
+            title: "Keberatan PPID Diperbarui",
+            body: `Status keberatan Anda diperbarui menjadi: ${status}.${reviewNote ? " " + reviewNote : ""}`,
+            data: { type: "objection_updated", objectionId: updated.id, status },
+            targetUserIds: [submitterUserId],
+            tokenGetter: async (role, userIds) => {
+              if (userIds && userIds.length > 0) return (db as any).getFcmTokensByUserIds(userIds);
+              if (role) return db.getFcmTokensByRole(role);
+              return [];
+            },
+            tokenRemover: (t) => db.removeInvalidFcmTokens(t),
+          });
+        }).catch(() => {});
+      }
       return res.json(updated);
     } catch (e: any) { return routeError(res, e); }
   });
@@ -3229,6 +3278,24 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             attachmentPath,
             attachmentName,
           }).catch((err: any) => console.error("PPID reply email failed:", err));
+        }
+        // FCM push ke pemohon (jika login saat submit)
+        if (updated?.userId) {
+          const submitterUserId = updated.userId;
+          import("./services/firebase-admin").then(({ sendEventPush }) => {
+            sendEventPush({
+              title: "Permohonan Informasi Diperbarui",
+              body: `Status permohonan informasi Anda diperbarui menjadi: ${status}.${reviewNote ? " " + reviewNote : ""}`,
+              data: { type: "info_request_updated", requestId: updated.id, status },
+              targetUserIds: [submitterUserId],
+              tokenGetter: async (role, userIds) => {
+                if (userIds && userIds.length > 0) return (db as any).getFcmTokensByUserIds(userIds);
+                if (role) return db.getFcmTokensByRole(role);
+                return [];
+              },
+              tokenRemover: (t) => db.removeInvalidFcmTokens(t),
+            });
+          }).catch(() => {});
         }
         return res.json(updated);
       } catch (e: any) { return routeError(res, e); }

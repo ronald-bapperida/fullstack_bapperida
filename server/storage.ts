@@ -1942,6 +1942,13 @@ export class DatabaseStorage implements IStorage {
     return rows.map(r => r.token);
   }
 
+  async getFcmTokensByUserIds(userIds: string[]): Promise<string[]> {
+    if (userIds.length === 0) return [];
+    const tokenRows = await db.select({ token: schema.fcmTokens.token }).from(schema.fcmTokens)
+      .where(sql`${schema.fcmTokens.userId} IN (${sql.join(userIds.map(id => sql`${id}`), sql`, `)})`);
+    return tokenRows.map(r => r.token);
+  }
+
   async getAllAdminFcmTokens(): Promise<string[]> {
     const adminRoles = ["super_admin", "admin_bpp", "admin_rida"];
     const adminUsers = await db.select({ id: schema.users.id }).from(schema.users)

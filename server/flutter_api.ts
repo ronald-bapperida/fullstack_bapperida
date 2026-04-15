@@ -1,6 +1,6 @@
 import express, { type Request, type Response } from "express";
 import { storage as db } from "./storage";
-import { authMiddleware } from "./auth";
+import { authMiddleware, optionalAuthMiddleware } from "./auth";
 import multer from "multer";
 import path from "path";
 import fs from "fs";
@@ -1259,6 +1259,7 @@ export function registerFlutterApiRoutes(app: express.Express) {
    */
   flutterRouter.post(
     "/v1/ppid/objections",
+    optionalAuthMiddleware,
     ppidObjectionUpload.fields([
       { name: "ktpFile", maxCount: 1 },
       { name: "evidenceFile", maxCount: 1 },
@@ -1287,7 +1288,10 @@ export function registerFlutterApiRoutes(app: express.Express) {
           }
         }
 
+        const submitterUserId: string | null = req.user?.id || null;
+
         const data = {
+          userId:           submitterUserId,
           requestCode:      requestCode || null,
           fullName,
           nik,
@@ -1356,6 +1360,7 @@ export function registerFlutterApiRoutes(app: express.Express) {
    */
   flutterRouter.post(
     "/v1/ppid/information-requests",
+    optionalAuthMiddleware,
     ppidInfoReqUpload.fields([{ name: "ktpFile", maxCount: 1 }]),
     async (req: any, res: Response) => {
       try {
@@ -1369,8 +1374,10 @@ export function registerFlutterApiRoutes(app: express.Express) {
           return res.status(400).json({ success: false, message: "Field wajib tidak lengkap" });
         }
 
+        const submitterUserId: string | null = req.user?.id || null;
         const token = generateToken();
         const data = {
+          userId:          submitterUserId,
           token,
           fullName,
           nik,

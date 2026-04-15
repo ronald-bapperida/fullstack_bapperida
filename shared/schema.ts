@@ -419,6 +419,7 @@ export type Survey = typeof surveys.$inferSelect;
 // ─── PPID ────────────────────────────────────────────────────────────────────
 export const ppidObjections = mysqlTable("ppid_objections", {
   id:               varchar("id", { length: 36 }).primaryKey().default(uuidDefault),
+  userId:           varchar("user_id", { length: 36 }).references(() => users.id),
   requestCode:      varchar("request_code", { length: 50 }),
   fullName:         text("full_name").notNull(),
   nik:              varchar("nik", { length: 20 }).notNull(),
@@ -449,6 +450,7 @@ export type PpidObjection = typeof ppidObjections.$inferSelect;
 
 export const ppidInformationRequests = mysqlTable("ppid_information_requests", {
   id:                varchar("id", { length: 36 }).primaryKey().default(uuidDefault),
+  userId:            varchar("user_id", { length: 36 }).references(() => users.id),
   token:             varchar("token", { length: 16 }),
   fullName:          text("full_name").notNull(),
   nik:               varchar("nik", { length: 20 }).notNull(),

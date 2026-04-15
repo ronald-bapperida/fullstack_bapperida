@@ -43,6 +43,19 @@ export function authMiddleware(req: Request, res: Response, next: NextFunction) 
   }
 }
 
+export function optionalAuthMiddleware(req: Request, res: Response, next: NextFunction) {
+  const auth = req.headers.authorization;
+  if (auth && auth.startsWith("Bearer ")) {
+    try {
+      const payload = verifyToken(auth.slice(7));
+      (req as any).user = payload;
+    } catch {
+      // Invalid token — ignore, req.user stays undefined
+    }
+  }
+  next();
+}
+
 export function requireRole(...roles: string[]) {
   return (req: Request, res: Response, next: NextFunction) => {
     const user = (req as any).user;
