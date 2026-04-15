@@ -5,6 +5,9 @@ import { createServer } from "http";
 import { registerFlutterApiRoutes } from "./flutter_api";
 import { runMigrations } from "./migrate";
 import cors from "cors";
+import { initFirebaseAdmin } from './services/firebase-admin';
+
+initFirebaseAdmin();
 
 const app = express();
 const httpServer = createServer(app);
