@@ -29,7 +29,7 @@ import {
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest } from "@/lib/queryClient";
-import { isFirebaseConfigured } from "@/lib/firebase";
+import { ensureFirebaseConfig } from "@/lib/firebase";
 import logoBapperida from "@assets/logo_bapperida.png";
 import logoKalteng from "@assets/logo_kalteng.png";
 
@@ -342,7 +342,8 @@ export function AppSidebar() {
             <AlertDialogCancel>{t("cancel")}</AlertDialogCancel>
             <AlertDialogAction onClick={async () => {
               try {
-                if (isFirebaseConfigured()) {
+                const configured = await ensureFirebaseConfig();
+                if (configured) {
                   await apiRequest("DELETE", "/api/fcm/token", { platform: "admin" });
                 }
               } catch { }

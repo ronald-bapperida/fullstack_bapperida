@@ -158,7 +158,7 @@ export interface IStorage {
   deleteDocumentType(id: string): Promise<void>;
 
   // Documents
-  listDocuments(opts?: { page?: number; limit?: number; search?: string; trash?: boolean; kindId?: string; categoryId?: string; typeId?: string }): Promise<{ items: Document[]; total: number }>;
+  listDocuments(opts?: { page?: number; limit?: number; search?: string; trash?: boolean; kindId?: string; categoryId?: string; typeId?: string; status?: string }): Promise<{ items: Document[]; total: number }>;
   getDocument(id: string): Promise<Document | undefined>;
   createDocument(data: InsertDocument): Promise<Document>;
   updateDocument(id: string, data: Partial<InsertDocument>): Promise<Document>;
@@ -653,8 +653,8 @@ export class DatabaseStorage implements IStorage {
   }
 
   // ── Documents ───────────────────────────────────────────────────────────────
-  async listDocuments(opts: { page?: number; limit?: number; search?: string; trash?: boolean; kindId?: string; categoryId?: string; typeId?: string; sortBy?: string; sortDir?: string } = {}) {
-    const { page = 1, limit = 10, search, trash = false, kindId, categoryId, typeId, sortBy = "publishedAt", sortDir = "desc" } = opts;
+  async listDocuments(opts: { page?: number; limit?: number; search?: string; trash?: boolean; kindId?: string; categoryId?: string; typeId?: string; sortBy?: string; sortDir?: string; status?: string } = {}) {
+    const { page = 1, limit = 10, search, trash = false, kindId, categoryId, typeId, sortBy = "publishedAt", sortDir = "desc", status } = opts;
     const offset = (page - 1) * limit;
 
     const conditions: any[] = trash
@@ -665,6 +665,7 @@ export class DatabaseStorage implements IStorage {
     if (kindId) conditions.push(eq(schema.documents.kindId, kindId));
     if (categoryId) conditions.push(eq(schema.documents.categoryId, categoryId));
     if (typeId) conditions.push(eq(schema.documents.typeId, typeId));
+    if (status) conditions.push(eq(schema.documents.status, status as any));
 
     const where = and(...conditions);
 

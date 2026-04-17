@@ -906,6 +906,38 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     next();
   }, express.static(uploadDir));
 
+  // ─── Public: Firebase Web Config ──────────────────────────────────────────
+  // Endpoint ini mengembalikan Firebase web config dari server-side env vars.
+  // Cara ini memungkinkan production build bekerja tanpa VITE_FIREBASE_* di build time.
+  // User hanya perlu set FIREBASE_API_KEY, FIREBASE_PROJECT_ID, dll di Replit Secrets.
+  app.get("/api/firebase-config", (_req, res) => {
+    const {
+      FIREBASE_API_KEY, FIREBASE_AUTH_DOMAIN, FIREBASE_PROJECT_ID,
+      FIREBASE_STORAGE_BUCKET, FIREBASE_MESSAGING_SENDER_ID, FIREBASE_APP_ID,
+      FIREBASE_VAPID_KEY,
+      // fallback ke VITE_ prefix (dev mode dengan .env file)
+      VITE_FIREBASE_API_KEY, VITE_FIREBASE_AUTH_DOMAIN, VITE_FIREBASE_PROJECT_ID,
+      VITE_FIREBASE_STORAGE_BUCKET, VITE_FIREBASE_MESSAGING_SENDER_ID, VITE_FIREBASE_APP_ID,
+      VITE_FIREBASE_VAPID_KEY,
+    } = process.env;
+
+    const apiKey            = FIREBASE_API_KEY            || VITE_FIREBASE_API_KEY;
+    const authDomain        = FIREBASE_AUTH_DOMAIN        || VITE_FIREBASE_AUTH_DOMAIN;
+    const projectId         = FIREBASE_PROJECT_ID         || VITE_FIREBASE_PROJECT_ID;
+    const storageBucket     = FIREBASE_STORAGE_BUCKET     || VITE_FIREBASE_STORAGE_BUCKET;
+    const messagingSenderId = FIREBASE_MESSAGING_SENDER_ID || VITE_FIREBASE_MESSAGING_SENDER_ID;
+    const appId             = FIREBASE_APP_ID             || VITE_FIREBASE_APP_ID;
+    const vapidKey          = FIREBASE_VAPID_KEY          || VITE_FIREBASE_VAPID_KEY;
+
+    if (!apiKey || !projectId || !messagingSenderId) {
+      return res.json({ configured: false });
+    }
+    return res.json({
+      configured: true,
+      apiKey, authDomain, projectId, storageBucket, messagingSenderId, appId, vapidKey,
+    });
+  });
+
   // ─── Auth Routes ────────────────────────────────────────────────────────────
   app.post("/api/auth/login", async (req, res) => {
     try {

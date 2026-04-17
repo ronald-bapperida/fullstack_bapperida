@@ -2,7 +2,7 @@ import { useEffect, useRef } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import {
-  isFirebaseConfigured,
+  ensureFirebaseConfig,
   requestNotificationPermission,
   registerServiceWorkerAndGetToken,
   onForegroundMessage,
@@ -43,10 +43,6 @@ export function useFcm(userId: string | undefined) {
       console.log("[FCM] Skipping - no userId or already registered");
       return;
     }
-    if (!isFirebaseConfigured()) {
-      console.log("[FCM] Firebase not configured, skipping");
-      return;
-    }
 
     console.log("[FCM] Starting setup for user:", userId);
 
@@ -54,6 +50,13 @@ export function useFcm(userId: string | undefined) {
 
     async function setup() {
       try {
+        // Fetch config dari server jika VITE_ vars tidak ada di build time
+        const configured = await ensureFirebaseConfig();
+        if (!configured) {
+          console.log("[FCM] Firebase not configured, skipping");
+          return;
+        }
+
         console.log("[FCM] 1. Requesting notification permission...");
         const permission = await requestNotificationPermission();
         console.log("[FCM] Permission result:", permission);

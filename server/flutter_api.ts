@@ -387,13 +387,11 @@ export function registerFlutterApiRoutes(app: express.Express) {
         typeId,
         search,
         trash: false,
+        status: "published",
       });
       
-      // Filter hanya yang published
-      const publishedItems = result.items.filter(item => item.status === "published");
-      
       // Get additional info for each document
-      const items = await Promise.all(publishedItems.map(async (item) => {
+      const items = await Promise.all(result.items.map(async (item) => {
         let category = null;
         let kind = null;
         let type = null;
@@ -433,10 +431,10 @@ export function registerFlutterApiRoutes(app: express.Express) {
         success: true,
         data: {
           items,
-          total: publishedItems.length,
+          total: result.total,
           page,
           limit,
-          total_pages: Math.ceil(publishedItems.length / limit)
+          total_pages: Math.ceil(result.total / limit)
         },
         message: "Documents retrieved successfully"
       });
