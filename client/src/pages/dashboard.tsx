@@ -321,9 +321,6 @@ export default function Dashboard() {
       iconBgClass: "bg-white/20",
       textClass: "text-white",
     },
-  ] : [];
-
-  const ppidCards: StatCardConfig[] = stats ? [
     {
       title: t("ppidDocs"),
       value: stats.documents,
@@ -333,6 +330,17 @@ export default function Dashboard() {
       textClass: "text-white",
     },
   ] : [];
+
+  // const ppidCards: StatCardConfig[] = stats ? [
+  //   {
+  //     title: t("ppidDocs"),
+  //     value: stats.documents,
+  //     icon: FileText,
+  //     bgClass: "bg-gradient-to-br from-violet-500 to-purple-600",
+  //     iconBgClass: "bg-white/20",
+  //     textClass: "text-white",
+  //   },
+  // ] : [];
 
   const ridaCards: StatCardConfig[] = stats ? [
     {
@@ -438,11 +446,11 @@ export default function Dashboard() {
               <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
                 {bppCards.map((card, i) => <StatCard key={i} {...card} />)}
               </div>
-              {ppidCards.length > 0 && (
+              {/* {ppidCards.length > 0 && (
                 <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 mt-2">
                   {ppidCards.map((card, i) => <StatCard key={i} {...card} />)}
                 </div>
-              )}
+              )} */}
             </div>
           )}
 

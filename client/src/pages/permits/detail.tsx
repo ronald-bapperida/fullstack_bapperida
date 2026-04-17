@@ -157,11 +157,11 @@ function AdminLetterFieldsCard({
           </div>
           
           <div className="flex flex-col gap-1.5">
-            <Label className="text-xs">Kota/Kabupaten Tujuan</Label>
+            <Label className="text-xs">Kabpupaten Tujuan (Opsional)</Label>
             <Input
               value={fields.recipientCity}
               onChange={set("recipientCity")}
-              placeholder="Palangka Raya"
+              placeholder="Kabupaten Tujuan"
               data-testid="input-recipient-city"
             />
           </div>
