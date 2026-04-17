@@ -5,9 +5,12 @@ import { createServer } from "http";
 import { registerFlutterApiRoutes } from "./flutter_api";
 import { runMigrations } from "./migrate";
 import cors from "cors";
+import { initFirebaseAdmin } from "./services/firebase-admin";
 
 const app = express();
 const httpServer = createServer(app);
+
+initFirebaseAdmin();
 
 declare module "http" {
   interface IncomingMessage {

@@ -10,7 +10,7 @@ import type { Messaging } from 'firebase-admin/messaging';
 let messagingInstance: Messaging | null = null;
 let initialized = false;
 
-function initFirebaseAdmin() {
+export function initFirebaseAdmin() {
   if (initialized) return;
   initialized = true;
 
