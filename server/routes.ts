@@ -1,4 +1,5 @@
 import express, { type Express, type Request, type Response } from "express";
+import { inArray } from "drizzle-orm";
 import { createServer, type Server } from "http";
 
 function routeError(res: Response, e: any, operation = "memproses data") {
@@ -246,11 +247,11 @@ function buildLetterReplacements(permit: any, template?: any): Record<string, st
     // "NOMOR": letterNumberOnly,
     
     // Pejabat & Institution
-    "PEJABAT SURAT PENGANTAR": toTitleCase(permit.signerPosition),
-    "TIM SURVEY/PENELITI": toTitleCase(permit.institution),
-    "INSTANSI": toTitleCase(permit.institution),
-    "NAMA INSTANSI": toTitleCase(permit.institution),
-    "BAPPEDA KABUPATEN": toTitleCase(permit.recipientCity),
+    "PEJABAT SURAT PENGANTAR": permit.signerPosition ?? "-",
+    "TIM SURVEY/PENELITI": permit.institution ?? "-",
+    "INSTANSI": permit.institution ?? "-",
+    "NAMA INSTANSI": permit.institution ?? "-",
+    "BAPPEDA KABUPATEN": permit.recipientCity ?? "-",
     
     // Research
     "JUDUL PENELITIAN": permit.researchTitle ?? "-",
@@ -3375,7 +3376,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       ];
       const statusLabel: Record<string,string> = { pending: "Menunggu", in_review: "Diproses", resolved: "Selesai", rejected: "Ditolak" };
       items.forEach((d: any) => {
-        ws.addRow({ ...d, status: statusLabel[d.status] || d.status, createdAt: d.createdAt ? new Date(d.createdAt).toLocaleDateString("id-ID") : "" });
+        ws.addRow({
+          ...d,
+          objectionReasons: Array.isArray(d.objectionReasons) ? d.objectionReasons.join(", ") : (d.objectionReasons ?? ""),
+          status: statusLabel[d.status] || d.status,
+          createdAt: d.createdAt ? new Date(d.createdAt).toLocaleDateString("id-ID") : "",
+        });
       });
       res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet");
       res.setHeader("Content-Disposition", `attachment; filename="PPID-Keberatan-${Date.now()}.xlsx"`);
@@ -3553,16 +3559,18 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // Get all document requests with filters (no pagination)
       const allItems = await db.getAllDocumentRequests({ search, from, to });
       
-      // Get document titles for each request
-      const documentIds = [...new Set(allItems.map(item => item.documentId))];
-      let documents: any[] = [];
+      // Get document titles for each request using raw DB
+      const { db: rawDb } = await import("./db");
+      const schemaImport = await import("../shared/schema");
+      const documentIds = [...new Set(allItems.map((item: any) => item.documentId).filter(Boolean))];
+      let documentMap = new Map<string, string>();
       if (documentIds.length > 0) {
-        documents = await db
-          .select({ id: schema.documents.id, title: schema.documents.title })
-          .from(schema.documents)
-          .where(sql`${schema.documents.id} IN (${documentIds.join(',')})`);
+        const docs = await rawDb
+          .select({ id: schemaImport.documents.id, title: schemaImport.documents.title })
+          .from(schemaImport.documents)
+          .where(inArray(schemaImport.documents.id, documentIds as string[]));
+        docs.forEach((d: any) => documentMap.set(d.id, d.title));
       }
-      const documentMap = new Map(documents.map(d => [d.id, d.title]));
       
       const wb = new ExcelJS.Workbook();
       const ws = wb.addWorksheet("Permohonan Dokumen");
