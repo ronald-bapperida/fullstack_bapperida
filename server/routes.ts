@@ -1779,11 +1779,14 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       if (data.introLetterDate) data.introLetterDate = new Date(data.introLetterDate);
       data.agreementFinalReport = data.agreementFinalReport === "true";
       const permit = await db.createPermit(data);
-      // FCM push ke admin RIDA (non-blocking, replaces manual notification)
+      // FCM push + simpan ke inbox notifikasi
+      const permitNotifTitle = "Permohonan Izin Penelitian Baru";
+      const permitNotifBody  = `${permit.fullName} dari ${permit.institution} mengajukan izin penelitian baru.`;
+      db.createNotification({ type: "new_permit", title: permitNotifTitle, message: permitNotifBody, resourceId: permit.id, resourceType: "permit", targetRole: "admin_rida" }).catch(() => {});
       import("./services/firebase-admin").then(({ sendEventPush }) => {
         sendEventPush({
-          title: "Permohonan Izin Penelitian Baru",
-          body: `${permit.fullName} dari ${permit.institution} mengajukan izin penelitian baru.`,
+          title: permitNotifTitle,
+          body: permitNotifBody,
           data: { type: "new_permit", permitId: permit.id },
           targetRoles: ["admin_rida", "super_admin"],
           tokenGetter: (role) => role ? db.getFcmTokensByRole(role) : Promise.resolve([]),
@@ -2974,11 +2977,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         }
       }
 
-      // FCM push ke admin RIDA
+      // FCM push + simpan ke inbox notifikasi
+      const surveyTitle = "Survei IKM Baru";
+      const surveyBody  = `${finalData.respondentName} mengisi formulir survei kepuasan layanan.`;
+      db.createNotification({ type: "new_survey", title: surveyTitle, message: surveyBody, resourceId: String((result as any).id || ""), resourceType: "survey", targetRole: "admin_rida" }).catch(() => {});
       import("./services/firebase-admin").then(({ sendEventPush }) => {
         sendEventPush({
-          title: "Survei IKM Baru",
-          body: `${finalData.respondentName} mengisi formulir survei kepuasan layanan.`,
+          title: surveyTitle, body: surveyBody,
           data: { type: "new_survey", surveyId: String((result as any).id || "") },
           targetRoles: ["admin_rida", "super_admin"],
           tokenGetter: (role) => role ? db.getFcmTokensByRole(role) : Promise.resolve([]),
@@ -3013,11 +3018,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const data = { ...req.body };
       if (req.file) data.fileUrl = fileUrl("reports", req.file.filename);
       const report = await db.createFinalReport(data);
-      // FCM push ke admin RIDA
+      // FCM push + simpan ke inbox notifikasi
+      const reportTitle = "Laporan Akhir Baru";
+      const reportBody  = `${data.fullName || "Pemohon"} mengunggah laporan akhir penelitian.`;
+      db.createNotification({ type: "new_final_report", title: reportTitle, message: reportBody, resourceId: String((report as any).id || ""), resourceType: "final_report", targetRole: "admin_rida" }).catch(() => {});
       import("./services/firebase-admin").then(({ sendEventPush }) => {
         sendEventPush({
-          title: "Laporan Akhir Baru",
-          body: `${data.fullName || "Pemohon"} mengunggah laporan akhir penelitian.`,
+          title: reportTitle, body: reportBody,
           data: { type: "new_final_report", reportId: String((report as any).id || "") },
           targetRoles: ["admin_rida", "super_admin"],
           tokenGetter: (role) => role ? db.getFcmTokensByRole(role) : Promise.resolve([]),
@@ -3749,6 +3756,70 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       console.error("Export user document requests error:", e);
       return routeError(res, e, "mengekspor data permohonan dokumen user");
     }
+  });
+
+  // ─── Notification Inbox ──────────────────────────────────────────────────────
+  app.get("/api/admin/notifications", authMiddleware, async (req: any, res) => {
+    try {
+      const { role, id: userId } = req.user;
+      const limit = parseInt(req.query.limit as string) || 50;
+      const addReadByMe = (rows: any[]) => rows.map(n => {
+        const readBy: string[] = n.readBy ? JSON.parse(n.readBy) : [];
+        return { ...n, isReadByMe: readBy.includes(userId) };
+      });
+      if (role === "super_admin") {
+        const [bpp, rida, all] = await Promise.all([
+          db.listNotifications({ targetRole: "admin_bpp", limit }),
+          db.listNotifications({ targetRole: "admin_rida", limit }),
+          db.listNotifications({ targetRole: "all", limit }),
+        ]);
+        const merged = [...bpp, ...rida, ...all]
+          .sort((a, b) => new Date(b.createdAt!).getTime() - new Date(a.createdAt!).getTime())
+          .slice(0, limit);
+        return res.json(addReadByMe(merged));
+      }
+      const items = await db.listNotifications({ targetRole: role, limit });
+      return res.json(addReadByMe(items));
+    } catch (e: any) { return routeError(res, e, "memuat notifikasi"); }
+  });
+
+  app.get("/api/admin/notifications/unread-count", authMiddleware, async (req: any, res) => {
+    try {
+      const { role, id } = req.user;
+      if (role === "super_admin") {
+        const [c1, c2, c3] = await Promise.all([
+          db.countUnreadNotifications("admin_bpp", id),
+          db.countUnreadNotifications("admin_rida", id),
+          db.countUnreadNotifications("all", id),
+        ]);
+        return res.json({ count: c1 + c2 + c3 });
+      }
+      const count = await db.countUnreadNotifications(role, id);
+      return res.json({ count });
+    } catch (e: any) { return routeError(res, e, "menghitung notifikasi"); }
+  });
+
+  app.patch("/api/admin/notifications/:id/read", authMiddleware, async (req: any, res) => {
+    try {
+      await db.markNotificationRead(req.params.id, req.user.id);
+      return res.json({ ok: true });
+    } catch (e: any) { return routeError(res, e, "menandai notifikasi"); }
+  });
+
+  app.patch("/api/admin/notifications/read-all", authMiddleware, async (req: any, res) => {
+    try {
+      const { role, id } = req.user;
+      if (role === "super_admin") {
+        await Promise.all([
+          db.markAllNotificationsRead("admin_bpp", id),
+          db.markAllNotificationsRead("admin_rida", id),
+          db.markAllNotificationsRead("all", id),
+        ]);
+      } else {
+        await db.markAllNotificationsRead(role, id);
+      }
+      return res.json({ ok: true });
+    } catch (e: any) { return routeError(res, e, "menandai semua notifikasi"); }
   });
 
   // ─── FCM Broadcast to All (replaces old manual notification broadcast) ────────

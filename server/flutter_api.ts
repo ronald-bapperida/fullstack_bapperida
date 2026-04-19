@@ -1317,6 +1317,8 @@ export function registerFlutterApiRoutes(app: express.Express) {
             tokenRemover: (t) => db.removeInvalidFcmTokens(t),
           });
         }).catch(() => {});
+        // Simpan ke inbox notifikasi admin
+        db.createNotification({ type: "new_objection", title: "Keberatan PPID Baru", message: `${fullName} mengajukan keberatan PPID baru.`, resourceId: result.id, resourceType: "ppid_objection", targetRole: "admin_bpp" }).catch(() => {});
         // Kirim email konfirmasi ke pemohon (jika ada email)
         if (email) {
           sendKeberatanConfirmation({
@@ -1401,6 +1403,8 @@ export function registerFlutterApiRoutes(app: express.Express) {
             tokenRemover: (t) => db.removeInvalidFcmTokens(t),
           });
         }).catch(() => {});
+        // Simpan ke inbox notifikasi admin
+        db.createNotification({ type: "new_info_request", title: "Permohonan Informasi PPID Baru", message: `${fullName} mengajukan permohonan informasi publik baru.`, resourceId: result.id, resourceType: "ppid_info_request", targetRole: "admin_bpp" }).catch(() => {});
         // Kirim email konfirmasi dengan token jika email tersedia
         if (email) {
           sendPpidInfoRequestConfirmation({

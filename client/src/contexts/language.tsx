@@ -306,6 +306,8 @@ const translations: Record<Lang, Record<string, string>> = {
     justNow: "Baru saja",
     minutesAgo: "menit lalu",
     hoursAgo: "jam lalu",
+    unreadNotifications: "belum dibaca",
+    allRead: "Semua sudah dibaca",
     // PPID Sidebar
     daftarDokumen: "Daftar Dokumen",
     layananInformasi: "Layanan Informasi",
@@ -681,6 +683,8 @@ const translations: Record<Lang, Record<string, string>> = {
     justNow: "Just now",
     minutesAgo: "minutes ago",
     hoursAgo: "hours ago",
+    unreadNotifications: "unread",
+    allRead: "All caught up",
     // PPID Sidebar
     daftarDokumen: "Document List",
     layananInformasi: "Information Services",

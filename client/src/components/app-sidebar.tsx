@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { NotificationBell } from "@/components/notification-bell";
 import { Link, useLocation } from "wouter";
 import {
   Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent,
@@ -226,7 +227,7 @@ export function AppSidebar() {
               <span className="text-xs font-bold leading-tight">BAPPERIDA</span>
               <span className="text-[10px] text-muted-foreground leading-tight">Kalimantan Tengah</span>
             </div>
-            
+            <NotificationBell />
           </div>
         </SidebarHeader>
 

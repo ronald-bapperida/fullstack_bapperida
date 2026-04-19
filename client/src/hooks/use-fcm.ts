@@ -15,78 +15,47 @@ export function useFcm(userId: string | undefined) {
 
   const saveTokenMutation = useMutation({
     mutationFn: async (token: string) => {
-      console.log("[FCM] Saving token to backend...");
-      const res = await apiRequest("POST", "/api/fcm/token", { 
-        token, 
-        deviceType: "web", 
-        platform: "admin" 
+      return apiRequest("POST", "/api/fcm/token", {
+        token,
+        deviceType: "web",
+        platform: "admin",
       });
-      console.log("[FCM] Save response:", res);
-      return res;
     },
-    onSuccess: () => {
-      console.log("[FCM] Token saved successfully!");
-      toast({ title: "Notifikasi", description: "Push notification enabled" });
-    },
-    onError: (error: any) => {
-      console.error("[FCM] Failed to save token:", error);
-      toast({ 
-        title: "Notifikasi Error", 
-        description: error.message || "Gagal menyimpan token", 
-        variant: "destructive" 
+    onError: () => {
+      toast({
+        title: "Notifikasi Error",
+        description: "Gagal menyimpan token perangkat",
+        variant: "destructive",
       });
     },
   });
 
   useEffect(() => {
-    if (!userId || registered.current) {
-      console.log("[FCM] Skipping - no userId or already registered");
-      return;
-    }
-
-    console.log("[FCM] Starting setup for user:", userId);
+    if (!userId || registered.current) return;
 
     let unsubscribeForeground: (() => void) | null = null;
 
     async function setup() {
       try {
-        // Fetch config dari server jika VITE_ vars tidak ada di build time
         const configured = await ensureFirebaseConfig();
-        if (!configured) {
-          console.log("[FCM] Firebase not configured, skipping");
-          return;
-        }
+        if (!configured) return;
 
-        console.log("[FCM] 1. Requesting notification permission...");
         const permission = await requestNotificationPermission();
-        console.log("[FCM] Permission result:", permission);
-        if (permission !== "granted") {
-          console.log("[FCM] Permission denied");
-          return;
-        }
+        if (permission !== "granted") return;
 
-        console.log("[FCM] 2. Registering service worker...");
         const token = await registerServiceWorkerAndGetToken();
-        console.log("[FCM] Token obtained:", token ? "yes (" + token.substring(0, 20) + "...)" : "no");
-        if (!token) {
-          console.log("[FCM] No token obtained");
-          return;
-        }
+        if (!token) return;
 
         registered.current = true;
-        console.log("[FCM] 3. Saving token to backend...");
         await saveTokenMutation.mutateAsync(token);
-        console.log("[FCM] Setup complete!");
 
-        // Listen for foreground messages
         unsubscribeForeground = onForegroundMessage((payload) => {
-          console.log("[FCM] Foreground message received:", payload);
           const title = payload.notification?.title || "BAPPERIDA";
           const body = payload.notification?.body || "";
           toast({ title, description: body });
         });
-      } catch (err) {
-        console.error("[FCM] Setup error:", err);
+      } catch {
+        // Silent — FCM is optional
       }
     }
 
