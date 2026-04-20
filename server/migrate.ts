@@ -1,3 +1,4 @@
+import { logger } from "./logger";
 import "dotenv/config";
 import mysql from "mysql2/promise";
 
@@ -39,7 +40,7 @@ export async function runMigrations() {
   const conn = await pool.getConnection();
 
   try {
-    console.log("[migrate] Starting migrations...");
+    logger.log("[migrate] Starting migrations...");
 
     // Create all tables if they don't exist
     await conn.query(`
@@ -536,7 +537,7 @@ export async function runMigrations() {
       const exists = await columnExists(conn, alt.table, alt.column);
       if (!exists) {
         await conn.query(alt.sql);
-        console.log(`[migrate] Added column ${alt.column} to ${alt.table}`);
+        logger.log(`[migrate] Added column ${alt.column} to ${alt.table}`);
       }
     }
 
@@ -556,7 +557,7 @@ export async function runMigrations() {
           UNIQUE KEY uq_fcm_user_platform (user_id, platform(191))
         )
       `);
-      console.log("[migrate] Created table: fcm_tokens");
+      logger.log("[migrate] Created table: fcm_tokens");
     }
 
     // Create indexes
@@ -569,21 +570,21 @@ export async function runMigrations() {
       const exists = await indexExists(conn, idx.table, idx.name);
       if (!exists) {
         await conn.query(idx.sql);
-        console.log(`[migrate] Created index: ${idx.name}`);
+        logger.log(`[migrate] Created index: ${idx.name}`);
       }
     }
 
-    console.log("[migrate] All migrations completed successfully!");
+    logger.log("[migrate] All migrations completed successfully!");
 
   } catch (error) {
-    console.error("[migrate] Error during migration:", error);
-    console.error("[migrate] Migration failed but continuing...");
+    logger.error("[migrate] Error during migration:", error);
+    logger.error("[migrate] Migration failed but continuing...");
   } finally {
     conn.release();
   }
 }
 
 runMigrations().catch((error) => {
-  console.error("[migrate] Fatal error:", error);
-  console.error("[migrate] Continuing startup – API endpoints will fail until DB is connected.");
+  logger.error("[migrate] Fatal error:", error);
+  logger.error("[migrate] Continuing startup – API endpoints will fail until DB is connected.");
 });

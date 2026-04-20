@@ -1,3 +1,4 @@
+import { logger } from "./logger";
 import express, { type Request, type Response } from "express";
 import { storage as db } from "./storage";
 import { authMiddleware, optionalAuthMiddleware } from "./auth";
@@ -202,7 +203,7 @@ export function registerFlutterApiRoutes(app: express.Express) {
       const idParam = req.params.id;
       const id = typeof idParam === "string" ? idParam : idParam?.[0] ?? "";
 
-      console.log(id);
+      logger.log(id);
 
       const news = await db.getNewsById(id);
       if (!news) {
@@ -951,7 +952,7 @@ export function registerFlutterApiRoutes(app: express.Express) {
         await db.deleteOtpForUser(user.id);
         await db.createOtp(user.id, otp, expiresAt);
         const { sendOtpResetEmail } = await import("./email");
-        await sendOtpResetEmail(user.email!, otp, user.fullName || user.username).catch(console.error);
+        await sendOtpResetEmail(user.email!, otp, user.fullName || user.username).catch(logger.error);
       }
       return res.json({ success: true, message: "Jika email terdaftar, kode OTP telah dikirim" });
     } catch (error: any) {
@@ -1326,7 +1327,7 @@ export function registerFlutterApiRoutes(app: express.Express) {
             fullName,
             objectionId: result.id,
             requestCode: requestCode || undefined,
-          }).catch((err: any) => console.error("Keberatan email failed:", err));
+          }).catch((err: any) => logger.error("Keberatan email failed:", err));
         }
         return res.status(201).json({ success: true, message: "Keberatan berhasil dikirim", data: result });
       } catch (error: any) {
@@ -1412,7 +1413,7 @@ export function registerFlutterApiRoutes(app: express.Express) {
             fullName,
             token,
             informationDetail,
-          }).catch((err: any) => console.error("PPID confirmation email failed:", err));
+          }).catch((err: any) => logger.error("PPID confirmation email failed:", err));
         }
         return res.status(201).json({ success: true, message: "Permohonan informasi berhasil dikirim", data: result });
       } catch (error: any) {

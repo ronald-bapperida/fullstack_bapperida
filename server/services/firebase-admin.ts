@@ -1,3 +1,4 @@
+import { logger } from "./../logger";
 /**
  * Firebase Admin SDK setup for server-side push notification sending.
  * Requires FIREBASE_SERVICE_ACCOUNT env var (JSON string of service account key).
@@ -16,7 +17,7 @@ export function initFirebaseAdmin() {
 
   const serviceAccountJson = process.env.FIREBASE_SERVICE_ACCOUNT;
   if (!serviceAccountJson) {
-    console.warn("[FCM] FIREBASE_SERVICE_ACCOUNT not set — push notifications disabled.");
+    logger.warn("[FCM] FIREBASE_SERVICE_ACCOUNT not set — push notifications disabled.");
     return;
   }
 
@@ -30,9 +31,9 @@ export function initFirebaseAdmin() {
     }
 
     messagingInstance = getMessaging();
-    console.log("[FCM] Firebase Admin initialized successfully.");
+    logger.log("[FCM] Firebase Admin initialized successfully.");
   } catch (err: any) {
-    console.error("[FCM] Failed to initialize Firebase Admin:", err.message);
+    logger.error("[FCM] Failed to initialize Firebase Admin:", err.message);
   }
 }
 
@@ -90,10 +91,10 @@ export async function sendPushToToken(token: string, payload: {
   } catch (err: any) {
     if (err.code === "messaging/registration-token-not-registered" ||
         err.code === "messaging/invalid-registration-token") {
-      console.warn(`[FCM] Invalid token (will be removed): ${token.substring(0, 20)}...`);
+      logger.warn(`[FCM] Invalid token (will be removed): ${token.substring(0, 20)}...`);
       return false;
     }
-    console.error("[FCM] Send push error:", err.message);
+    logger.error("[FCM] Send push error:", err.message);
     return false;
   }
 }
@@ -147,7 +148,7 @@ export async function sendPushToTokens(tokens: string[], payload: {
         }
       });
     } catch (err: any) {
-      console.error("[FCM] Batch send error:", err.message);
+      logger.error("[FCM] Batch send error:", err.message);
     }
   }
 
@@ -198,6 +199,6 @@ export async function sendEventPush(payload: {
     });
     if (invalid.length > 0) await payload.tokenRemover(invalid);
   } catch (err: any) {
-    console.error("[FCM] sendEventPush error:", err.message);
+    logger.error("[FCM] sendEventPush error:", err.message);
   }
 }

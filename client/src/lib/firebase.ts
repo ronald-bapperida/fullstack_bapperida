@@ -115,8 +115,7 @@ export async function registerServiceWorkerAndGetToken(): Promise<string | null>
       serviceWorkerRegistration: registration,
     });
     return token || null;
-  } catch (err: any) {
-    console.warn("[FCM] Could not get FCM token:", err.message);
+  } catch {
     return null;
   }
 }

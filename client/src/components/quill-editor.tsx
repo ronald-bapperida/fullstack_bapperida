@@ -84,8 +84,8 @@ export default function QuillEditor({
       } else {
         quill.setSelection(index + 1, 0);
       }
-    } catch (err) {
-      console.error("Image upload failed:", err);
+    } catch {
+      // Image upload failed silently
     } finally {
       setUploading(false);
     }

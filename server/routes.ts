@@ -1,9 +1,10 @@
+import { logger } from "./logger";
 import express, { type Express, type Request, type Response } from "express";
 import { inArray } from "drizzle-orm";
 import { createServer, type Server } from "http";
 
 function routeError(res: Response, e: any, operation = "memproses data") {
-  console.error("[route error]", e);
+  logger.error("[route error]", e);
   return res.status(500).json({ error: `Gagal ${operation}. Silakan coba lagi.` });
 }
 import multer from "multer";
@@ -344,13 +345,13 @@ async function convertWithLibreOffice(docxBuffer: Buffer): Promise<Buffer | null
     ], { timeout: 60000 });
 
     if (!fs.existsSync(outputPath)) {
-      console.warn("[LibreOffice] Konversi selesai tapi output PDF tidak ditemukan");
+      logger.warn("[LibreOffice] Konversi selesai tapi output PDF tidak ditemukan");
       return null;
     }
     const pdfBuffer = fs.readFileSync(outputPath);
     return pdfBuffer;
   } catch (err: any) {
-    console.warn("[LibreOffice] Konversi gagal:", err.message);
+    logger.warn("[LibreOffice] Konversi gagal:", err.message);
     return null;
   } finally {
     try { fs.rmSync(tmpDir, { recursive: true, force: true }); } catch {}
@@ -486,7 +487,7 @@ function buildLetterHtml(rawHtml: string): string {
   
 //   if (!executablePath) {
 //     // Fallback: kirim HTML saja jika Chrome tidak tersedia
-//     console.warn("Chrome tidak ditemukan, mengirim HTML sebagai fallback");
+//     logger.warn("Chrome tidak ditemukan, mengirim HTML sebagai fallback");
 //     const htmlBuffer = Buffer.from(html, "utf-8");
 //     return htmlBuffer;
 //   }
@@ -523,10 +524,10 @@ async function convertDocxToPdf(docxBuffer: Buffer, title = "Surat"): Promise<Bu
   // Coba LibreOffice dulu (akurasi tinggi, mendukung semua formatting DOCX)
   const loPdf = await convertWithLibreOffice(docxBuffer);
   if (loPdf) {
-    console.log(`[PDF] Menggunakan LibreOffice untuk konversi: ${title}`);
+    logger.log(`[PDF] Menggunakan LibreOffice untuk konversi: ${title}`);
     return loPdf;
   }
-  console.log(`[PDF] LibreOffice tidak tersedia, fallback ke mammoth+puppeteer: ${title}`);
+  logger.log(`[PDF] LibreOffice tidak tersedia, fallback ke mammoth+puppeteer: ${title}`);
 
   const mammoth = require("mammoth");
   const PizZip = require("pizzip");
@@ -816,7 +817,7 @@ async function convertDocxToPdf(docxBuffer: Buffer, title = "Surat"): Promise<Bu
   // ==================== GENERATE PDF ====================
   const executablePath = findChromePath();
   if (!executablePath) {
-    console.warn("Chrome tidak ditemukan, mengirim HTML sebagai fallback");
+    logger.warn("Chrome tidak ditemukan, mengirim HTML sebagai fallback");
     return Buffer.from(html, "utf-8");
   }
 
@@ -981,7 +982,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         await db.deleteOtpForUser(user.id);
         await db.createOtp(user.id, otp, expiresAt);
         const { sendOtpResetEmail } = await import("./email");
-        await sendOtpResetEmail(user.email, otp, user.fullName || user.username).catch(console.error);
+        await sendOtpResetEmail(user.email, otp, user.fullName || user.username).catch(logger.error);
       }
       return res.json({ ok: true, message: "Jika email terdaftar, kode OTP telah dikirim" });
     } catch (e: any) { return routeError(res, e); }
@@ -1647,7 +1648,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         data: result,
       });
     } catch (error: any) {
-      console.error("Get user downloaded documents error:", error);
+      logger.error("Get user downloaded documents error:", error);
       return res.status(500).json({
         success: false,
         message: "Failed to retrieve user downloaded documents",
@@ -1676,7 +1677,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         },
       });
     } catch (error: any) {
-      console.error("Get document requests error:", error);
+      logger.error("Get document requests error:", error);
       return res.status(500).json({
         success: false,
         message: "Failed to retrieve document requests",
@@ -1732,7 +1733,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         data: request,
       });
     } catch (error: any) {
-      console.error("Get document request error:", error);
+      logger.error("Get document request error:", error);
       return res.status(500).json({
         success: false,
         message: "Failed to retrieve document request",
@@ -1752,7 +1753,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         message: "Document request deleted successfully",
       });
     } catch (error: any) {
-      console.error("Delete document request error:", error);
+      logger.error("Delete document request error:", error);
       return res.status(500).json({
         success: false,
         message: "Failed to delete document request",
@@ -1801,7 +1802,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           requestNumber: permit.requestNumber,
           institution: permit.institution,
           researchTitle: permit.researchTitle,
-        }).catch((err: any) => console.error("Email submit permit failed:", err));
+        }).catch((err: any) => logger.error("Email submit permit failed:", err));
       }
       return res.json(permit);
     } catch (e: any) { return routeError(res, e); }
@@ -1912,7 +1913,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
               pdfFileName,
             });
           } catch (err: any) {
-            console.error("Email status permit failed:", err);
+            logger.error("Email status permit failed:", err);
           }
         })();
       }
@@ -2046,13 +2047,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         let pdfBuffer: Buffer | undefined;
         
         try {
-          console.log("🔄 Mengkonversi DOCX ke PDF...");
+          logger.log("🔄 Mengkonversi DOCX ke PDF...");
           pdfBuffer = await convertDocxToPdf(docxBuffer, `Surat ${permit.requestNumber}`);
           fs.writeFileSync(pdfFilePath, pdfBuffer);
           pdfFileUrl = `/uploads/letters/${pdfFileName}`;
-          console.log(`✅ PDF berhasil dibuat: ${pdfFileName}`);
+          logger.log(`✅ PDF berhasil dibuat: ${pdfFileName}`);
         } catch (pdfErr: any) {
-          console.error("❌ PDF generation failed:", pdfErr);
+          logger.error("❌ PDF generation failed:", pdfErr);
           // Jika PDF gagal, tetap lanjutkan tapi kirim warning
           // Jangan throw error, karena DOCX tetap tersimpan
         }
@@ -2067,7 +2068,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         //     fileUrl: generatedFileUrl,
         //     pdfFileUrl: pdfFileUrl || existingLetter.pdfFileUrl,
         //   });
-        //   console.log(`✅ Updated existing letter: ${existingLetter.id}`);
+        //   logger.log(`✅ Updated existing letter: ${existingLetter.id}`);
         // } else {
         //   // Create new letter
           await db.createGeneratedLetter({
@@ -2076,7 +2077,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             fileUrl: generatedFileUrl,
             pdfFileUrl,
           });
-          console.log(`✅ Created new letter for permit: ${permit.id}`);
+          logger.log(`✅ Created new letter for permit: ${permit.id}`);
         // }
     
         const isSaveOnly = req.body.saveOnly === "true" || req.body.saveOnly === true;
@@ -2098,7 +2099,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return res.send(docxBuffer);
     
       } catch (e: any) {
-        console.error("DOCX generation error:", e);
+        logger.error("DOCX generation error:", e);
         return res.status(500).json({ error: e.message });
       }
     }
@@ -2127,13 +2128,13 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         if (letter?.pdfFileUrl) {
           const pdfPath = path.join(process.cwd(), letter.pdfFileUrl.replace(/^\//, ""));
           if (fs.existsSync(pdfPath)) {
-            console.log(`✅ Menampilkan PDF yang sudah ada: ${letter.pdfFileUrl}`);
+            logger.log(`✅ Menampilkan PDF yang sudah ada: ${letter.pdfFileUrl}`);
             const pdfBuf = fs.readFileSync(pdfPath);
             res.setHeader("Content-Type", "application/pdf");
             res.setHeader("Content-Disposition", `inline; filename="${path.basename(pdfPath)}"`);
             return res.send(pdfBuf);
           } else {
-            console.warn(`⚠️ File PDF tidak ditemukan di disk: ${pdfPath}`);
+            logger.warn(`⚠️ File PDF tidak ditemukan di disk: ${pdfPath}`);
           }
         }
         
@@ -2141,7 +2142,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         if (letter?.fileUrl) {
           const docxPath = path.join(process.cwd(), letter.fileUrl.replace(/^\//, ""));
           if (fs.existsSync(docxPath) && docxPath.endsWith(".docx")) {
-            console.log(`🔄 Konversi ulang DOCX ke PDF: ${docxPath}`);
+            logger.log(`🔄 Konversi ulang DOCX ke PDF: ${docxPath}`);
             const docxBuffer = fs.readFileSync(docxPath);
             
             try {
@@ -2157,7 +2158,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
               res.setHeader("Content-Disposition", `inline; filename="${pdfFileName}"`);
               return res.send(pdfBuffer);
             } catch (pdfErr: any) {
-              console.error("❌ PDF conversion failed:", pdfErr);
+              logger.error("❌ PDF conversion failed:", pdfErr);
               return res.status(500).json({ 
                 error: `Gagal konversi ke PDF: ${pdfErr.message}`,
                 fallback: "Silakan download file DOCX untuk melihat surat"
@@ -2169,7 +2170,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return res.status(400).json({ error: "File surat tidak ditemukan di server" });
         
       } catch (e: any) {
-        console.error("PDF preview error:", e);
+        logger.error("PDF preview error:", e);
         return res.status(500).json({ error: e.message });
       }
     }
@@ -2203,7 +2204,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         return res.send(pdfBuffer);
         
       } catch (e: any) {
-        console.error("PDF download error:", e);
+        logger.error("PDF download error:", e);
         return res.status(500).json({ error: e.message });
       }
     }
@@ -2257,16 +2258,16 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         // Jika DOCX diupload, otomatis konversi ke PDF
         if (ext === ".docx") {
           try {
-            console.log("🔄 Mengkonversi DOCX upload ke PDF...");
+            logger.log("🔄 Mengkonversi DOCX upload ke PDF...");
             const docxBuffer = fs.readFileSync(newPath);
             const pdfBuffer = await convertDocxToPdf(docxBuffer, `Surat ${permit.requestNumber}`);
             const pdfFileName = finalFileName.replace(".docx", ".pdf");
             const pdfPath = path.join(letterFilesDir, pdfFileName);
             fs.writeFileSync(pdfPath, pdfBuffer);
             finalPdfUrl = `/uploads/letters/${pdfFileName}`;
-            console.log(`✅ PDF berhasil dibuat dari DOCX: ${pdfFileName}`);
+            logger.log(`✅ PDF berhasil dibuat dari DOCX: ${pdfFileName}`);
           } catch (pdfErr: any) {
-            console.warn("⚠️ Gagal konversi DOCX ke PDF, PDF preview tidak tersedia:", pdfErr.message);
+            logger.warn("⚠️ Gagal konversi DOCX ke PDF, PDF preview tidak tersedia:", pdfErr.message);
             // Tetap lanjut, finalPdfUrl tetap undefined sehingga preview PDF tidak tersedia
             finalPdfUrl = "";
           }
@@ -2337,7 +2338,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             pdfBuffer = await convertDocxToPdf(docxBuf, `Surat Izin ${permit.requestNumber}`);
             pdfName = fileName.replace(".docx", ".pdf");
           } catch (pdfErr: any) {
-            console.warn("PDF generation for email failed, sending DOCX instead:", pdfErr.message);
+            logger.warn("PDF generation for email failed, sending DOCX instead:", pdfErr.message);
           }
         }
         // Jika file utama adalah PDF, kirim langsung
@@ -2360,7 +2361,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         await db.updatePermitStatus(permit.id, "sent", "Surat izin berhasil dikirim ke email pemohon", req.user.id);
         return res.json({ ok: true });
       } catch (e: any) {
-        console.error("Send letter email error:", e);
+        logger.error("Send letter email error:", e);
         return res.status(500).json({ error: e.message });
       }
     }
@@ -2394,12 +2395,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             requestNumber: permit.requestNumber,
           });
         } catch (emailErr: any) {
-          console.warn("Pickup email send failed (non-fatal):", emailErr.message);
+          logger.warn("Pickup email send failed (non-fatal):", emailErr.message);
         }
 
         return res.json({ ok: true, message: "Notifikasi ambil surat berhasil dikirim" });
       } catch (e: any) {
-        console.error("Send pickup email error:", e);
+        logger.error("Send pickup email error:", e);
         return res.status(500).json({ error: e.message });
       }
     }
@@ -2435,12 +2436,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             webUrl,
           });
         } catch (emailErr: any) {
-          console.warn("Check-status email send failed (non-fatal):", emailErr.message);
+          logger.warn("Check-status email send failed (non-fatal):", emailErr.message);
         }
 
         return res.json({ ok: true, message: "Notifikasi cek status berhasil dikirim" });
       } catch (e: any) {
-        console.error("Send check-status email error:", e);
+        logger.error("Send check-status email error:", e);
         return res.status(500).json({ error: e.message });
       }
     }
@@ -2566,7 +2567,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   //     res.setHeader("Content-Disposition", `attachment; filename="${fileName}"`);
   //     return res.send(buffer);
   //   } catch (e: any) {
-  //     console.error("DOCX generation error:", e);
+  //     logger.error("DOCX generation error:", e);
   //     return res.status(500).json({ error: e.message });
   //   }
   // });  
@@ -2625,7 +2626,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           res.setHeader("Content-Disposition", `inline; filename="Preview-${permit.requestNumber}.pdf"`);
           return res.send(pdfBuffer);
         } catch (pdfErr: any) {
-          console.warn("Letter preview PDF fallback to HTML:", pdfErr.message);
+          logger.warn("Letter preview PDF fallback to HTML:", pdfErr.message);
           res.setHeader("Content-Type", "text/html; charset=utf-8");
           return res.send(html);
         }
@@ -2967,12 +2968,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             // Update isSurvei menjadi true
             updatedPermit = await db.updatePermit(linkedPermit.id, { isSurvei: true });
             
-            console.log(`✅ Survey linked to permit ${linkedPermit.requestNumber}, isSurvei set to true`);
+            logger.log(`✅ Survey linked to permit ${linkedPermit.requestNumber}, isSurvei set to true`);
           } else {
-            console.log(`⚠️ Permit with request number ${data.requestNumber} not found`);
+            logger.log(`⚠️ Permit with request number ${data.requestNumber} not found`);
           }
         } catch (err) {
-          console.error("Error updating permit isSurvei:", err);
+          logger.error("Error updating permit isSurvei:", err);
           // Jangan gagalkan response survey jika update permit gagal
         }
       }
@@ -3317,7 +3318,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             reviewNote,
             attachmentPath,
             attachmentName,
-          }).catch((err: any) => console.error("PPID reply email failed:", err));
+          }).catch((err: any) => logger.error("PPID reply email failed:", err));
         }
         // FCM push ke pemohon (jika login saat submit)
         if (updated?.userId) {
@@ -3664,7 +3665,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       
       await wb.xlsx.write(res);
     } catch (e: any) {
-      console.error("Export document requests error:", e);
+      logger.error("Export document requests error:", e);
       return routeError(res, e, "mengekspor data permohonan dokumen");
     }
   });
@@ -3753,7 +3754,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       
       await wb.xlsx.write(res);
     } catch (e: any) {
-      console.error("Export user document requests error:", e);
+      logger.error("Export user document requests error:", e);
       return routeError(res, e, "mengekspor data permohonan dokumen user");
     }
   });

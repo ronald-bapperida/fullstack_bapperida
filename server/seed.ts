@@ -1,3 +1,4 @@
+import { logger } from "./logger";
 // server/seed/seed.ts
 import "dotenv/config";
 import bcrypt from "bcryptjs";
@@ -530,13 +531,13 @@ async function ensureAudit(userId: string | null, action: string, entity: string
 // ---------- main seed ----------
 async function main() {
   if (process.env.RUN_SEED !== "true") {
-    console.log("Seed disabled (RUN_SEED != true).");
+    logger.log("Seed disabled (RUN_SEED != true).");
     process.exit(0);
   }
 
   const adminPass = process.env.SEED_ADMIN_PASSWORD || "Admin@123";
 
-  console.log("🌱 Seeding users...");
+  logger.log("🌱 Seeding users...");
   const superadmin = await ensureUser({
     username: "superadmin",
     email: "superadmin@bapperida.local",
@@ -575,35 +576,35 @@ async function main() {
     );
   }
 
-  console.log("🌱 Seeding news categories...");
+  logger.log("🌱 Seeding news categories...");
   const cat1 = await ensureNewsCategory("Riset dan Inovasi Daerah", "riset-inovasi-daerah");
   const cat2 = await ensureNewsCategory("Perencanaan Pembangunan", "perencanaan-pembangunan");
   const cat3 = await ensureNewsCategory("Pengumuman", "pengumuman");
 
-  console.log("🌱 Seeding news (5 items)...");
+  logger.log("🌱 Seeding news (5 items)...");
   const news1 = await ensureNews({ title: "BAPPERIDA Gelar Forum Inovasi 2026", categoryId: cat1.id, authorId: adminRida.id, status: "published" });
   const news2 = await ensureNews({ title: "Rapat Koordinasi Perencanaan Daerah", categoryId: cat2.id, authorId: adminBpp.id, status: "published" });
   const news3 = await ensureNews({ title: "Pengumuman Jadwal Layanan Publik", categoryId: cat3.id, authorId: adminBpp.id, status: "published" });
   const news4 = await ensureNews({ title: "Kickoff Program Data & AI Pemerintah Daerah", categoryId: cat1.id, authorId: superadmin.id, status: "draft" });
   const news5 = await ensureNews({ title: "Publikasi Dokumen PPID Triwulan I", categoryId: cat3.id, authorId: adminRida.id, status: "published" });
 
-  console.log("🌱 Seeding news media...");
+  logger.log("🌱 Seeding news media...");
   await ensureNewsMedia({ newsId: news1.id, fileUrl: "/seed/news1.jpg", fileName: "news1.jpg", mimeType: "image/jpeg", caption: "Dokumentasi kegiatan", isMain: true, sortOrder: 0 });
   await ensureNewsMedia({ newsId: news2.id, fileUrl: "/seed/news2.jpg", fileName: "news2.jpg", mimeType: "image/jpeg", caption: "Rapat koordinasi", isMain: true, sortOrder: 0 });
   await ensureNewsMedia({ newsId: news3.id, fileUrl: "/seed/news3.jpg", fileName: "news3.jpg", mimeType: "image/jpeg", caption: "Pengumuman", isMain: true, sortOrder: 0 });
 
-  console.log("🌱 Seeding banners...");
+  logger.log("🌱 Seeding banners...");
   await ensureBanner({ title: "Banner Utama", slug: "banner-utama", placement: "home", linkType: "external", linkUrl: "https://kalteng.go.id" });
   await ensureBanner({ title: "Banner PPID", slug: "banner-ppid", placement: "home", linkType: "page", linkUrl: "/ppid" });
 
-  console.log("🌱 Seeding menus & items...");
+  logger.log("🌱 Seeding menus & items...");
   const headerMenu = await ensureMenu("Main Menu", "header");
   await ensureMenuItem({ menuId: headerMenu.id, title: "Beranda", type: "route", value: "/", sortOrder: 1 });
   await ensureMenuItem({ menuId: headerMenu.id, title: "Berita", type: "route", value: "/news", sortOrder: 2 });
   await ensureMenuItem({ menuId: headerMenu.id, title: "PPID", type: "route", value: "/ppid", sortOrder: 3 });
   await ensureMenuItem({ menuId: headerMenu.id, title: "Izin Penelitian", type: "route", value: "/izin-penelitian", sortOrder: 4 });
 
-  console.log("🌱 Seeding document masters...");
+  logger.log("🌱 Seeding document masters...");
   const kind1 = await ensureDocKind("Informasi Berkala");
   const kind2 = await ensureDocKind("Informasi Serta Merta");
   const dcat1 = await ensureDocCategory("Perencanaan");
@@ -611,14 +612,14 @@ async function main() {
   const dtype1 = await ensureDocType("PDF", "pdf");
   const dtype2 = await ensureDocType("DOCX", "docx");
 
-  console.log("🌱 Seeding documents (5 items)...");
+  logger.log("🌱 Seeding documents (5 items)...");
   const doc1 = await ensureDocument({ title: "Dokumen RKPD 2026", kindId: kind1.id, categoryId: dcat1.id, typeId: dtype1.id, accessLevel: "terbuka", status: "published" });
   const doc2 = await ensureDocument({ title: "Laporan Keuangan Triwulan I", kindId: kind1.id, categoryId: dcat2.id, typeId: dtype1.id, accessLevel: "terbatas", status: "published" });
   const doc3 = await ensureDocument({ title: "SOP Layanan Informasi Publik", kindId: kind2.id, categoryId: dcat1.id, typeId: dtype2.id, accessLevel: "terbuka", status: "published" });
   const doc4 = await ensureDocument({ title: "Daftar Informasi Publik", kindId: kind1.id, categoryId: dcat1.id, typeId: dtype1.id, accessLevel: "terbuka", status: "draft" });
   const doc5 = await ensureDocument({ title: "Ringkasan Program Prioritas", kindId: kind2.id, categoryId: dcat1.id, typeId: dtype1.id, accessLevel: "terbuka", status: "published" });
 
-  console.log("🌱 Seeding request sequences & permits...");
+  logger.log("🌱 Seeding request sequences & permits...");
   const year = new Date().getFullYear();
   await ensureRequestSeqYear(year);
 
@@ -649,30 +650,30 @@ async function main() {
   await ensurePermitHistory({ permitId: permit1.id, fromStatus: null, toStatus: "submitted", note: "Permohonan diterima", changedBy: adminRida.id });
   await ensurePermitHistory({ permitId: permit2.id, fromStatus: "submitted", toStatus: "approved", note: "Disetujui", changedBy: adminBpp.id });
 
-  console.log("🌱 Seeding letter templates & generated letters...");
+  logger.log("🌱 Seeding letter templates & generated letters...");
   const tpl = await ensureTemplate("Template Izin Penelitian Default");
   await ensureGeneratedLetter({ permitId: permit2.id, templateId: tpl.id });
 
-  console.log("🌱 Seeding surveys (5)...");
+  logger.log("🌱 Seeding surveys (5)...");
   for (let i = 1; i <= 5; i++) await ensureSurvey(i);
 
-  console.log("🌱 Seeding final reports (5)...");
+  logger.log("🌱 Seeding final reports (5)...");
   for (let i = 1; i <= 5; i++) await ensureFinalReport(i, i % 2 === 0 ? permit2.id : null);
 
-  console.log("🌱 Seeding suggestion box (5)...");
+  logger.log("🌱 Seeding suggestion box (5)...");
   for (let i = 1; i <= 5; i++) await ensureSuggestion(i);
 
-  console.log("🌱 Seeding audit logs...");
+  logger.log("🌱 Seeding audit logs...");
   await ensureAudit(superadmin.id, "seed", "users", superadmin.id);
   await ensureAudit(adminBpp.id, "seed", "news", news2.id);
   await ensureAudit(adminRida.id, "seed", "documents", doc1.id);
   await ensureAudit(null, "seed", "permits", permit1.id);
 
-  console.log("✅ Seed done.");
+  logger.log("✅ Seed done.");
   process.exit(0);
 }
 
 main().catch((e) => {
-  console.error("❌ Seed failed:", e);
+  logger.error("❌ Seed failed:", e);
   process.exit(1);
 });
