@@ -1,7 +1,6 @@
 import { useRef, useEffect, useCallback, useState } from "react";
 import ReactQuill from "react-quill-new";
 import "react-quill-new/dist/quill.snow.css";
-import { apiRequest } from "@/lib/queryClient";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -39,32 +38,23 @@ export default function QuillEditor({
   const { toast } = useToast();
 
   const uploadFile = async (file: File): Promise<string> => {
-    try {
-      const fd = new FormData();
-      fd.append("image", file);
-
-      const res = await apiRequest("POST", "/api/admin/news/upload-image", fd);
-
-      const data = await res.json();
-
-      if (!res.ok) throw new Error(data.message);
-
-      toast({
-        title: "Upload berhasil",
-        description: file.name,
-      });
-
-      return data.url || data.fileUrl;
-    } catch (err: any) {
-      toast({
-        title: "Upload gagal",
-        description: err.message || "Terjadi kesalahan saat upload",
-        variant: "destructive",
-      });
-
-      throw err;
-    }
+    const fd = new FormData();
+    fd.append("image", file);
+    const token = localStorage.getItem("token");
+    const res = await fetch("/api/admin/news/upload-image", {
+      method: "POST",
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      body: fd,
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(data.error || data.message || "Upload gagal");
+    return data.url || data.fileUrl;
   };
+
+  const openCaptionDialog = useCallback((file: File) => {
+    setCaptionDialog({ open: true, file, previewUrl: URL.createObjectURL(file) });
+    setCaption("");
+  }, []);
 
   const insertImageWithCaption = useCallback(async (file: File, cap: string) => {
     setUploading(true);
@@ -84,12 +74,16 @@ export default function QuillEditor({
       } else {
         quill.setSelection(index + 1, 0);
       }
-    } catch {
-      // Image upload failed silently
+    } catch (err: any) {
+      toast({
+        title: "Upload gambar gagal",
+        description: err?.message || "Terjadi kesalahan saat mengupload gambar",
+        variant: "destructive",
+      });
     } finally {
       setUploading(false);
     }
-  }, []);
+  }, [toast]);
 
   const imageHandler = useCallback(() => {
     const input = document.createElement("input");
@@ -99,10 +93,9 @@ export default function QuillEditor({
     input.onchange = () => {
       const file = input.files?.[0];
       if (!file) return;
-      setCaptionDialog({ open: true, file, previewUrl: URL.createObjectURL(file) });
-      setCaption("");
+      openCaptionDialog(file);
     };
-  }, []);
+  }, [openCaptionDialog]);
 
   const handleCaptionConfirm = async () => {
     if (!captionDialog.file) return;
@@ -111,51 +104,61 @@ export default function QuillEditor({
     setCaption("");
   };
 
+  // Intercept paste + drop via native DOM events (capture phase)
+  // More reliable than overriding Quill internals
   useEffect(() => {
-    let origOnCapturePaste: any = null;
-    let clipboard: any = null;
+    const timer = setTimeout(() => {
+      const quill = quillRef.current?.getEditor() as any;
+      if (!quill) return;
+      const root: HTMLElement = quill.root;
 
-    const setup = () => {
-      try {
-        const quill = quillRef.current?.getEditor() as any;
-        if (!quill) return false;
-        clipboard = quill.getModule("clipboard");
-        if (!clipboard) return false;
-
-        origOnCapturePaste = clipboard.onCapturePaste.bind(clipboard);
-        clipboard.onCapturePaste = (e: ClipboardEvent) => {
-          const items = e.clipboardData?.items;
-          if (items) {
-            for (let i = 0; i < items.length; i++) {
-              if (items[i].type.startsWith("image/")) {
-                e.preventDefault();
-                e.stopPropagation();
-                const file = items[i].getAsFile();
-                if (file) {
-                  setCaptionDialog({ open: true, file, previewUrl: URL.createObjectURL(file) });
-                  setCaption("");
-                }
-                return;
-              }
-            }
+      const handlePaste = (e: ClipboardEvent) => {
+        const items = e.clipboardData?.items;
+        if (!items) return;
+        for (let i = 0; i < items.length; i++) {
+          if (items[i].type.startsWith("image/")) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            const file = items[i].getAsFile();
+            if (file) openCaptionDialog(file);
+            return;
           }
-          origOnCapturePaste(e);
-        };
-        return true;
-      } catch {
-        return false;
-      }
-    };
+        }
+      };
 
-    const timer = setTimeout(() => { setup(); }, 100);
+      const handleDragOver = (e: DragEvent) => {
+        const hasImage = Array.from(e.dataTransfer?.items || []).some(
+          item => item.type.startsWith("image/")
+        );
+        if (hasImage) e.preventDefault();
+      };
 
-    return () => {
-      clearTimeout(timer);
-      if (clipboard && origOnCapturePaste) {
-        clipboard.onCapturePaste = origOnCapturePaste;
-      }
-    };
-  }, []);
+      const handleDrop = (e: DragEvent) => {
+        const files = e.dataTransfer?.files;
+        if (!files) return;
+        for (let i = 0; i < files.length; i++) {
+          if (files[i].type.startsWith("image/")) {
+            e.preventDefault();
+            e.stopImmediatePropagation();
+            openCaptionDialog(files[i]);
+            return;
+          }
+        }
+      };
+
+      root.addEventListener("paste", handlePaste, true);
+      root.addEventListener("dragover", handleDragOver);
+      root.addEventListener("drop", handleDrop, true);
+
+      return () => {
+        root.removeEventListener("paste", handlePaste, true);
+        root.removeEventListener("dragover", handleDragOver);
+        root.removeEventListener("drop", handleDrop, true);
+      };
+    }, 200);
+
+    return () => clearTimeout(timer);
+  }, [openCaptionDialog]);
 
   const modules = {
     toolbar: {
@@ -257,6 +260,7 @@ export default function QuillEditor({
                 variant="outline"
                 className="flex-1"
                 onClick={() => setCaptionDialog({ open: false, file: null, previewUrl: null })}
+                disabled={uploading}
               >
                 Batal
               </Button>

@@ -541,6 +541,19 @@ export async function runMigrations() {
       }
     }
 
+    // ─── Upgrade menu_items.value from TEXT to LONGTEXT ───────────────────
+    {
+      const [rows] = await conn.query(
+        `SELECT DATA_TYPE FROM information_schema.COLUMNS
+         WHERE TABLE_SCHEMA = DATABASE() AND TABLE_NAME = 'menu_items' AND COLUMN_NAME = 'value'`
+      ) as any;
+      const colType: string = rows?.[0]?.DATA_TYPE?.toLowerCase() || "";
+      if (colType === "text") {
+        await conn.query(`ALTER TABLE menu_items MODIFY COLUMN value LONGTEXT`);
+        logger.log("[migrate] Upgraded menu_items.value from TEXT to LONGTEXT");
+      }
+    }
+
     // ─── FCM Tokens table ─────────────────────────────────────────────────
     const hasFcmTokensTable = await tableExists(conn, "fcm_tokens");
     if (!hasFcmTokensTable) {

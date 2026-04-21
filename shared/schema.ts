@@ -2,6 +2,7 @@ import { sql } from "drizzle-orm";
 import {
   mysqlTable,
   text,
+  longtext,
   varchar,
   boolean,
   int,
@@ -167,7 +168,7 @@ export const menuItems = mysqlTable("menu_items", {
   parentId:     varchar("parent_id", { length: 36 }),
   title:        text("title").notNull(),
   type:         varchar("type", { length: 20 }).notNull().default("route"),
-  value:        text("value"),
+  value:        longtext("value"),
   icon:         text("icon"),
   target:       text("target"),
   requiresAuth: boolean("requires_auth").notNull().default(false),
