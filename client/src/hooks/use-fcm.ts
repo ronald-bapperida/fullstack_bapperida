@@ -1,5 +1,4 @@
 import { useEffect, useRef } from "react";
-import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import {
   ensureFirebaseConfig,
@@ -12,28 +11,10 @@ import { useToast } from "@/hooks/use-toast";
 export function useFcm(userId: string | undefined) {
   const { toast } = useToast();
   const registered = useRef(false);
-
-  const saveTokenMutation = useMutation({
-    mutationFn: async (token: string) => {
-      return apiRequest("POST", "/api/fcm/token", {
-        token,
-        deviceType: "web",
-        platform: "admin",
-      });
-    },
-    onError: () => {
-      toast({
-        title: "Notifikasi Error",
-        description: "Gagal menyimpan token perangkat",
-        variant: "destructive",
-      });
-    },
-  });
+  const unsubscribeRef = useRef<(() => void) | null>(null);
 
   useEffect(() => {
     if (!userId || registered.current) return;
-
-    let unsubscribeForeground: (() => void) | null = null;
 
     async function setup() {
       try {
@@ -47,12 +28,39 @@ export function useFcm(userId: string | undefined) {
         if (!token) return;
 
         registered.current = true;
-        await saveTokenMutation.mutateAsync(token);
 
-        unsubscribeForeground = onForegroundMessage((payload) => {
+        try {
+          await apiRequest("POST", "/api/fcm/token", {
+            token,
+            deviceType: "web",
+            platform: "admin",
+          });
+        } catch {
+          // Non-fatal
+        }
+
+        unsubscribeRef.current = onForegroundMessage((payload) => {
           const title = payload.notification?.title || "BAPPERIDA";
           const body = payload.notification?.body || "";
+
+          // In-app toast
           toast({ title, description: body });
+
+          // Native desktop notification via service worker (works even when app is focused)
+          if (Notification.permission === "granted" && "serviceWorker" in navigator) {
+            navigator.serviceWorker.ready
+              .then((reg) => {
+                reg.showNotification(title, {
+                  body,
+                  icon: "/logo_bapperida.png",
+                  badge: "/logo_bapperida.png",
+                  tag: (payload.data as any)?.type || "bapperida",
+                  data: payload.data || {},
+                  requireInteraction: false,
+                });
+              })
+              .catch(() => {});
+          }
         });
       } catch {
         // Silent — FCM is optional
@@ -62,7 +70,10 @@ export function useFcm(userId: string | undefined) {
     setup();
 
     return () => {
-      if (unsubscribeForeground) unsubscribeForeground();
+      if (unsubscribeRef.current) {
+        unsubscribeRef.current();
+        unsubscribeRef.current = null;
+      }
     };
-  }, [userId, saveTokenMutation, toast]);
+  }, [userId]); // eslint-disable-line react-hooks/exhaustive-deps
 }

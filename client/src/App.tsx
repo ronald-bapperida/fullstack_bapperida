@@ -5,6 +5,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { SidebarProvider, SidebarTrigger } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/app-sidebar";
+import { NotificationBell } from "@/components/notification-bell";
 import { AuthProvider, useAuth } from "@/contexts/auth";
 import { LanguageProvider, useLang } from "@/contexts/language";
 import { ThemeProvider, useTheme } from "@/contexts/theme";
@@ -112,6 +113,7 @@ function AdminLayout({ children }: { children: React.ReactNode }) {
             <span className="text-xs text-muted-foreground hidden sm:block">{t("portal")}</span>
             <ThemeToggle />
             <LangSwitcher />
+            <NotificationBell />
           </header>
           <main className="flex-1 overflow-y-auto bg-background">
             {children}

@@ -3304,20 +3304,12 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         const updated = await db.updatePpidInfoRequestStatus(req.params.id, { status, reviewNote, processedBy: req.user.id, responseFileUrl });
         // Kirim email notifikasi ke pemohon
         if (updated.email) {
-          let attachmentPath: string | undefined;
-          let attachmentName: string | undefined;
-          if (responseFileUrl) {
-            attachmentPath = path.join(process.cwd(), responseFileUrl.replace(/^\//, ""));
-            attachmentName = req.file?.originalname || path.basename(responseFileUrl);
-          }
           sendPpidInfoRequestReply({
             to: updated.email,
             fullName: updated.fullName,
             token: updated.token || updated.id.slice(0, 8).toUpperCase(),
             status,
             reviewNote,
-            attachmentPath,
-            attachmentName,
           }).catch((err: any) => logger.error("PPID reply email failed:", err));
         }
         // FCM push ke pemohon (jika login saat submit)
@@ -3535,6 +3527,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         { header: "Judul Penelitian", key: "researchTitle", width: 40 },
         { header: "Asal Lembaga", key: "institution", width: 28 },
         { header: "Status", key: "status", width: 16 },
+        { header: "Saran", key: "suggestion", width: 50 },
         { header: "Tanggal Laporan", key: "createdAt", width: 20 },
       ];
       const fmt = (d: any) => d ? new Date(d).toLocaleDateString("id-ID") : "-";

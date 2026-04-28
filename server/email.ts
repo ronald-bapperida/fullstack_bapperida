@@ -1,5 +1,4 @@
 import nodemailer from "nodemailer";
-import fs from "fs";
 
 const transporter = nodemailer.createTransport({
   host: "smtp.gmail.com",
@@ -374,8 +373,6 @@ export async function sendPpidInfoRequestReply(opts: {
   token: string;
   status: string;
   reviewNote?: string;
-  attachmentPath?: string;
-  attachmentName?: string;
 }) {
   const STATUS_CONFIG: Record<string, { label: string; color: string; bg: string; emoji: string; message: string }> = {
     resolved: {
@@ -410,26 +407,17 @@ export async function sendPpidInfoRequestReply(opts: {
       <tr><td>Status</td><td><span class="status-pill" style="background:${cfg.bg};color:${cfg.color};">${cfg.emoji} ${cfg.label}</span></td></tr>
       ${opts.reviewNote ? `<tr><td>Tanggapan</td><td>${opts.reviewNote}</td></tr>` : ""}
     </table>
-    ${opts.attachmentPath ? `<p>📎 File informasi yang Anda minta terlampir bersama email ini.</p>` : ""}
+    ${opts.status === "resolved" ? `<p>📱 Dokumen atau informasi yang diminta dapat dilihat dan diunduh melalui aplikasi BAPPERIDA menggunakan Kode Permohonan Anda.</p>` : ""}
     ${opts.status === "rejected" ? `
       <div class="note-box">Jika Anda tidak setuju dengan keputusan ini, Anda dapat mengajukan <strong>Keberatan</strong> melalui aplikasi BAPPERIDA dengan mencantumkan Kode Permohonan Anda.</div>` : ""}
     ${privacyNotice()}
     ${addressBlock()}
   `;
 
-  const attachments: MailAttachment[] = [];
-  if (opts.attachmentPath && opts.attachmentName && fs.existsSync(opts.attachmentPath)) {
-    attachments.push({
-      filename: opts.attachmentName,
-      content: fs.readFileSync(opts.attachmentPath),
-    });
-  }
-
   return sendMail({
     to: opts.to,
     subject: `[PPID BAPPERIDA] Tanggapan Permohonan Informasi — ${cfg.label}`,
     html: wrapHtml(`Tanggapan Permohonan: ${cfg.label}`, body),
-    attachments,
   });
 }
 

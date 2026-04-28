@@ -1,5 +1,4 @@
 import { useState } from "react";
-import { NotificationBell } from "@/components/notification-bell";
 import { Link, useLocation } from "wouter";
 import {
   Sidebar, SidebarContent, SidebarGroup, SidebarGroupContent,
@@ -9,10 +8,10 @@ import {
 } from "@/components/ui/sidebar";
 import { Collapsible, CollapsibleTrigger, CollapsibleContent } from "@/components/ui/collapsible";
 import {
-  LayoutDashboard, Newspaper, Tag, Image, Menu, FileText,
-  ClipboardList, BarChart2, Upload, MessageSquare, FileEdit,
-  Users, LogOut, ChevronDown, Layers, FileType2, FolderOpen,
-  AlertTriangle, FileQuestion, Bell, Lock, KeyRound,
+  LayoutDashboard, Newspaper, Image, Menu, FileText,
+  ClipboardList, BarChart2, Upload, FileEdit,
+  Users, LogOut, ChevronDown,
+  AlertTriangle, Bell, Lock, KeyRound,
 } from "lucide-react";
 import { useAuth } from "@/contexts/auth";
 import { useLang } from "@/contexts/language";
@@ -62,10 +61,11 @@ function NavItem({ href, icon: Icon, label }: { href: string; icon: any; label: 
 }
 
 function CollapsibleNav({
-  icon: Icon, label, basePath, children
-}: { icon: any; label: string; basePath: string; children: React.ReactNode }) {
+  icon: Icon, label, basePath, basePaths, children
+}: { icon: any; label: string; basePath?: string; basePaths?: string[]; children: React.ReactNode }) {
   const [loc] = useLocation();
-  const isActive = loc.startsWith(basePath);
+  const paths = basePaths ?? (basePath ? [basePath] : []);
+  const isActive = paths.some(p => loc === p || loc.startsWith(p + "/") || loc.startsWith(p));
   const [open, setOpen] = useState(isActive);
 
   return (
@@ -213,11 +213,6 @@ export function AppSidebar() {
       <Sidebar>
         <SidebarHeader className="px-3 py-3">
           <div className="flex items-center gap-2">
-            {/* <img
-              src={logoKalteng}
-              alt="Logo Kalimantan Tengah"
-              className="w-10 h-10 object-contain shrink-0"
-            /> */}
             <img
               src={logoBapperida}
               alt="Logo BAPPERIDA"
@@ -227,7 +222,6 @@ export function AppSidebar() {
               <span className="text-xs font-bold leading-tight">BAPPERIDA</span>
               <span className="text-[10px] text-muted-foreground leading-tight">Kalimantan Tengah</span>
             </div>
-            <NotificationBell />
           </div>
         </SidebarHeader>
 
@@ -248,12 +242,13 @@ export function AppSidebar() {
               <SidebarGroupLabel>{t("bappeda")}</SidebarGroupLabel>
               <SidebarGroupContent>
                 <SidebarMenu>
-                  <NavItem href="/news" icon={Newspaper} label={t("news")} />
-                  <NavItem href="/categories" icon={Tag} label={t("categories")} />
-                  <NavItem href="/banners" icon={Image} label={t("banners")} />
-                  <NavItem href="/menus" icon={Menu} label={t("menus")} />
-                  <CollapsibleNav icon={FileText} label={t("ppidSection")} basePath="/documents">
+                  <CollapsibleNav icon={Newspaper} label={t("news")} basePaths={["/news", "/categories"]}>
+                    <SubNavItem href="/news" label={t("daftarBerita")} />
+                    <SubNavItem href="/categories" label={t("categories")} />
+                  </CollapsibleNav>
+                  <CollapsibleNav icon={FileText} label={t("ppidSection")} basePaths={["/documents", "/document-requests"]}>
                     <SubNavItem href="/documents" label={t("daftarDokumen")} />
+                    <SubNavItem href="/document-requests" label={t("daftarPermohonanInfoPublik")} />
                     <SubNavItem href="/documents/kinds" label={t("docKinds")} />
                     <SubNavItem href="/documents/categories" label={t("docCategories")} />
                     <SubNavItem href="/documents/types" label={t("docTypes")} />
@@ -262,7 +257,8 @@ export function AppSidebar() {
                     <SubNavItem href="/ppid/information-requests" label={t("permohonanInformasi")} />
                     <SubNavItem href="/ppid/objections" label={t("keberatan")} />
                   </CollapsibleNav>
-                  <NavItem href="/document-requests" icon={FileQuestion} label={t("documentRequests")} />
+                  <NavItem href="/banners" icon={Image} label={t("banners")} />
+                  <NavItem href="/menus" icon={Menu} label={t("menus")} />
                 </SidebarMenu>
               </SidebarGroupContent>
             </SidebarGroup>
