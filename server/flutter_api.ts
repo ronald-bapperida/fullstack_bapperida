@@ -42,8 +42,10 @@ function getMulter(subdir: string, maxSizeMB: number = 5) {
   });
 }
 
-function fileUrl(subdir: string, filename: string) {
-  return `/uploads/${subdir}/${filename}`;
+const FILE_BASE_URL = (process.env.FILE_BASE_URL ?? "").replace(/\/+$/, "");
+
+function fileUrl(subdir: string, filename: string): string {
+  return `${FILE_BASE_URL}/uploads/${subdir}/${filename}`;
 }
 
 // ─── Helper Functions ────────────────────────────────────────────────────────

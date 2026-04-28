@@ -98,8 +98,20 @@ function getMulterUnlimited(subdir: string) {
   });
 }
 
-function fileUrl(subdir: string, filename: string) {
-  return `/uploads/${subdir}/${filename}`;
+const FILE_BASE_URL = (process.env.FILE_BASE_URL ?? "").replace(/\/+$/, "");
+
+function fileUrl(subdir: string, filename: string): string {
+  return `${FILE_BASE_URL}/uploads/${subdir}/${filename}`;
+}
+
+/**
+ * Converts any stored file URL (relative or absolute) back to a local disk path.
+ * Works regardless of whether FILE_BASE_URL is set.
+ */
+function fileDiskPath(storedUrl: string): string {
+  const match = storedUrl.match(/\/uploads\/(.+)$/);
+  if (match) return path.join(uploadDir, match[1]);
+  return path.join(process.cwd(), storedUrl.replace(/^\//, ""));
 }
 
 function normalizeDate(v: any) {
@@ -1261,7 +1273,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
     try {
       const media = await db.deleteNewsMedia(req.params.id);
       if (media?.fileUrl) {
-        const filePath = path.join(process.cwd(), media.fileUrl.replace("/uploads", "uploads"));
+        const filePath = fileDiskPath(media.fileUrl);
         if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
       }
       return res.json({ ok: true });
@@ -1602,7 +1614,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       // Increment download count
       await db.incrementDocumentDownload(document.id);
   
-      const filePath = path.join(process.cwd(), document.fileUrl.replace("/uploads", "uploads"));
+      const filePath = fileDiskPath(document.fileUrl);
       
       if (!fs.existsSync(filePath)) {
         return res.status(404).json({ error: "File not found on server" });
@@ -1900,7 +1912,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
             if (status === "generated_letter") {
               const letter = await (db as any).getGeneratedLetter(p.id);
               if (letter?.fileUrl) {
-                const docxPath = path.join(process.cwd(), letter.fileUrl.replace(/^\//, ""));
+                const docxPath = fileDiskPath(letter.fileUrl);
                 if (fs.existsSync(docxPath) && docxPath.endsWith(".docx")) {
                   const docxBuf = fs.readFileSync(docxPath);
                   pdfAttachment = await convertDocxToPdf(docxBuf, `Surat Izin ${p.requestNumber}`);
@@ -2008,7 +2020,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           if (!templateFile) {
             return res.status(400).json({ error: "Template DOCX tidak ditemukan di database" });
           }
-          const templatePath = path.join(process.cwd(), templateFile.fileUrl.replace("/uploads", "uploads"));
+          const templatePath = fileDiskPath(templateFile.fileUrl);
           if (!fs.existsSync(templatePath)) {
             return res.status(400).json({ error: "File template tidak ada di disk" });
           }
@@ -2145,7 +2157,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         
         // Jika PDF tidak ada, cek apakah ada DOCX (fallback)
         if (letter?.fileUrl) {
-          const docxPath = path.join(process.cwd(), letter.fileUrl.replace(/^\//, ""));
+          const docxPath = fileDiskPath(letter.fileUrl);
           if (fs.existsSync(docxPath) && docxPath.endsWith(".docx")) {
             logger.log(`🔄 Konversi ulang DOCX ke PDF: ${docxPath}`);
             const docxBuffer = fs.readFileSync(docxPath);
@@ -2704,7 +2716,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
           const letter = await db.getGeneratedLetter(permit.id);
           if (letter?.fileUrl?.endsWith(".docx")) {
             // fileUrl kamu bentuknya /uploads/letters/xxx.docx
-            const abs = path.join(uploadDir, letter.fileUrl.replace("/uploads/", "")); // sesuaikan
+            const abs = fileDiskPath(letter.fileUrl);
             if (fs.existsSync(abs)) {
               res.setHeader("Content-Type", "application/vnd.openxmlformats-officedocument.wordprocessingml.document");
               res.setHeader("Content-Disposition", `attachment; filename="Surat-Izin-${permit.requestNumber}.docx"`);
@@ -2873,10 +2885,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         // Hapus file fisik terlebih dahulu
         const files = await db.listLetterTemplateFiles(req.params.id);
         for (const f of files) {
-          const abs = path.join(
-            process.cwd(),
-            f.fileUrl.replace("/uploads", "uploads")
-          );
+          const abs = fileDiskPath(f.fileUrl);
           if (fs.existsSync(abs)) fs.unlinkSync(abs);
         }
         // Hapus record (pastikan ada method ini di DatabaseStorage)
