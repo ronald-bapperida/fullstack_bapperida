@@ -982,7 +982,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
         await db.deleteOtpForUser(user.id);
         await db.createOtp(user.id, otp, expiresAt);
         const { sendOtpResetEmail } = await import("./email");
-        await sendOtpResetEmail(user.email, otp, user.fullName || user.username).catch(logger.error);
+        await sendOtpResetEmail({
+          to: user.email,
+          otp,
+          fullName: user.fullName || user.username,
+        }).catch(logger.error);
       }
       return res.json({ ok: true, message: "Jika email terdaftar, kode OTP telah dikirim" });
     } catch (e: any) { return routeError(res, e); }
@@ -1772,6 +1776,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   ]), async (req: any, res) => {
     try {
       const data = { ...req.body, email: req.body.emailActive, };
+      if (data.researchTitle) data.researchTitle = String(data.researchTitle).toUpperCase();
       if (req.files?.fileIdentity?.[0]) data.fileIdentity = fileUrl("permits", req.files.fileIdentity[0].filename);
       if (req.files?.fileIntroLetter?.[0]) data.fileIntroLetter = fileUrl("permits", req.files.fileIntroLetter[0].filename);
       if (req.files?.fileProposal?.[0]) data.fileProposal = fileUrl("permits", req.files.fileProposal[0].filename);

@@ -952,7 +952,11 @@ export function registerFlutterApiRoutes(app: express.Express) {
         await db.deleteOtpForUser(user.id);
         await db.createOtp(user.id, otp, expiresAt);
         const { sendOtpResetEmail } = await import("./email");
-        await sendOtpResetEmail(user.email!, otp, user.fullName || user.username).catch(logger.error);
+        await sendOtpResetEmail({
+          to: user.email!,
+          otp,
+          fullName: user.fullName || user.username,
+        }).catch(logger.error);
       }
       return res.json({ success: true, message: "Jika email terdaftar, kode OTP telah dikirim" });
     } catch (error: any) {
