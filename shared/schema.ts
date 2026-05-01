@@ -272,6 +272,7 @@ export const researchPermitRequests = mysqlTable("research_permit_requests", {
   introLetterDate:   timestamp("intro_letter_date").notNull(),
   issuedLetterNumber: varchar("issued_letter_number", { length: 100 }),
   issuedLetterDate:   timestamp("issued_letter_date"),
+  issuedLetterMonth:  varchar("issued_letter_month", { length: 50 }),
   recipientName:      text("recipient_name"),
   recipientCity:      varchar("recipient_city", { length: 100 }),
   fileIdentity:    text("file_identity"),

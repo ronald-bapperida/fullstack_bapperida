@@ -573,6 +573,12 @@ export async function runMigrations() {
       logger.log("[migrate] Created table: fcm_tokens");
     }
 
+    // Add issued_letter_month column to research_permit_requests
+    if (!(await columnExists(conn, "research_permit_requests", "issued_letter_month"))) {
+      await conn.query(`ALTER TABLE research_permit_requests ADD COLUMN issued_letter_month VARCHAR(50) NULL AFTER issued_letter_date`);
+      logger.log("[migrate] Added column: research_permit_requests.issued_letter_month");
+    }
+
     // Create indexes
     const indexes = [
       { table: "refresh_tokens", name: "idx_refresh_tokens_token", sql: "CREATE INDEX idx_refresh_tokens_token ON refresh_tokens(token)" },

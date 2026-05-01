@@ -210,6 +210,7 @@ function toTitleCase(str: string | null | undefined): string {
 }
 
 function buildLetterReplacements(permit: any, template?: any): Record<string, string> {
+  // ALL CAPS date (e.g. "15 JANUARI 2025")
   const formatDate = (d: any): string => {
     if (!d) return "-";
     return new Date(d).toLocaleDateString("id-ID", {
@@ -219,6 +220,7 @@ function buildLetterReplacements(permit: any, template?: any): Record<string, st
     }).toUpperCase();
   };
 
+  // ALL CAPS date variant without comma (e.g. "15 JANUARI 2025")
   const formatDateForSurat = (d: any): string => {
     if (!d) return "-";
     const date = new Date(d);
@@ -227,6 +229,19 @@ function buildLetterReplacements(permit: any, template?: any): Record<string, st
     const year = date.getFullYear();
     return `${day} ${month} ${year}`;
   };
+
+  // Title Case date — only first letter of month capitalised (e.g. "15 Januari 2025")
+  const formatDateTitleCase = (d: any): string => {
+    if (!d) return "-";
+    const date = new Date(d);
+    const day = date.getDate();
+    const rawMonth = date.toLocaleDateString("id-ID", { month: "long" });
+    const month = rawMonth.charAt(0).toUpperCase() + rawMonth.slice(1).toLowerCase();
+    const year = date.getFullYear();
+    return `${day} ${month} ${year}`;
+  };
+
+  const safeUpper = (v: any) => (v ? String(v).toUpperCase() : "-");
 
   const today = new Date();
   const city = template?.city || "Palangka Raya";
@@ -248,61 +263,69 @@ function buildLetterReplacements(permit: any, template?: any): Record<string, st
   // const letterNumberOnly = letterNumber.replace(/[^0-9]/g, "");
 
   return {
-    // Basic data
-    "NAMA": permit.fullName ?? "-",
-    "NIM": permit.nimNik ?? "-",
-    "NIM/NIK": permit.nimNik ?? "-",
-    "NIK": permit.nimNik ?? "-",
-    
-    // Surat Rekomendasi specific
-    "NOMOR SURAT IZIN": permit.issuedLetterNumber,
-    "NOMOR SURAT PENGANTAR": permit.introLetterNumber,
-    // "NOMOR": letterNumberOnly,
-    
-    // Pejabat & Institution
+    // ── Basic data — ALL CAPS ────────────────────────────────────────────────
+    "NAMA":           safeUpper(permit.fullName),
+    "NIM":            safeUpper(permit.nimNik),
+    "NIM/NIK":        safeUpper(permit.nimNik),
+    "NIK":            safeUpper(permit.nimNik),
+
+    // ── Letter numbers — apa adanya (no force caps) ───────────────────────
+    "NOMOR SURAT IZIN":      permit.issuedLetterNumber ?? "-",
+    "NOMOR SURAT PENGANTAR": permit.introLetterNumber  ?? "-",
+    "NOMOR SURAT BULAN":     permit.issuedLetterMonth  ?? "-",
+    "BULAN NOMOR SURAT":     permit.issuedLetterMonth  ?? "-",
+
+    // ── Pejabat & Institution ─────────────────────────────────────────────
+    // PEJABAT: apa adanya dari input
     "PEJABAT SURAT PENGANTAR": permit.signerPosition ?? "-",
-    "TIM SURVEY/PENELITI": permit.institution ?? "-",
-    "INSTANSI": permit.institution ?? "-",
-    "NAMA INSTANSI": permit.institution ?? "-",
-    "BAPPEDA KABUPATEN": permit.recipientCity ?? "-",
-    
-    // Research
-    "JUDUL PENELITIAN": permit.researchTitle ?? "-",
-    "LOKASI PENELITIAN": permit.researchLocation ?? "-",
-    "DURASI PENELITIAN": permit.researchDuration ?? "-",
-    
-    // Dates
-    "TANGGAL SURAT PENGANTAR": formatDate(permit.introLetterDate),
-    "TANGGAL SURAT": formatDate(permit.issuedLetterDate),
-    "TANGGAL SURAT IZIN": formatDate(permit.issuedLetterDate),
-    "TGL SRT DITETAPKAN": formatDateForSurat(permit.issuedLetterDate),
-    "TGL MULAI": formatDate(permit.researchStartDate),
-    "TGL SELESAI": formatDate(permit.researchEndDate),
-    "TANGGAL MULAI PENELITIAN": formatDate(permit.researchStartDate),
-    "TANGGAL SELESAI PENELITIAN": formatDate(permit.researchEndDate),
-    
-    // Contact
+    // Institution: ALL CAPS
+    "TIM SURVEY/PENELITI": safeUpper(permit.institution),
+    "INSTANSI":            safeUpper(permit.institution),
+    "NAMA INSTANSI":       safeUpper(permit.institution),
+    // BAPPEDA KABUPATEN: apa adanya dari input
+    "BAPPEDA KABUPATEN":   permit.recipientCity ?? "-",
+
+    // ── Research ──────────────────────────────────────────────────────────
+    "JUDUL PENELITIAN":  safeUpper(permit.researchTitle),   // ALL CAPS
+    "LOKASI PENELITIAN": permit.researchLocation ?? "-",    // apa adanya
+    "DURASI PENELITIAN": permit.researchDuration  ?? "-",
+
+    // ── Dates ─────────────────────────────────────────────────────────────
+    // TANGGAL SURAT PENGANTAR: Title Case month (first letter capital only)
+    "TANGGAL SURAT PENGANTAR": formatDateTitleCase(permit.introLetterDate),
+    // Issued letter dates: ALL CAPS
+    "TANGGAL SURAT":           formatDate(permit.issuedLetterDate),
+    "TANGGAL SURAT IZIN":      formatDate(permit.issuedLetterDate),
+    "TGL SRT DITETAPKAN":      formatDateForSurat(permit.issuedLetterDate),
+    "TGL SURAT DITETAPKAN":    formatDateForSurat(permit.issuedLetterDate),
+    // Research dates: ALL CAPS
+    "TGL MULAI":                    formatDate(permit.researchStartDate),
+    "TGL SELESAI":                  formatDate(permit.researchEndDate),
+    "TANGGAL MULAI PENELITIAN":     formatDate(permit.researchStartDate),
+    "TANGGAL SELESAI PENELITIAN":   formatDate(permit.researchEndDate),
+
+    // ── Contact ───────────────────────────────────────────────────────────
     "TELEPON": permit.phoneWa ?? "-",
-    "EMAIL": permit.email ?? "-",
-    "ALAMAT": permit.address ?? "-",
-    
-    // Template config
-    "NAMA PEJABAT": template?.officialName ?? "Endy, ST, MT",
-    "JABATAN": template?.officialPosition ?? "Kepala Bidang Riset dan Inovasi Daerah",
+    "EMAIL":   permit.email   ?? "-",
+    "ALAMAT":  permit.address ?? "-",
+
+    // ── Template config ───────────────────────────────────────────────────
+    "NAMA PEJABAT":    template?.officialName     ?? "Endy, ST, MT",
+    "JABATAN":         template?.officialPosition ?? "Kepala Bidang Riset dan Inovasi Daerah",
     "JABATAN PEJABAT": template?.officialPosition ?? "Kepala Bidang Riset dan Inovasi Daerah",
-    "NIP": template?.officialNip ?? "197412232000031002",
-    "NIP PEJABAT": template?.officialNip ?? "197412232000031002",
-    "KOTA": city,
+    "NIP":             template?.officialNip      ?? "197412232000031002",
+    "NIP PEJABAT":     template?.officialNip      ?? "197412232000031002",
+    "KOTA":            city,
     "KOTA PENELITIAN": permit.recipientCity ?? city,
-    "KEPADA": permit.recipientName ?? "Walikota Palangka Raya",
-    "TUJUAN KEPADA": permit.recipientName ?? "Walikota Palangka Raya",
-    "TEMBUSAN": tembusanFormatted,
-    
-    // Current date
+    "KEPADA":          permit.recipientName ?? "Walikota Palangka Raya",
+    "TUJUAN KEPADA":   permit.recipientName ?? "Walikota Palangka Raya",
+    "TEMBUSAN":        tembusanFormatted,
+
+    // ── Current date ──────────────────────────────────────────────────────
     "TANGGAL HARI INI": formatDate(today),
-    "TANGGAL": formatDate(today),
-    "TAHUN": String(today.getFullYear()),
-    "BULAN": today.toLocaleDateString("id-ID", { month: "long" }).toUpperCase(),
+    "TANGGAL":          formatDate(today),
+    "TAHUN":            String(today.getFullYear()),
+    "BULAN":            today.toLocaleDateString("id-ID", { month: "long" }).toUpperCase(),
   };
 }
 
@@ -1903,7 +1926,7 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
       const { status, note } = req.body;
       const p = await db.updatePermitStatus(req.params.id, status, note, req.user.id);
       // Kirim email notifikasi status (async, non-blocking)
-      if (p.email && status !== "submitted") {
+      if (p.email && status !== "submitted" && status !== "generated_letter") {
         (async () => {
           try {
             let pdfAttachment: Buffer | undefined;
@@ -1941,10 +1964,11 @@ export async function registerRoutes(httpServer: Server, app: Express): Promise<
   // Update permit admin fields (nomor surat, tanggal, penerima, dll.)
   app.patch("/api/admin/permits/:id/detail", authMiddleware, requireRole("super_admin", "admin_rida"), async (req: any, res) => {
     try {
-      const { issuedLetterNumber, issuedLetterDate, recipientName, recipientCity, researchStartDate, researchEndDate, isSurvei } = req.body;
+      const { issuedLetterNumber, issuedLetterDate, issuedLetterMonth, recipientName, recipientCity, researchStartDate, researchEndDate, isSurvei } = req.body;
       const updateData: Record<string, any> = {};
       if (issuedLetterNumber !== undefined) updateData.issuedLetterNumber = issuedLetterNumber || null;
       if (issuedLetterDate !== undefined) updateData.issuedLetterDate = issuedLetterDate ? new Date(issuedLetterDate) : null;
+      if (issuedLetterMonth !== undefined) updateData.issuedLetterMonth = issuedLetterMonth || null;
       if (recipientName !== undefined) updateData.recipientName = recipientName || null;
       if (recipientCity !== undefined) updateData.recipientCity = recipientCity || null;
       if (researchStartDate !== undefined) updateData.researchStartDate = researchStartDate ? new Date(researchStartDate) : null;

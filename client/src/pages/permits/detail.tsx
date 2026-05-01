@@ -96,6 +96,7 @@ function FileLink({ label, url }: { label: string; url: string | null | undefine
 interface AdminLetterFields {
   issuedLetterNumber: string;
   issuedLetterDate: string;
+  issuedLetterMonth: string;
   researchStartDate: string;
   researchEndDate: string;
   recipientCity: string;
@@ -155,7 +156,17 @@ function AdminLetterFieldsCard({
               onChange={set("issuedLetterDate")}
             />
           </div>
-          
+
+          <div className="flex flex-col gap-1.5">
+            <Label className="text-xs">Bulan Nomor Surat <span className="text-muted-foreground">(mis. I, II, III...)</span></Label>
+            <Input
+              value={fields.issuedLetterMonth}
+              onChange={set("issuedLetterMonth")}
+              placeholder="mis. I"
+              data-testid="input-issued-letter-month"
+            />
+          </div>
+
           <div className="flex flex-col gap-1.5">
             <Label className="text-xs">Kabpupaten Tujuan (Opsional)</Label>
             <Input
@@ -229,6 +240,8 @@ function GenerateCard({
       await apiRequest("PATCH", `/api/admin/permits/${permitId}/detail`, {
         issuedLetterNumber: adminLetterFields.issuedLetterNumber,
         issuedLetterDate: adminLetterFields.issuedLetterDate,
+        issuedLetterMonth: adminLetterFields.issuedLetterMonth,
+        recipientCity: adminLetterFields.recipientCity,
         researchStartDate: adminLetterFields.researchStartDate,
         researchEndDate: adminLetterFields.researchEndDate,
       });
@@ -652,6 +665,7 @@ export default function PermitDetailPage() {
   const [adminLetterFields, setAdminLetterFields] = useState<AdminLetterFields>({
     issuedLetterNumber: "",
     issuedLetterDate: "",
+    issuedLetterMonth: "",
     researchStartDate: "",
     researchEndDate: "",
     recipientCity: "",
@@ -673,8 +687,9 @@ export default function PermitDetailPage() {
       //     .replace(LETTER_NUMBER_SUFFIX, "");
       // }
       setAdminLetterFields({
-        issuedLetterNumber: permit.issuedLetterNumber,
-        recipientCity: permit.recipientCity,
+        issuedLetterNumber: permit.issuedLetterNumber ?? "",
+        issuedLetterMonth: permit.issuedLetterMonth ?? "",
+        recipientCity: permit.recipientCity ?? "",
         issuedLetterDate: permit.issuedLetterDate
           ? format(new Date(permit.issuedLetterDate), "yyyy-MM-dd")
           : "",
