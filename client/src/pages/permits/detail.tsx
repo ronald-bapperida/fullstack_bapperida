@@ -158,17 +158,17 @@ function AdminLetterFieldsCard({
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <Label className="text-xs">Bulan Nomor Surat <span className="text-muted-foreground">(mis. I, II, III...)</span></Label>
+            <Label className="text-xs">Bulan Nomor Surat <span className="text-muted-foreground"></span></Label>
             <Input
               value={fields.issuedLetterMonth}
               onChange={set("issuedLetterMonth")}
-              placeholder="mis. I"
+              placeholder="Isi bulan surat"
               data-testid="input-issued-letter-month"
             />
           </div>
 
           <div className="flex flex-col gap-1.5">
-            <Label className="text-xs">Kabpupaten Tujuan (Opsional)</Label>
+            <Label className="text-xs">Kabupaten Tujuan (Opsional)</Label>
             <Input
               value={fields.recipientCity}
               onChange={set("recipientCity")}
