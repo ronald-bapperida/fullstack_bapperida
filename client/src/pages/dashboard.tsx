@@ -856,13 +856,13 @@ export default function Dashboard() {
                     <p className="text-xs text-white/60 mt-1">Indeks Kepuasan Masyarakat</p>
                   </CardContent>
                 </Card>
-                <Card className="border-0 shadow-md bg-gradient-to-br from-amber-500 to-orange-500 text-white">
+                {/* <Card className="border-0 shadow-md bg-gradient-to-br from-amber-500 to-orange-500 text-white">
                   <CardContent className="pt-5 pb-4">
                     <p className="text-xs font-medium text-white/70 mb-1">Kotak Saran</p>
                     <p className="text-3xl font-bold">{ikmData.suggestions?.total || 0}</p>
                     <p className="text-xs text-white/60 mt-1">Total pesan masuk</p>
                   </CardContent>
-                </Card>
+                </Card> */}
                 <Card className="border-0 shadow-md bg-gradient-to-br from-pink-500 to-rose-500 text-white">
                   <CardContent className="pt-5 pb-4">
                     <p className="text-xs font-medium text-white/70 mb-1">Nilai Terendah</p>
